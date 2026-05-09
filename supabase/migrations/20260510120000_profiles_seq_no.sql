@@ -30,10 +30,12 @@ where p.id = n.id
   and (p.seq_no is null);
 
 -- 3) Синхронізувати лічильник послідовності
+-- PostgreSQL не приймає setval(..., 0): для порожньої таблиці потрібно setval(seq, 1, false),
+-- щоб перший nextval повернув 1; якщо вже є max(seq_no)=N — setval(seq, N, true).
 select setval(
   'public.profiles_seq_no_seq',
-  coalesce((select max(seq_no) from public.profiles), 0)::bigint,
-  true
+  greatest(coalesce((select max(seq_no) from public.profiles), 0), 1)::bigint,
+  coalesce((select max(seq_no) from public.profiles), 0) > 0
 );
 
 -- 4) Автоприсвоєння для нових рядків (у т.ч. з тригера handle_new_user)
