@@ -11,10 +11,41 @@
     "submit": "Continue",
     "language": "Interface language"
   },
+  "nav": {
+    "dashboard": "Overview",
+    "generator": "Generator",
+    "seo": "SEO",
+    "usage": "AI tokens",
+    "users": "Users",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+  "dashboard": {
+    "welcome": "Welcome to Union",
+    "welcomeLead": "Site generation, SEO, and Claude token accounting — one UI.",
+    "openModule": "Open",
+    "cards": {
+      "generator": "Site and copy pipeline (Layout Engine + Copy Engine).",
+      "seo": "Keywords, rankings, and reporting.",
+      "usage": "Average token burn and period breakdowns.",
+      "users": "Profiles and sequence numbers.",
+      "settings": "Account and preferences."
+    }
+  },
+  "module": {
+    "wipBody": "This module will be wired in upcoming iterations.",
+    "generatorTitle": "Site generator",
+    "generatorLead": "Unique page shells and corpus-driven copy.",
+    "seoTitle": "SEO panel",
+    "seoLead": "Keywords and positions (from admin-seo).",
+    "usageTitle": "AI tokens & usage",
+    "usageLead": "Claude API metadata: averages per run, weekly, monthly.",
+    "settingsTitle": "Settings",
+    "settingsLead": "Profile, UI language, and notifications."
+  },
   "users": {
     "title": "Users",
     "subtitle": "All rows from public.profiles (RLS: authenticated users can list).",
-    "backHome": "Home",
     "loadError": "Could not load profiles",
     "empty": "No rows. Run the migration and check the auth.users trigger.",
     "colNo": "#",

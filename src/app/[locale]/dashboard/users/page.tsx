@@ -1,10 +1,8 @@
 import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
-import { Link } from "@/i18n/navigation";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
 type ProfileRow = {
-  seq_no: number;
+  seq_no: number | null;
   id: string;
   email: string | null;
   display_name: string | null;
@@ -12,24 +10,11 @@ type ProfileRow = {
   updated_at: string;
 };
 
-type Props = {
-  params: Promise<{ locale: string }>;
-};
-
 export const dynamic = "force-dynamic";
 
-export default async function DashboardUsersPage({ params }: Props) {
-  const { locale } = await params;
+export default async function DashboardUsersPage() {
   const t = await getTranslations("users");
   const supabase = await createSupabaseServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(`/${locale}`);
-  }
 
   const { data: profilesRaw, error } = await supabase
     .from("profiles")
@@ -41,19 +26,11 @@ export default async function DashboardUsersPage({ params }: Props) {
   return (
     <div className="min-h-full px-6 py-10 md:px-10">
       <div className="mx-auto max-w-6xl space-y-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-union-text">
-              {t("title")}
-            </h1>
-            <p className="mt-1 text-sm text-union-muted">{t("subtitle")}</p>
-          </div>
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-xl border border-union-border bg-white/[0.04] px-4 py-2 text-sm text-union-text transition-colors hover:bg-white/[0.07]"
-          >
-            {t("backHome")}
-          </Link>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-union-text">
+            {t("title")}
+          </h1>
+          <p className="mt-1 text-sm text-union-muted">{t("subtitle")}</p>
         </div>
 
         {error ? (

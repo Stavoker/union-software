@@ -1,8 +1,25 @@
 import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
 import { LocaleSwitcher } from "@/shared/components/locale-switcher";
 import { LoginForm } from "@/shared/components/login-form";
+import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
-export default async function LoginPage() {
+export const dynamic = "force-dynamic";
+
+export default async function LoginPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    redirect(`/${locale}/dashboard`);
+  }
+
   const t = await getTranslations("login");
   const meta = await getTranslations("meta");
 

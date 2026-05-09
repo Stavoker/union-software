@@ -32,7 +32,7 @@ export function LoginForm() {
         setPending(false);
         return;
       }
-      router.replace("/dashboard/users");
+      router.replace("/dashboard");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
