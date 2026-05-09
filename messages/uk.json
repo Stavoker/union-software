@@ -10,5 +10,15 @@
     "password": "Пароль",
     "submit": "Продовжити",
     "language": "Мова інтерфейсу"
+  },
+  "users": {
+    "title": "Користувачі",
+    "subtitle": "Усі профілі з таблиці public.profiles (RLS: автентифіковані бачать список).",
+    "backHome": "На головну",
+    "loadError": "Не вдалося завантажити profiles",
+    "empty": "Немає записів. Перевірте міграцію та тригер на auth.users.",
+    "colEmail": "Email",
+    "colDisplayName": "Ім’я",
+    "colCreated": "Створено"
   }
 }

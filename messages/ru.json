@@ -10,5 +10,15 @@
     "password": "Пароль",
     "submit": "Продолжить",
     "language": "Язык интерфейса"
+  },
+  "users": {
+    "title": "Пользователи",
+    "subtitle": "Все строки из public.profiles (RLS: авторизованные видят список).",
+    "backHome": "На главную",
+    "loadError": "Не удалось загрузить profiles",
+    "empty": "Нет записей. Проверьте миграцию и триггер на auth.users.",
+    "colEmail": "Email",
+    "colDisplayName": "Имя",
+    "colCreated": "Создано"
   }
 }

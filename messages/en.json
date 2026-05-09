@@ -10,5 +10,15 @@
     "password": "Password",
     "submit": "Continue",
     "language": "Interface language"
+  },
+  "users": {
+    "title": "Users",
+    "subtitle": "All rows from public.profiles (RLS: authenticated users can list).",
+    "backHome": "Home",
+    "loadError": "Could not load profiles",
+    "empty": "No rows. Run the migration and check the auth.users trigger.",
+    "colEmail": "Email",
+    "colDisplayName": "Display name",
+    "colCreated": "Created"
   }
 }
