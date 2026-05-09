@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Union
 
-## Getting Started
+Єдина веб-платформа (Next.js 16, React 19, TypeScript): генерація сайтів, SEO-інструменти, облік AI-токенів, інтеграція з інфраструктурою.
 
-First, run the development server:
+**Окремий деплой на Render:** worker автоматизації **auto-script-v2** не входить у цей репозиторій; зв’язок через черги / webhooks / спільний Supabase (за вашою схемою).
+
+## Локальний запуск
 
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Відкрийте [http://localhost:3000/uk](http://localhost:3000/uk) (локалі: `uk`, `en`, `ru`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Стек
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **UI:** Tailwind CSS v4, Framer Motion, дизайн-токени в `src/app/globals.css`.
+- **i18n:** `next-intl` — інтерфейс UA/EN/RU; мова **контенту сайту** при генерації окремо (RU/EN) задається в майбутньому модулем генерації.
+- **Дані:** Supabase (Auth email/password — наступний крок), TanStack Query.
+- **Стан UI:** Zustand (за потреби).
 
-## Learn More
+## Структура
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+  app/              App Router, `[locale]` для перекладів
+  i18n/             routing, request, navigation helpers
+  modules/          майбутні feature-модулі
+  shared/           компоненти, providers, lib (Supabase)
+messages/           uk.json, en.json, ru.json
+supabase/migrations SQL для таблиць
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Деплой (Render)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Build: `npm run build`
+- Start: `npm run start`
+- Змінні середовища — з `.env.example`; секрети лише в Render dashboard.
 
-## Deploy on Vercel
+## Ліцензія
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Приватний проєкт.

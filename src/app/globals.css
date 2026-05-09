@@ -1,26 +1,32 @@
 @import "tailwindcss";
 
+/*
+  Union design tokens — dark premium (Higgsfield-inspired accent).
+  Site content languages (RU/EN) are separate from UI locales (uk/en/ru).
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --union-bg: rgb(15 17 19);
+  --union-surface: rgb(19 21 23);
+  --union-accent: rgb(209 254 23);
+  --union-accent-foreground: rgb(11 12 13);
+  --union-text: rgb(237 240 245);
+  --union-muted: rgb(148 156 168);
+  --union-border: rgb(255 255 255 / 0.08);
+  --union-ring: rgb(209 254 23 / 0.45);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-union-bg: var(--union-bg);
+  --color-union-surface: var(--union-surface);
+  --color-union-accent: var(--union-accent);
+  --color-union-accent-fg: var(--union-accent-foreground);
+  --color-union-text: var(--union-text);
+  --color-union-muted: var(--union-muted);
+  --color-union-border: var(--union-border);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }

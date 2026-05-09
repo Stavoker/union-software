@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "Union",
+    "description": "Unified generation and SEO platform"
+  },
+  "login": {
+    "heading": "Sign in",
+    "subtitle": "Access the generator and SEO tools",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Continue",
+    "language": "Interface language"
+  }
+}
