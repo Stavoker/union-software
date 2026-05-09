@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { DASHBOARD_NAV } from "@/shared/config/nav";
 import { LocaleSwitcher } from "@/shared/components/locale-switcher";
+import { UnionLogo } from "@/shared/components/union-logo";
 import { UserMenu } from "@/shared/components/user-menu";
 
 function navActive(pathname: string, href: string) {
@@ -25,8 +26,8 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
             href="/dashboard"
             className="flex shrink-0 items-center gap-2.5"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
-              <span className="text-sm font-bold text-union-text">U</span>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
+              <UnionLogo />
             </span>
             <span className="text-sm font-semibold tracking-tight text-union-text">
               Union

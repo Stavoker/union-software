@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { LocaleSwitcher } from "@/shared/components/locale-switcher";
 import { LoginForm } from "@/shared/components/login-form";
+import { UnionLogo } from "@/shared/components/union-logo";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +28,8 @@ export default async function LoginPage({
     <div className="relative flex min-h-full flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-6 md:px-10">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
-            <span className="text-sm font-bold tracking-tight text-union-text">
-              U
-            </span>
+          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
+            <UnionLogo priority />
           </span>
           <span className="text-sm font-semibold tracking-tight text-union-text">
             {meta("title")}
