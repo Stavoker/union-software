@@ -1,20 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { QueryProvider } from "@/shared/providers/query-provider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin", "cyrillic"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin", "cyrillic"],
-});
+/**
+ * Раніше тут були Geist через next/font/google — у dev це тягне мережевий запит
+ * до Google Fonts; при блокуванні DNS/VPN/фаєрволом компіляція могла «висіти» безкінечно.
+ * UI-шрифт задаємо через CSS (globals.css); кирилицю покриває системний стек.
+ */
 
 type Props = {
   children: React.ReactNode;
@@ -46,11 +41,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   const messages = await getMessages();
 
   return (
-    <html
-      lang={locale}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
+    <html lang={locale} className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-union-bg font-sans text-union-text">
         <NextIntlClientProvider messages={messages}>
           <QueryProvider>{children}</QueryProvider>
