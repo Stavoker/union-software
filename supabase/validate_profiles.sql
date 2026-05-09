@@ -43,7 +43,17 @@ where email is not null
 group by lower(trim(email))
 having count(*) > 1;
 
--- 5) Зведення (інформаційно)
+-- 5) Дублікати seq_no (має бути порожньо, якщо колонка існує)
+select
+  'duplicate_seq_no' as check_name,
+  seq_no,
+  count(*)::bigint as cnt
+from public.profiles
+where seq_no is not null
+group by seq_no
+having count(*) > 1;
+
+-- 6) Зведення (інформаційно)
 select
   (select count(*) from auth.users) as auth_users_count,
   (select count(*) from public.profiles) as profiles_count;

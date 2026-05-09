@@ -4,6 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
 type ProfileRow = {
+  seq_no: number;
   id: string;
   email: string | null;
   display_name: string | null;
@@ -32,8 +33,8 @@ export default async function DashboardUsersPage({ params }: Props) {
 
   const { data: profilesRaw, error } = await supabase
     .from("profiles")
-    .select("id,email,display_name,created_at,updated_at")
-    .order("created_at", { ascending: false });
+    .select("seq_no,id,email,display_name,created_at,updated_at")
+    .order("seq_no", { ascending: true });
 
   const profiles = (profilesRaw ?? []) as ProfileRow[];
 
@@ -65,6 +66,9 @@ export default async function DashboardUsersPage({ params }: Props) {
               <table className="w-full min-w-[720px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-union-border bg-black/20 text-union-muted">
+                    <th className="w-16 px-4 py-3 font-medium tabular-nums">
+                      {t("colNo")}
+                    </th>
                     <th className="px-4 py-3 font-medium">{t("colEmail")}</th>
                     <th className="px-4 py-3 font-medium">{t("colDisplayName")}</th>
                     <th className="px-4 py-3 font-medium">{t("colCreated")}</th>
@@ -78,7 +82,7 @@ export default async function DashboardUsersPage({ params }: Props) {
                     <tr>
                       <td
                         className="px-4 py-8 text-center text-union-muted"
-                        colSpan={4}
+                        colSpan={5}
                       >
                         {t("empty")}
                       </td>
@@ -89,6 +93,9 @@ export default async function DashboardUsersPage({ params }: Props) {
                         key={row.id}
                         className="border-b border-union-border/80 transition-colors hover:bg-white/[0.03]"
                       >
+                        <td className="px-4 py-3 font-mono tabular-nums text-union-muted">
+                          {row.seq_no ?? "—"}
+                        </td>
                         <td className="px-4 py-3 text-union-text">
                           {row.email ?? "—"}
                         </td>

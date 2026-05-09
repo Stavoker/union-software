@@ -17,6 +17,7 @@
     "backHome": "Home",
     "loadError": "Could not load profiles",
     "empty": "No rows. Run the migration and check the auth.users trigger.",
+    "colNo": "#",
     "colEmail": "Email",
     "colDisplayName": "Display name",
     "colCreated": "Created"

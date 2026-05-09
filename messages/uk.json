@@ -17,6 +17,7 @@
     "backHome": "На головну",
     "loadError": "Не вдалося завантажити profiles",
     "empty": "Немає записів. Перевірте міграцію та тригер на auth.users.",
+    "colNo": "№",
     "colEmail": "Email",
     "colDisplayName": "Ім’я",
     "colCreated": "Створено"
