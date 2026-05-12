@@ -17,11 +17,51 @@ const THEME_PRESETS = [
   "мобильное казино",
 ];
 
-function randomProjectSlug() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `u-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+/** `u-` + English word + exactly 3 digits (folder-safe, matches random slug button). */
+const SLUG_WORDS = [
+  "site",
+  "page",
+  "web",
+  "net",
+  "app",
+  "hub",
+  "club",
+  "zone",
+  "spot",
+  "play",
+  "star",
+  "gold",
+  "blue",
+  "top",
+  "best",
+  "pro",
+  "vip",
+  "live",
+  "slot",
+  "spin",
+  "win",
+  "bet",
+  "luck",
+  "mega",
+  "super",
+  "game",
+  "cash",
+  "bonus",
+] as const;
+
+function randomUint32(): number {
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] ?? 0;
   }
-  return `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return Math.floor(Math.random() * 0x1_0000_0000);
+}
+
+function randomProjectSlug() {
+  const word = SLUG_WORDS[randomUint32() % SLUG_WORDS.length] ?? "site";
+  const n = randomUint32() % 1000;
+  return `u-${word}${String(n).padStart(3, "0")}`;
 }
 
 function sanitizeProjectBase(name: string) {
@@ -235,13 +275,22 @@ export function GeneratorWorkbench() {
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-union-muted">{t("projectName")}</span>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring placeholder:text-union-muted focus:ring-2"
-                placeholder="my-site-01"
-                autoComplete="off"
-              />
+              <div className="flex overflow-hidden rounded-xl border border-union-border bg-union-bg/80 ring-union-ring focus-within:ring-2">
+                <input
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-union-text outline-none placeholder:text-union-muted"
+                  placeholder="u-casino742"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setProjectName(randomProjectSlug())}
+                  className="shrink-0 cursor-pointer border-l border-black/10 bg-[#d1fe17] px-3 py-2 text-xs font-semibold text-black transition-[opacity,filter] hover:opacity-90 active:brightness-95"
+                >
+                  {t("newSlug")}
+                </button>
+              </div>
             </label>
 
             <label className="block space-y-1.5">
@@ -278,7 +327,7 @@ export function GeneratorWorkbench() {
                 onChange={(e) => setSiteCount(Number(e.target.value))}
                 className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
               >
-                {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
@@ -303,35 +352,26 @@ export function GeneratorWorkbench() {
             </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={starting}
-              onClick={() => void startBuild()}
-              className="inline-flex items-center justify-center rounded-full bg-union-accent px-5 py-2.5 text-sm font-medium text-union-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {starting ? t("starting") : t("start")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setProjectName(randomProjectSlug())}
-              className="text-xs text-union-muted underline-offset-4 hover:text-union-text hover:underline"
-            >
-              {t("newSlug")}
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={starting}
+            onClick={() => void startBuild()}
+            className="inline-flex cursor-pointer items-center justify-center rounded-full bg-union-accent px-5 py-2.5 text-sm font-medium text-union-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {starting ? t("starting") : t("start")}
+          </button>
         </div>
       ) : null}
 
       {showOrb ? (
-        <div className="w-full">
+        <div className={showCards ? "w-full mb-7 md:mb-9" : "w-full"}>
           <GeneratorOrb />
         </div>
       ) : null}
 
       {showCards ? (
         <div
-          className={`w-full space-y-4 pb-12 ${showForm ? "pt-10" : "pt-2"}`}
+          className={`w-full space-y-4 pb-12 ${showForm ? "pt-10" : showOrb ? "pt-2 md:pt-3" : "pt-2"}`}
         >
           <div className="grid gap-4 md:grid-cols-2">
             {jobs.map((job) => {
@@ -392,7 +432,7 @@ export function GeneratorWorkbench() {
                       <button
                         type="button"
                         onClick={() => void cancelJob(job.jobId)}
-                        className="rounded-full border border-union-border px-4 py-2 text-xs text-union-muted transition-colors hover:border-white/20 hover:text-union-text"
+                        className="cursor-pointer rounded-full border border-union-border px-4 py-2 text-xs text-union-muted transition-colors hover:border-white/20 hover:text-union-text"
                       >
                         {t("stopThisSite")}
                       </button>

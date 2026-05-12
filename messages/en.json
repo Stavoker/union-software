@@ -55,10 +55,10 @@
   "generatorWorkbench": {
     "title": "Site build",
     "subtitle": "",
-    "projectName": "Project name (latin)",
+    "projectName": "Site folder",
     "theme": "Theme / site semantics",
     "pageCount": "Pages per site",
-    "siteCount": "How many sites to generate at once (1–15)",
+    "siteCount": "How many sites to generate at once (1–10)",
     "siteUrl": "Base URL (optional)",
     "start": "Start build",
     "starting": "Starting…",

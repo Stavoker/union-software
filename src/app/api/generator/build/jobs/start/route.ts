@@ -10,10 +10,11 @@ function clampMultipagePageCountTotal(raw: unknown) {
   return Math.min(4, Math.max(3, n));
 }
 
+/** Batch size cap: text + layout agents run per site; keep concurrency predictable. */
 function clampSiteCount(raw: unknown) {
   const n = Math.trunc(Number(raw));
   if (!Number.isFinite(n)) return 1;
-  return Math.min(15, Math.max(1, n));
+  return Math.min(10, Math.max(1, n));
 }
 
 function sanitizeProjectNameForBatch(name: string) {
