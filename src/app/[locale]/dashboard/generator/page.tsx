@@ -1,15 +1,11 @@
-import { getTranslations } from "next-intl/server";
-import { ModulePlaceholder } from "@/shared/components/module-placeholder";
+import { GeneratorWorkbench } from "@/shared/components/generator/generator-workbench";
 
 export default async function GeneratorPage() {
-  const t = await getTranslations("module");
-
   return (
-    <div className="px-4 py-10 md:px-8">
-      <ModulePlaceholder
-        title={t("generatorTitle")}
-        description={`${t("generatorLead")} ${t("wipBody")}`}
-      />
+    <div className="py-10">
+      <div className="mx-auto max-w-6xl">
+        <GeneratorWorkbench />
+      </div>
     </div>
   );
 }

@@ -1,30 +1,45 @@
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
-
-type ProfileRow = {
-  seq_no: number | null;
-  id: string;
-  email: string | null;
-  display_name: string | null;
-  created_at: string;
-  updated_at: string;
-};
+import { UsersAdminTable, type ProfileAdminRow } from "./users-admin-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardUsersPage() {
+export default async function DashboardUsersPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
   const t = await getTranslations("users");
   const supabase = await createSupabaseServerClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect(`/${locale}`);
+  }
+
+  const { data: me, error: meErr } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (meErr || me?.role !== "admin") {
+    redirect(`/${locale}/dashboard`);
+  }
+
   const { data: profilesRaw, error } = await supabase
     .from("profiles")
-    .select("seq_no,id,email,display_name,created_at,updated_at")
+    .select(
+      "seq_no,id,email,display_name,role,is_frozen,account_frozen_at,account_frozen_reason,created_at,updated_at"
+    )
     .order("seq_no", { ascending: true });
 
-  const profiles = (profilesRaw ?? []) as ProfileRow[];
-
   return (
-    <div className="min-h-full px-6 py-10 md:px-10">
+    <div className="min-h-full py-10">
       <div className="mx-auto max-w-6xl space-y-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-union-text">
@@ -38,73 +53,12 @@ export default async function DashboardUsersPage() {
             {t("loadError")}: {error.message}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-union-border bg-union-surface/60 backdrop-blur-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-union-border bg-black/20 text-union-muted">
-                    <th className="w-16 px-4 py-3 font-medium tabular-nums">
-                      {t("colNo")}
-                    </th>
-                    <th className="px-4 py-3 font-medium">{t("colEmail")}</th>
-                    <th className="px-4 py-3 font-medium">{t("colDisplayName")}</th>
-                    <th className="px-4 py-3 font-medium">{t("colCreated")}</th>
-                    <th className="px-4 py-3 font-medium font-mono text-xs">
-                      id (uuid)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profiles.length === 0 ? (
-                    <tr>
-                      <td
-                        className="px-4 py-8 text-center text-union-muted"
-                        colSpan={5}
-                      >
-                        {t("empty")}
-                      </td>
-                    </tr>
-                  ) : (
-                    profiles.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="border-b border-union-border/80 transition-colors hover:bg-white/[0.03]"
-                      >
-                        <td className="px-4 py-3 font-mono tabular-nums text-union-muted">
-                          {row.seq_no ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-union-text">
-                          {row.email ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-union-text">
-                          {row.display_name ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-union-muted tabular-nums">
-                          {formatDate(row.created_at)}
-                        </td>
-                        <td className="max-w-[280px] truncate px-4 py-3 font-mono text-xs text-union-muted">
-                          {row.id}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UsersAdminTable
+            currentUserId={user.id}
+            initialProfiles={(profilesRaw ?? []) as ProfileAdminRow[]}
+          />
         )}
       </div>
     </div>
   );
-}
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
 }

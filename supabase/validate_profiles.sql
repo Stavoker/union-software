@@ -53,7 +53,35 @@ where seq_no is not null
 group by seq_no
 having count(*) > 1;
 
--- 6) Зведення (інформаційно)
+-- 6) Невідома роль (якщо колонка role існує)
+select
+  'invalid_profile_role' as check_name,
+  id,
+  role
+from public.profiles
+where coalesce(role, '') not in ('admin', 'client');
+
+-- 7) Причина заморозки без дати (неконсистентно)
+select
+  'frozen_reason_without_frozen_at' as check_name,
+  id,
+  account_frozen_reason
+from public.profiles
+where account_frozen_reason is not null
+  and trim(account_frozen_reason) <> ''
+  and account_frozen_at is null;
+
+-- 8) is_frozen не збігається з наявністю account_frozen_at
+select
+  'frozen_flag_mismatch' as check_name,
+  id,
+  is_frozen,
+  account_frozen_at
+from public.profiles
+where (is_frozen = true and account_frozen_at is null)
+   or (is_frozen = false and account_frozen_at is not null);
+
+-- 9) Зведення (інформаційно)
 select
   (select count(*) from auth.users) as auth_users_count,
   (select count(*) from public.profiles) as profiles_count;

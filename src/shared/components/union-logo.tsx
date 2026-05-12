@@ -19,7 +19,7 @@ export function UnionLogo({
       height={36}
       sizes="36px"
       priority={priority}
-      className={`h-9 w-9 rounded-xl object-contain ${className}`}
+      className={`h-9 w-9 overflow-hidden object-contain ${className}`}
     />
   );
 }

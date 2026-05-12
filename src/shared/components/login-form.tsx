@@ -32,6 +32,24 @@ export function LoginForm() {
         setPending(false);
         return;
       }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("is_frozen")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (profile?.is_frozen) {
+          await supabase.auth.signOut();
+          setError(t("accountFrozen"));
+          setPending(false);
+          return;
+        }
+      }
+
       router.replace("/dashboard");
       router.refresh();
     } catch (err) {

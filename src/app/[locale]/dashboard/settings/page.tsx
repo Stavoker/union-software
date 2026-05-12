@@ -5,7 +5,7 @@ export default async function SettingsPage() {
   const t = await getTranslations("module");
 
   return (
-    <div className="px-4 py-10 md:px-8">
+    <div className="py-10">
       <ModulePlaceholder
         title={t("settingsTitle")}
         description={`${t("settingsLead")} ${t("wipBody")}`}

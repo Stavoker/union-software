@@ -9,15 +9,27 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ account?: string }>;
 }) {
   const { locale } = await params;
+  const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_frozen")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profile?.is_frozen) {
+      await supabase.auth.signOut();
+      redirect(`/${locale}?account=frozen`);
+    }
     redirect(`/${locale}/dashboard`);
   }
 
@@ -28,9 +40,7 @@ export default async function LoginPage({
     <div className="relative flex min-h-full flex-1 flex-col">
       <header className="flex items-center justify-between px-6 py-6 md:px-10">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
-            <UnionLogo priority />
-          </span>
+          <UnionLogo priority />
           <span className="text-sm font-semibold tracking-tight text-union-text">
             {meta("title")}
           </span>
@@ -47,6 +57,11 @@ export default async function LoginPage({
             <p className="text-sm text-union-muted">{t("subtitle")}</p>
             <p className="text-xs text-union-muted/80">{t("language")}</p>
           </div>
+          {sp.account === "frozen" ? (
+            <p className="mb-4 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              {t("accountFrozen")}
+            </p>
+          ) : null}
           <LoginForm />
         </div>
       </main>

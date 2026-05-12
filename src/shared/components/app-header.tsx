@@ -14,9 +14,17 @@ function navActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AppHeader({ userEmail }: { userEmail: string }) {
+export function AppHeader({
+  userEmail,
+  isAdmin,
+}: {
+  userEmail: string;
+  isAdmin: boolean;
+}) {
   const t = useTranslations("nav");
   const pathname = usePathname() ?? "";
+
+  const navItems = DASHBOARD_NAV.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <header className="sticky top-0 z-40 border-b border-union-border bg-union-bg/80 backdrop-blur-xl">
@@ -26,9 +34,7 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
             href="/dashboard"
             className="flex shrink-0 items-center gap-2.5"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
-              <UnionLogo />
-            </span>
+            <UnionLogo />
             <span className="text-sm font-semibold tracking-tight text-union-text">
               Union
             </span>
@@ -38,7 +44,7 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
             className="-mx-1 flex gap-1 overflow-x-auto pb-1 scrollbar-thin md:pb-0"
             aria-label="Main"
           >
-            {DASHBOARD_NAV.map(({ href, labelKey }) => {
+            {navItems.map(({ href, labelKey }) => {
               const active = navActive(pathname, href);
               return (
                 <Link
