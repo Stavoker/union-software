@@ -219,7 +219,7 @@
     "paginationFilterFound": " · {found} found",
     "paginationSummary": "Page {current} of {total}",
     "paginationRange": "Records {from}–{to} of {total}",
-    "navBack": "Previous",
+    "navBack": "Back",
     "navForward": "Next",
     "loadError": "Failed to load: {message}",
     "dbMigrationRequired": "Apply Supabase migration: supabase/migrations/20260517120000_generator_token_usage.sql"
@@ -313,7 +313,7 @@
     "paginationFilterFound": " · found {found} of {total}",
     "filterPlaceholder": "Filter table…",
     "filterAria": "Filter table by keyword",
-    "navBack": "Previous",
+    "navBack": "Back",
     "navNext": "Next",
     "colKeyword": "Keyword",
     "deleteKeywordTitle": "Remove keyword",

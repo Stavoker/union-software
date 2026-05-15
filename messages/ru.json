@@ -219,7 +219,7 @@
     "paginationFilterFound": " · найдено {found}",
     "paginationSummary": "Страница {current} из {total}",
     "paginationRange": "Записи {from}–{to} из {total}",
-    "navBack": "Предыдущая",
+    "navBack": "Назад",
     "navForward": "Следующая",
     "loadError": "Не удалось загрузить: {message}",
     "dbMigrationRequired": "Примените миграцию Supabase: supabase/migrations/20260517120000_generator_token_usage.sql"
@@ -313,7 +313,7 @@
     "paginationFilterFound": " · найдено {found} из {total}",
     "filterPlaceholder": "Фильтр таблицы…",
     "filterAria": "Фильтр таблицы по ключевому слову",
-    "navBack": "Предыдущая",
+    "navBack": "Назад",
     "navNext": "Следующая",
     "colKeyword": "Ключевое слово",
     "deleteKeywordTitle": "Удалить ключевое слово",

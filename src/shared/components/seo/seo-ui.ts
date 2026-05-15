@@ -27,7 +27,7 @@ export const seoBtnQuiet =
 export const seoBtnLimeOutline =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#d1fe17] px-4 py-2 text-sm font-medium text-[#d1fe17] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:border-[#6d7f42] disabled:text-[#8fa04a] disabled:opacity-40 disabled:hover:border-[#6d7f42] disabled:hover:text-[#8fa04a] disabled:hover:opacity-40 [&_svg]:text-[#d1fe17] disabled:[&_svg]:text-[#8fa04a]";
 
-/** Приглушений лайм — вторинна дія (Export CSV, Previous). */
+/** Приглушений лайм — вторинна дія (Export CSV, Back). */
 export const seoBtnLimeOutlineMuted =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#6d7f42] px-4 py-2 text-sm font-medium text-[#8fa04a] transition-colors hover:border-[#d1fe17]/55 hover:text-[#b8d65c] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#6d7f42] disabled:hover:text-[#8fa04a] [&_svg]:text-current";
 
