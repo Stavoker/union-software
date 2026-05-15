@@ -2,6 +2,7 @@
 "use client";
 
 import { Rocket, Trash2 } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -30,8 +31,8 @@ async function readJsonSafe(response) {
   }
 }
 
-function buildFailureMessage(payload, fallback) {
-  const base = String(fallback || payload?.details || payload?.error || "Automation request failed");
+function buildFailureMessage(payload, fallback, t) {
+  const base = String(fallback || payload?.details || payload?.error || t("errors.automationFailed"));
   const failed = Array.isArray(payload?.failures) ? payload.failures : [];
   if (!failed.length) {
     return base;
@@ -50,10 +51,12 @@ function buildFailureMessage(payload, fallback) {
   }
   const suffix = failedDomains.slice(0, 8).join(", ");
   const more = failedDomains.length > 8 ? ` +${failedDomains.length - 8}` : "";
-  return `${base}. Failed domains: ${suffix}${more}`;
+  return `${base}. ${t("errors.failedDomains", { list: `${suffix}${more}` })}`;
 }
 
 export function DomainAutomationPanel() {
+  const t = useTranslations("domainWorkbench");
+  const locale = useLocale();
   const [domainRows, setDomainRows] = useState([{ id: 1, domainLabel: "", selectedZone: "com", customZone: "" }]);
   const [hosts, setHosts] = useState([]);
   const [selectedHostId, setSelectedHostId] = useState("");
@@ -102,7 +105,7 @@ export function DomainAutomationPanel() {
   }, [domainRows]);
 
   function pushErrorToast(message) {
-    const text = String(message || "Unknown error").trim();
+    const text = String(message || t("errors.unknown")).trim();
     if (!text) return;
     const toast = { id: `${Date.now()}-${Math.random()}`, message: text };
     setErrorToasts((prev) => [...prev, toast].slice(-4));
@@ -191,12 +194,19 @@ export function DomainAutomationPanel() {
       const meta = JSON.parse(raw);
       if (!meta?.startedAt) return;
       setActiveRunMeta(meta);
-      setStatus(
-        `Внимание: обнаружен незавершенный запуск от ${new Date(meta.startedAt).toLocaleString()}. Процесс мог продолжиться на сервере.`
-      );
-      appendLog("Восстановлен статус незавершенного запуска после перезагрузки страницы", meta);
+      appendLog(t("logs.restored"), meta);
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount
   }, []);
+
+  useEffect(() => {
+    if (!activeRunMeta?.startedAt) return;
+    setStatus(
+      t("status.unfinishedRun", {
+        when: new Date(activeRunMeta.startedAt).toLocaleString(locale),
+      })
+    );
+  }, [activeRunMeta, locale, t]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -204,14 +214,14 @@ export function DomainAutomationPanel() {
       return;
     }
     if (!parsedDomains.length) {
-      const msg = "Ошибка: добавьте хотя бы один домен.";
+      const msg = t("errors.noDomains");
       setStatus(msg);
       pushErrorToast(msg);
       appendLog(msg);
       return;
     }
     if (parsedDomains.length > 60) {
-      const msg = "Ошибка: максимум 60 доменов за один запуск.";
+      const msg = t("errors.maxDomains");
       setStatus(msg);
       pushErrorToast(msg);
       appendLog(msg);
@@ -224,7 +234,7 @@ export function DomainAutomationPanel() {
       parsedZoneExtra = zomroZoneExtraParams.trim() ? JSON.parse(zomroZoneExtraParams) : {};
       parsedRecordExtra = zomroRecordExtraParams.trim() ? JSON.parse(zomroRecordExtraParams) : {};
     } catch {
-      const msg = "Ошибка: JSON в дополнительных параметрах Zomro заполнен некорректно.";
+      const msg = t("errors.invalidJson");
       setStatus(msg);
       pushErrorToast(msg);
       appendLog(msg);
@@ -232,11 +242,11 @@ export function DomainAutomationPanel() {
     }
 
     setLoading(true);
-    setStatus(`Запуск автоматизации для ${parsedDomains.length} домен(ов)...`);
+    setStatus(t("status.starting", { count: parsedDomains.length }));
     setResult(null);
     setLogs([]);
-    appendLog(`Запуск автоматизации: ${parsedDomains.length} домен(ов).`);
-    appendLog("Домены к запуску", parsedDomains);
+    appendLog(t("logs.starting", { count: parsedDomains.length }));
+    appendLog(t("logs.domainsPayload"), parsedDomains);
 
     const selectedHost = selectedHostId
       ? hosts.find((h) => String(h?.id || "") === String(selectedHostId))
@@ -288,37 +298,42 @@ export function DomainAutomationPanel() {
           skipPurchase,
         }),
       });
-      appendLog(`HTTP ответ: ${response.status}`);
+      appendLog(t("logs.httpStatus", { status: response.status }));
 
       const payload = await readJsonSafe(response);
       if (!response.ok || !payload?.ok) {
-        appendLog("API вернул ошибку", payload);
-        throw new Error(buildFailureMessage(payload, payload?.details || payload?.error || "Automation request failed"));
+        appendLog(t("logs.apiError"), payload);
+        throw new Error(
+          buildFailureMessage(payload, payload?.details || payload?.error || t("errors.automationFailed"), t)
+        );
       }
 
       setResult(payload);
-      appendLog("API ответ успешный", payload);
+      appendLog(t("logs.apiSuccess"), payload);
       if (payload?.mode === "batch") {
-        const pendingSslBatch =
-          payloadHasPendingSsl(payload) &&
-          " Проверьте логи Render: SSL для части доменов ещё выполняется в фоне.";
+        const pendingSslBatch = payloadHasPendingSsl(payload) ? t("status.batchSslPending") : "";
         setStatus(
-          `Пакет завершен: ${payload.okCount || 0}/${payload.total || 0} успешно, ошибок: ${payload.failCount || 0}.${pendingSslBatch || ""}`
+          t("status.batchDone", {
+            ok: payload.okCount || 0,
+            total: payload.total || 0,
+            fail: payload.failCount || 0,
+            extra: pendingSslBatch,
+          })
         );
       } else if (payloadHasPendingSsl(payload)) {
-        setStatus(
-          `Принято: ${payload.domain} — синхронная часть готова; SSL (Let's Encrypt) ещё выполняется в фоне. Смотрите логи Render или Telegram.`
-        );
+        setStatus(t("status.acceptedPendingSsl", { domain: payload.domain }));
       } else {
-        setStatus(`Готово: ${payload.domain} успешно обработан.`);
+        setStatus(t("status.done", { domain: payload.domain }));
       }
       if (!payloadHasPendingSsl(payload)) {
         clearActiveRun();
       } else {
-        appendLog("Запуск завершил HTTP-фазу, но SSL всё ещё выполняется в фоне.");
+        appendLog(t("logs.sslBackground"));
       }
     } catch (error) {
-      const msg = `Ошибка: ${error?.message || "Unknown error"}`;
+      const msg = t("errors.withMessage", {
+        message: error?.message || t("errors.unknown"),
+      });
       setStatus(msg);
       pushErrorToast(msg);
       appendLog(msg, { stack: error?.stack || null });
@@ -333,7 +348,7 @@ export function DomainAutomationPanel() {
         <div
           className="fixed right-4 top-4 z-50 flex max-w-md flex-col gap-2 md:right-8"
           role="region"
-          aria-label="Ошибки автоматизации"
+          aria-label={t("errorToastsAria")}
         >
           {errorToasts.map((toast) => (
             <div
@@ -346,7 +361,7 @@ export function DomainAutomationPanel() {
                 type="button"
                 className="shrink-0 rounded-md px-2 py-0.5 text-lg leading-none text-red-200 hover:bg-red-900/60"
                 onClick={() => removeErrorToast(toast.id)}
-                aria-label="Закрыть"
+                aria-label={t("closeToast")}
               >
                 ×
               </button>
@@ -356,15 +371,13 @@ export function DomainAutomationPanel() {
       ) : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-union-text">
-          Автоматическая закупка и DNS-привязка доменов
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-union-text">{t("title")}</h1>
       </div>
 
       <form className={`space-y-5 ${seoFormDescendantControls}`} onSubmit={handleSubmit}>
         <div className="space-y-2">
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-union-muted">Домены (до 60): каждый ряд = домен + зона</span>
+            <span className="text-xs font-medium text-union-muted">{t("form.domainsLabel")}</span>
           </label>
           <div className="flex flex-col gap-2">
               {domainRows.map((row, idx) => (
@@ -376,7 +389,7 @@ export function DomainAutomationPanel() {
                     type="text"
                     value={row.domainLabel}
                     onChange={(event) => updateDomainRow(row.id, { domainLabel: event.target.value })}
-                    placeholder={`myproject${idx + 1}`}
+                    placeholder={t("form.domainPlaceholder", { n: idx + 1 })}
                     disabled={loading}
                     required={idx === 0}
                   />
@@ -390,14 +403,14 @@ export function DomainAutomationPanel() {
                         .{zone}
                       </option>
                     ))}
-                    <option value="__custom__">Своя зона...</option>
+                    <option value="__custom__">{t("form.customZone")}</option>
                   </select>
                   {row.selectedZone === "__custom__" ? (
                     <input
                       type="text"
                       value={row.customZone}
                       onChange={(event) => updateDomainRow(row.id, { customZone: event.target.value })}
-                      placeholder="site"
+                      placeholder={t("form.customZonePlaceholder")}
                       disabled={loading}
                     />
                   ) : null}
@@ -408,7 +421,7 @@ export function DomainAutomationPanel() {
                     disabled={loading || domainRows.length <= 1}
                   >
                     <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
-                    Удалить
+                    {t("form.delete")}
                   </button>
                 </div>
               ))}
@@ -420,21 +433,21 @@ export function DomainAutomationPanel() {
                 onClick={addDomainRow}
                 disabled={loading || domainRows.length >= 60}
               >
-                Добавить ещё домен
+                {t("form.addDomain")}
               </button>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label htmlFor="hostId">Хост для деплоя (SSH/SFTP)</label>
+              <label htmlFor="hostId">{t("form.host")}</label>
               <select
                 id="hostId"
                 value={selectedHostId}
                 onChange={(event) => setSelectedHostId(event.target.value)}
                 disabled={loading}
               >
-                <option value="">Из .env (fallback)</option>
+                <option value="">{t("form.hostFallback")}</option>
                 {hosts.map((host) => (
                   <option key={host.id} value={host.id}>
                     {(host.name || host.hostIp || host.id) + (host.hostIp ? ` (${host.hostIp})` : "")}
@@ -443,13 +456,13 @@ export function DomainAutomationPanel() {
               </select>
             </div>
             <div>
-              <label htmlFor="nameservers">NS-серверы</label>
+              <label htmlFor="nameservers">{t("form.nameservers")}</label>
               <input
                 id="nameservers"
                 type="text"
                 value={nameserversInput}
                 onChange={(event) => setNameserversInput(event.target.value)}
-                placeholder="ns1.example.com, ns2.example.com"
+                placeholder={t("form.nameserversPlaceholder")}
                 disabled={loading}
                 required
               />
@@ -458,7 +471,7 @@ export function DomainAutomationPanel() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label htmlFor="hostRecordName">Имя DNS записи</label>
+              <label htmlFor="hostRecordName">{t("form.dnsRecordName")}</label>
               <input
                 id="hostRecordName"
                 type="text"
@@ -469,7 +482,7 @@ export function DomainAutomationPanel() {
               />
             </div>
             <div>
-              <label htmlFor="years">Период регистрации (годы)</label>
+              <label htmlFor="years">{t("form.years")}</label>
               <input
                 id="years"
                 type="text"
@@ -483,25 +496,25 @@ export function DomainAutomationPanel() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="skipPurchase">Режим запуска</label>
+              <label htmlFor="skipPurchase">{t("form.runMode")}</label>
               <select
                 id="skipPurchase"
                 value={skipPurchase ? "skip" : "full"}
                 onChange={(event) => setSkipPurchase(event.target.value === "skip")}
                 disabled={loading}
               >
-                <option value="full">Полный цикл (покупка + NS + Zomro)</option>
-                <option value="skip">Без покупки (только NS + Zomro)</option>
+                <option value="full">{t("form.runModeFull")}</option>
+                <option value="skip">{t("form.runModeSkip")}</option>
               </select>
             </div>
             <div className="space-y-2">
-              <label htmlFor="zomroZoneFunc">Zomro func для создания зоны</label>
+              <label htmlFor="zomroZoneFunc">{t("form.zomroZoneFunc")}</label>
               <input
                 id="zomroZoneFunc"
                 type="text"
                 value={zomroZoneFunc}
                 onChange={(event) => setZomroZoneFunc(event.target.value)}
-                placeholder="Например: dnsdomain.edit"
+                placeholder={t("form.zomroZoneFuncPlaceholder")}
                 disabled={loading}
                 required
               />
@@ -509,7 +522,7 @@ export function DomainAutomationPanel() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="zomroDnsmgrEnabled">Панель Zomro dnsmgr</label>
+            <label htmlFor="zomroDnsmgrEnabled">{t("form.zomroDnsmgr")}</label>
             <div className="flex flex-wrap items-start gap-3">
               <select
                 id="zomroDnsmgrEnabled"
@@ -518,39 +531,40 @@ export function DomainAutomationPanel() {
                 onChange={(event) => setZomroDnsmgrEnabled(event.target.value === "on")}
                 disabled={loading}
               >
-                <option value="off">Выкл</option>
-                <option value="on">Вкл</option>
+                <option value="off">{t("form.dnsmgrOff")}</option>
+                <option value="on">{t("form.dnsmgrOn")}</option>
               </select>
               <p className={seoNoteLime}>
-                Добавить master-домен, как в панели ns.server-panel. При «Вкл» — сессия с{" "}
-                <code>…/dnsmgr</code> (ZOMRO_DNSMGR_URL); email и логин в настройках.
+                {t.rich("form.dnsmgrNote", {
+                  code: (chunks) => <code>{chunks}</code>,
+                })}
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="zomroRecordFunc">Zomro func для создания A-записи</label>
+              <label htmlFor="zomroRecordFunc">{t("form.zomroRecordFunc")}</label>
               <input
                 id="zomroRecordFunc"
                 type="text"
                 value={zomroRecordFunc}
                 onChange={(event) => setZomroRecordFunc(event.target.value)}
-                placeholder="Например: dns.record.edit"
+                placeholder={t("form.zomroRecordFuncPlaceholder")}
                 disabled={loading}
                 required
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="zomroVpsEnabled">VPS заказ в Zomro</label>
+              <label htmlFor="zomroVpsEnabled">{t("form.vpsEnabled")}</label>
               <select
                 id="zomroVpsEnabled"
                 value={zomroVpsEnabled ? "on" : "off"}
                 onChange={(event) => setZomroVpsEnabled(event.target.value === "on")}
                 disabled={loading}
               >
-                <option value="off">Не заказывать VPS</option>
-                <option value="on">Заказать VPS (cart flow)</option>
+                <option value="off">{t("form.vpsOff")}</option>
+                <option value="on">{t("form.vpsOn")}</option>
               </select>
             </div>
           </div>
@@ -630,7 +644,7 @@ export function DomainAutomationPanel() {
                   type="text"
                   value={vpsPassword}
                   onChange={(event) => setVpsPassword(event.target.value)}
-                  placeholder="Требуется когда use_ssh_key=off"
+                  placeholder={t("form.vpsPasswordPlaceholder")}
                   disabled={loading || vpsUseSshKey === "on"}
                 />
               </div>
@@ -690,7 +704,7 @@ export function DomainAutomationPanel() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label htmlFor="zoneExtraParams">Доп. параметры Zomro (zone func, JSON)</label>
+              <label htmlFor="zoneExtraParams">{t("form.zoneExtra")}</label>
               <textarea
                 id="zoneExtraParams"
                 value={zomroZoneExtraParams}
@@ -701,7 +715,7 @@ export function DomainAutomationPanel() {
               />
             </div>
             <div>
-              <label htmlFor="recordExtraParams">Доп. параметры Zomro (record func, JSON)</label>
+              <label htmlFor="recordExtraParams">{t("form.recordExtra")}</label>
               <textarea
                 id="recordExtraParams"
                 value={zomroRecordExtraParams}
@@ -716,7 +730,7 @@ export function DomainAutomationPanel() {
           <div className="flex flex-wrap gap-3 pt-2">
             <button type="submit" className={`${seoBtnPrimary} gap-2`} disabled={loading}>
               {!loading ? <Rocket className="h-4 w-4 shrink-0" aria-hidden /> : null}
-              {loading ? "Выполняется..." : "Запустить автоматизацию"}
+              {loading ? t("form.submitting") : t("form.submit")}
             </button>
           </div>
         </form>
@@ -724,9 +738,9 @@ export function DomainAutomationPanel() {
         <p className="text-sm text-union-muted">{status}</p>
         {activeRunMeta ? (
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
-            Обнаружен активный/незавершенный запуск. Если он уже точно завершился, нажмите{" "}
+            {t("status.activeRun")}{" "}
             <button type="button" className={`${seoBtnGhost} ml-1 inline-flex`} onClick={clearActiveRun}>
-              Сбросить статус запуска
+              {t("status.clearRun")}
             </button>
             .
           </div>
@@ -735,14 +749,14 @@ export function DomainAutomationPanel() {
         {loading || logs.length > 0 || activeRunMeta ? (
           <section className="space-y-3 rounded-2xl border border-union-border bg-union-bg/40 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong className="text-sm font-semibold text-union-text">Логи запуска</strong>
+              <strong className="text-sm font-semibold text-union-text">{t("form.logsTitle")}</strong>
               <button
                 type="button"
                 className={seoBtnGhost}
                 onClick={() => setLogs([])}
                 disabled={!logs.length || loading}
               >
-                Очистить
+                {t("form.logsClear")}
               </button>
             </div>
             {logs.length ? (
@@ -750,7 +764,7 @@ export function DomainAutomationPanel() {
                 {logs.join("\n\n")}
               </pre>
             ) : loading ? (
-              <p className="text-xs text-union-muted">Выполняется…</p>
+              <p className="text-xs text-union-muted">{t("form.logsRunning")}</p>
             ) : null}
           </section>
         ) : null}
@@ -760,10 +774,7 @@ export function DomainAutomationPanel() {
             {JSON.stringify(result, null, 2)}
           </pre>
         ) : (
-          <p className="text-xs text-union-muted">
-            Подсказка: если API Zomro у вас использует другие имена параметров, укажите их в JSON блоках дополнительных
-            параметров.
-          </p>
+          <p className="text-xs text-union-muted">{t("form.hint")}</p>
         )}
     </div>
   );

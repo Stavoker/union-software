@@ -1,12 +1,13 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { createSupabaseBrowserClient } from "@/shared/lib/supabase/browser";
 import { useEffect, useRef, useState } from "react";
 
 export function UserMenu({ email }: { email: string }) {
   const t = useTranslations("nav");
+  const locale = useLocale();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -23,7 +24,7 @@ export function UserMenu({ email }: { email: string }) {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
     setOpen(false);
-    router.replace("/");
+    router.replace("/", { locale });
     router.refresh();
   }
 
