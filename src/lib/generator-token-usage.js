@@ -83,34 +83,23 @@ function startOfUtcMonth(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
 
-/**
- * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {string} userId
- */
-export async function fetchGeneratorUsageForUser(supabase, userId) {
-  const { data: rows, error } = await supabase
-    .from("generator_token_usage")
-    .select(
-      "id, job_id, project_name, status, input_tokens, output_tokens, total_tokens, dry_run, created_at"
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(200);
+export const USAGE_HISTORY_PAGE_SIZE = 50;
 
-  if (error) {
-    if (isGeneratorTokenUsageTableError(error.message)) {
-      return {
-        ok: true,
-        dbReady: false,
-        dbError: error.message,
-        summary: emptySummary(),
-        history: [],
-      };
-    }
-    throw new Error(error.message);
-  }
+function mapHistoryRow(r) {
+  return {
+    id: r.id,
+    jobId: r.job_id,
+    projectName: r.project_name || "—",
+    status: r.status,
+    inputTokens: Number(r.input_tokens) || 0,
+    outputTokens: Number(r.output_tokens) || 0,
+    totalTokens: Number(r.total_tokens) || 0,
+    dryRun: Boolean(r.dry_run),
+    createdAt: r.created_at,
+  };
+}
 
-  const list = rows || [];
+function buildSummaryFromRows(list) {
   const now = Date.now();
   const dayStart = startOfUtcDay().getTime();
   const weekStart = now - 7 * 24 * 60 * 60 * 1000;
@@ -140,27 +129,94 @@ export async function fetchGeneratorUsageForUser(supabase, userId) {
     countForAvg > 0 ? Math.round(sumForAvg / countForAvg) : 0;
 
   return {
+    today,
+    week,
+    month,
+    allTime,
+    averagePerGeneration,
+    generationsCount: countForAvg,
+  };
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} userId
+ * @param {{ page?: number, pageSize?: number }} [options]
+ */
+export async function fetchGeneratorUsageForUser(supabase, userId, options = {}) {
+  const pageSize = Math.min(
+    USAGE_HISTORY_PAGE_SIZE,
+    Math.max(1, Math.floor(Number(options.pageSize) || USAGE_HISTORY_PAGE_SIZE))
+  );
+  const page = Math.max(1, Math.floor(Number(options.page) || 1));
+
+  const tableMissingPayload = {
+    ok: true,
+    dbReady: false,
+    dbError: "",
+    summary: emptySummary(),
+    history: [],
+    pagination: { page: 1, pageSize, total: 0, totalPages: 1 },
+  };
+
+  const { count: totalCount, error: countError } = await supabase
+    .from("generator_token_usage")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (countError) {
+    if (isGeneratorTokenUsageTableError(countError.message)) {
+      return { ...tableMissingPayload, dbError: countError.message };
+    }
+    throw new Error(countError.message);
+  }
+
+  const total = totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  const { data: summaryRows, error: summaryError } = await supabase
+    .from("generator_token_usage")
+    .select("total_tokens, created_at, status, dry_run")
+    .eq("user_id", userId);
+
+  if (summaryError) {
+    if (isGeneratorTokenUsageTableError(summaryError.message)) {
+      return { ...tableMissingPayload, dbError: summaryError.message };
+    }
+    throw new Error(summaryError.message);
+  }
+
+  const from = (safePage - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data: historyRows, error: historyError } = await supabase
+    .from("generator_token_usage")
+    .select(
+      "id, job_id, project_name, status, input_tokens, output_tokens, total_tokens, dry_run, created_at"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (historyError) {
+    if (isGeneratorTokenUsageTableError(historyError.message)) {
+      return { ...tableMissingPayload, dbError: historyError.message };
+    }
+    throw new Error(historyError.message);
+  }
+
+  return {
     ok: true,
     dbReady: true,
-    summary: {
-      today,
-      week,
-      month,
-      allTime,
-      averagePerGeneration,
-      generationsCount: list.length,
+    summary: buildSummaryFromRows(summaryRows || []),
+    history: (historyRows || []).map(mapHistoryRow),
+    pagination: {
+      page: safePage,
+      pageSize,
+      total,
+      totalPages,
     },
-    history: list.map((r) => ({
-      id: r.id,
-      jobId: r.job_id,
-      projectName: r.project_name || "—",
-      status: r.status,
-      inputTokens: Number(r.input_tokens) || 0,
-      outputTokens: Number(r.output_tokens) || 0,
-      totalTokens: Number(r.total_tokens) || 0,
-      dryRun: Boolean(r.dry_run),
-      createdAt: r.created_at,
-    })),
   };
 }
 

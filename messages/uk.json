@@ -38,7 +38,7 @@
     "tags": {
       "generator": {
         "t1": "Архітектор",
-        "t2": "Генератор",
+        "t2": "Вебсайт",
         "t3": "Без референсу"
       },
       "seo": {
@@ -204,6 +204,11 @@
     "statusDryRun": "Тест (dry run)",
     "loading": "Завантаження…",
     "empty": "Ще немає завершених генерацій з обліком токенів.",
+    "paginationAria": "Пагінація історії генерацій",
+    "paginationSummary": "Сторінка {current} з {total}",
+    "paginationRange": "Записи {from}–{to} з {total}",
+    "navBack": "Назад",
+    "navForward": "Далі",
     "loadError": "Не вдалося завантажити: {message}",
     "dbMigrationRequired": "Застосуйте міграцію Supabase: supabase/migrations/20260517120000_generator_token_usage.sql"
   },

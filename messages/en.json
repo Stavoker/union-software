@@ -38,7 +38,7 @@
     "tags": {
       "generator": {
         "t1": "Architect",
-        "t2": "Generator",
+        "t2": "Website",
         "t3": "No reference"
       },
       "seo": {
@@ -204,6 +204,11 @@
     "statusDryRun": "Dry run",
     "loading": "Loading…",
     "empty": "No completed generations with token data yet.",
+    "paginationAria": "Generation history pagination",
+    "paginationSummary": "Page {current} of {total}",
+    "paginationRange": "Records {from}–{to} of {total}",
+    "navBack": "Previous",
+    "navForward": "Next",
     "loadError": "Failed to load: {message}",
     "dbMigrationRequired": "Apply Supabase migration: supabase/migrations/20260517120000_generator_token_usage.sql"
   },

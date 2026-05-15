@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
-import { seoCard } from "@/shared/components/seo/seo-ui";
+import { seoBtnGhost, seoCard } from "@/shared/components/seo/seo-ui";
 
 type Summary = {
   today: number;
@@ -26,6 +26,13 @@ type HistoryRow = {
   createdAt: string;
 };
 
+type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 function formatTokens(n: number, locale: string) {
   return new Intl.NumberFormat(locale).format(Math.max(0, Math.trunc(n)));
 }
@@ -41,25 +48,41 @@ function formatDate(iso: string, locale: string) {
 
 export function UsageDashboard() {
   const t = useTranslations("usageWorkbench");
+  const locale = useLocale();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dbReady, setDbReady] = useState(true);
   const [dbError, setDbError] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [locale, setLocale] = useState("uk");
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    pageSize: 50,
+    total: 0,
+    totalPages: 1,
+  });
+  const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageToLoad: number) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/usage", { credentials: "include" });
+      const res = await fetch(`/api/usage?page=${pageToLoad}`, { credentials: "include" });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setSummary(data.summary);
       setHistory(data.history || []);
+      setPagination(
+        data.pagination || {
+          page: pageToLoad,
+          pageSize: 50,
+          total: 0,
+          totalPages: 1,
+        }
+      );
+      setPage(data.pagination?.page ?? pageToLoad);
       setDbReady(data.dbReady !== false);
       setDbError(data.dbError || "");
     } catch (e) {
@@ -70,11 +93,8 @@ export function UsageDashboard() {
   }, []);
 
   useEffect(() => {
-    if (typeof document !== "undefined") {
-      setLocale(document.documentElement.lang || "uk");
-    }
-    void load();
-  }, [load]);
+    void load(page);
+  }, [load, page]);
 
   function statusLabel(row: HistoryRow) {
     if (row.dryRun) return t("statusDryRun");
@@ -92,6 +112,11 @@ export function UsageDashboard() {
         { key: "average", label: t("statAverage"), value: summary.averagePerGeneration },
       ]
     : [];
+
+  const { total, totalPages, pageSize } = pagination;
+  const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeTo = total === 0 ? 0 : Math.min(page * pageSize, total);
+  const showPagination = total > pageSize;
 
   return (
     <div className="w-full space-y-8 pb-10 pt-2">
@@ -127,8 +152,40 @@ export function UsageDashboard() {
       </div>
 
       <section className={`${seoCard} overflow-hidden !p-0`}>
-        <div className="border-b border-union-border px-5 py-4">
+        <div className="flex flex-col gap-3 border-b border-union-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold text-union-text">{t("historyTitle")}</h2>
+          {showPagination && !loading ? (
+            <div
+              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+              aria-label={t("paginationAria")}
+            >
+              <p className="text-xs text-union-muted">
+                {t("paginationRange", { from: rangeFrom, to: rangeTo, total })}
+                <span className="hidden sm:inline">
+                  {" · "}
+                  {t("paginationSummary", { current: page, total: totalPages })}
+                </span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={seoBtnGhost}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  {t("navBack")}
+                </button>
+                <button
+                  type="button"
+                  className={seoBtnGhost}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  {t("navForward")}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -183,6 +240,34 @@ export function UsageDashboard() {
             </tbody>
           </table>
         </div>
+        {showPagination && !loading ? (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 border-t border-union-border px-5 py-3 sm:hidden"
+            aria-label={t("paginationAria")}
+          >
+            <p className="text-xs text-union-muted">
+              {t("paginationSummary", { current: page, total: totalPages })}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={seoBtnGhost}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                {t("navBack")}
+              </button>
+              <button
+                type="button"
+                className={seoBtnGhost}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                {t("navForward")}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
