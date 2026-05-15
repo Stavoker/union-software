@@ -38,7 +38,7 @@
     "tags": {
       "generator": {
         "t1": "Архітектор",
-        "t2": "Мультисторінка",
+        "t2": "Генератор",
         "t3": "Без референсу"
       },
       "seo": {
@@ -68,7 +68,7 @@
       }
     },
     "cards": {
-      "generator": "Мультсторінкова генерація в режимі архітектора (без клонування референсного сайту).",
+      "generator": "Мультсторінкова генерація сайтів.",
       "seo": "Ключові слова, позиції та звітність.",
       "domain": "Пошук і реєстрація доменів для ваших проєктів.",
       "usage": "Середній розхід токенів і зрізи за періодами.",
@@ -181,6 +181,31 @@
     "jobProject": "Проєкт",
     "stopThisSite": "Зупинити цей сайт",
     "visualPreviewBadge": "Превʼю макету"
+  },
+  "usageWorkbench": {
+    "title": "Токени AI",
+    "lead": "Облік токенів Claude по кожній генерації сайту. Підсумки за день, тиждень, місяць і за весь час.",
+    "statToday": "Сьогодні",
+    "statWeek": "Тиждень",
+    "statMonth": "Місяць",
+    "statAllTime": "За весь час",
+    "statAverage": "Середнє на генерацію",
+    "averageHint": "за {count} записів",
+    "historyTitle": "Історія генерацій",
+    "colDate": "Дата",
+    "colProject": "Проєкт",
+    "colStatus": "Статус",
+    "colInput": "Input",
+    "colOutput": "Output",
+    "colTotal": "Усього",
+    "statusDone": "Готово",
+    "statusError": "Помилка",
+    "statusCancelled": "Скасовано",
+    "statusDryRun": "Тест (dry run)",
+    "loading": "Завантаження…",
+    "empty": "Ще немає завершених генерацій з обліком токенів.",
+    "loadError": "Не вдалося завантажити: {message}",
+    "dbMigrationRequired": "Застосуйте міграцію Supabase: supabase/migrations/20260517120000_generator_token_usage.sql"
   },
   "seoWorkbench": {
     "title": "SEO — позиції в Яндексі",

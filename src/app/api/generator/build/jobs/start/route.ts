@@ -128,6 +128,7 @@ export async function POST(req: Request) {
       `https://${projectName.replace(/[^a-z0-9._-]/gi, "-") || "project"}.generator.local`;
 
     const jobId = await createBuildJob({
+      userId: user.id,
       projectName,
       windowId,
       theme: body.theme,

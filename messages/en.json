@@ -38,7 +38,7 @@
     "tags": {
       "generator": {
         "t1": "Architect",
-        "t2": "Multipage",
+        "t2": "Generator",
         "t3": "No reference"
       },
       "seo": {
@@ -68,7 +68,7 @@
       }
     },
     "cards": {
-      "generator": "Multipage generation in architect mode (no cloning from a reference site).",
+      "generator": "Multipage site generation.",
       "seo": "Keywords, rankings, and reporting.",
       "domain": "Search and register domains for your projects.",
       "usage": "Average token burn and period breakdowns.",
@@ -181,6 +181,31 @@
     "jobProject": "Project",
     "stopThisSite": "Stop this site",
     "visualPreviewBadge": "Layout preview"
+  },
+  "usageWorkbench": {
+    "title": "AI tokens",
+    "lead": "Claude token usage per site generation. Totals for day, week, month, and all time.",
+    "statToday": "Today",
+    "statWeek": "Week",
+    "statMonth": "Month",
+    "statAllTime": "All time",
+    "statAverage": "Average per run",
+    "averageHint": "from {count} records",
+    "historyTitle": "Generation history",
+    "colDate": "Date",
+    "colProject": "Project",
+    "colStatus": "Status",
+    "colInput": "Input",
+    "colOutput": "Output",
+    "colTotal": "Total",
+    "statusDone": "Done",
+    "statusError": "Error",
+    "statusCancelled": "Cancelled",
+    "statusDryRun": "Dry run",
+    "loading": "Loading…",
+    "empty": "No completed generations with token data yet.",
+    "loadError": "Failed to load: {message}",
+    "dbMigrationRequired": "Apply Supabase migration: supabase/migrations/20260517120000_generator_token_usage.sql"
   },
   "seoWorkbench": {
     "title": "SEO — Yandex rankings",

@@ -228,6 +228,17 @@ export async function markBuildJobRunning(id) {
   await saveJobRedis(job);
 }
 
+async function persistTokenUsageForJob(job) {
+  try {
+    const { recordGeneratorTokenUsageFromJob } = await import(
+      "@/lib/generator-token-usage.js"
+    );
+    await recordGeneratorTokenUsageFromJob(job);
+  } catch (e) {
+    console.error("[build-jobs] token usage persist:", e?.message || e);
+  }
+}
+
 export async function markBuildJobDone(id, result) {
   const job = getBuildJobLocal(id);
   if (!job) return;
@@ -239,6 +250,7 @@ export async function markBuildJobDone(id, result) {
   flushTimers.delete(id);
   persistJobSync(job);
   await saveJobRedis(job);
+  void persistTokenUsageForJob(job);
 }
 
 export async function markBuildJobError(id, error) {
@@ -252,6 +264,7 @@ export async function markBuildJobError(id, error) {
   flushTimers.delete(id);
   persistJobSync(job);
   await saveJobRedis(job);
+  void persistTokenUsageForJob(job);
 }
 
 export async function markBuildJobCancelled(id) {
@@ -265,6 +278,7 @@ export async function markBuildJobCancelled(id) {
   flushTimers.delete(id);
   persistJobSync(job);
   await saveJobRedis(job);
+  void persistTokenUsageForJob(job);
 }
 
 export async function cancelBuildJob(id) {

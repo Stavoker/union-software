@@ -1,15 +1,5 @@
-import { getTranslations } from "next-intl/server";
-import { ModulePlaceholder } from "@/shared/components/module-placeholder";
+import { UsageDashboard } from "@/shared/components/usage/usage-dashboard";
 
-export default async function UsagePage() {
-  const t = await getTranslations("module");
-
-  return (
-    <div className="py-10">
-      <ModulePlaceholder
-        title={t("usageTitle")}
-        description={`${t("usageLead")} ${t("wipBody")}`}
-      />
-    </div>
-  );
+export default function UsagePage() {
+  return <UsageDashboard />;
 }
