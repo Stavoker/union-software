@@ -19,9 +19,17 @@ export const seoBtnPrimary =
 export const seoBtnGhost =
   "inline-flex cursor-pointer items-center justify-center rounded-full border border-union-border px-4 py-2 text-sm text-union-muted transition-colors hover:border-white/20 hover:text-union-text disabled:cursor-not-allowed disabled:opacity-40";
 
-/** Лаймова обводка та текст (#d1fe17) — як «Експорт / Імпорт CSV» на SEO. */
+/** Пагінація «Назад» / «Далі» на SEO positions. */
+export const seoBtnQuiet =
+  "inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-sm text-union-muted transition-colors hover:bg-white/[0.06] hover:text-union-text disabled:cursor-not-allowed disabled:opacity-40";
+
+/** Лаймова обводка та текст (#d1fe17) — активна дія (Import CSV, Next). У disabled — як seoBtnLimeOutlineMuted. */
 export const seoBtnLimeOutline =
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#d1fe17] px-4 py-2 text-sm font-medium text-[#d1fe17] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:text-[#d1fe17]";
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#d1fe17] px-4 py-2 text-sm font-medium text-[#d1fe17] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:border-[#6d7f42] disabled:text-[#8fa04a] disabled:opacity-40 disabled:hover:border-[#6d7f42] disabled:hover:text-[#8fa04a] disabled:hover:opacity-40 [&_svg]:text-[#d1fe17] disabled:[&_svg]:text-[#8fa04a]";
+
+/** Приглушений лайм — вторинна дія (Export CSV, Previous). */
+export const seoBtnLimeOutlineMuted =
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#6d7f42] px-4 py-2 text-sm font-medium text-[#8fa04a] transition-colors hover:border-[#d1fe17]/55 hover:text-[#b8d65c] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#6d7f42] disabled:hover:text-[#8fa04a] [&_svg]:text-current";
 
 /** Лаймова замітка — як status toast на SEO (border + blur + #d1fe17). */
 export const seoNoteLime =

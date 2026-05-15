@@ -1,9 +1,17 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 
-import { seoBtnGhost, seoCard } from "@/shared/components/seo/seo-ui";
+import {
+  seoBtnLimeOutline,
+  seoCard,
+  seoInput,
+  seoSelect,
+} from "@/shared/components/seo/seo-ui";
+
+const HISTORY_PAGE_SIZE = 30;
 
 type Summary = {
   today: number;
@@ -33,6 +41,8 @@ type Pagination = {
   totalPages: number;
 };
 
+type StatusFilter = "all" | "done" | "error" | "cancelled" | "dry_run";
+
 function formatTokens(n: number, locale: string) {
   return new Intl.NumberFormat(locale).format(Math.max(0, Math.trunc(n)));
 }
@@ -57,44 +67,61 @@ export function UsageDashboard() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
-    pageSize: 50,
+    pageSize: HISTORY_PAGE_SIZE,
     total: 0,
     totalPages: 1,
   });
   const [page, setPage] = useState(1);
-
-  const load = useCallback(async (pageToLoad: number) => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/usage?page=${pageToLoad}`, { credentials: "include" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-      setSummary(data.summary);
-      setHistory(data.history || []);
-      setPagination(
-        data.pagination || {
-          page: pageToLoad,
-          pageSize: 50,
-          total: 0,
-          totalPages: 1,
-        }
-      );
-      setPage(data.pagination?.page ?? pageToLoad);
-      setDbReady(data.dbReady !== false);
-      setDbError(data.dbError || "");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   useEffect(() => {
-    void load(page);
-  }, [load, page]);
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  const load = useCallback(async (pageToLoad: number, searchQuery: string, status: StatusFilter) => {
+      setLoading(true);
+      setError("");
+      try {
+        const params = new URLSearchParams({ page: String(pageToLoad) });
+        if (searchQuery) params.set("q", searchQuery);
+        if (status !== "all") params.set("status", status);
+
+        const res = await fetch(`/api/usage?${params.toString()}`, { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        setSummary(data.summary);
+        setHistory(data.history || []);
+        setPagination(
+          data.pagination || {
+            page: pageToLoad,
+            pageSize: HISTORY_PAGE_SIZE,
+            total: 0,
+            totalPages: 1,
+          }
+        );
+        setPage(data.pagination?.page ?? pageToLoad);
+        setDbReady(data.dbReady !== false);
+        setDbError(data.dbError || "");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void load(page, search, statusFilter);
+  }, [load, page, search, statusFilter]);
 
   function statusLabel(row: HistoryRow) {
     if (row.dryRun) return t("statusDryRun");
@@ -116,7 +143,9 @@ export function UsageDashboard() {
   const { total, totalPages, pageSize } = pagination;
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeTo = total === 0 ? 0 : Math.min(page * pageSize, total);
-  const showPagination = total > pageSize;
+  const showPagination = totalPages > 1;
+  const hasActiveFilters = Boolean(search) || statusFilter !== "all";
+  const emptyMessage = hasActiveFilters ? t("emptyFiltered") : t("empty");
 
   return (
     <div className="w-full space-y-8 pb-10 pt-2">
@@ -152,41 +181,96 @@ export function UsageDashboard() {
       </div>
 
       <section className={`${seoCard} overflow-hidden !p-0`}>
-        <div className="flex flex-col gap-3 border-b border-union-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-union-text">{t("historyTitle")}</h2>
-          {showPagination && !loading ? (
-            <div
-              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
-              aria-label={t("paginationAria")}
-            >
-              <p className="text-xs text-union-muted">
-                {t("paginationRange", { from: rangeFrom, to: rangeTo, total })}
-                <span className="hidden sm:inline">
-                  {" · "}
-                  {t("paginationSummary", { current: page, total: totalPages })}
-                </span>
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className={seoBtnGhost}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  {t("navBack")}
-                </button>
-                <button
-                  type="button"
-                  className={seoBtnGhost}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
-                >
-                  {t("navForward")}
-                </button>
+        <div className="border-b border-union-border px-5 py-4 space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-semibold text-union-text">{t("historyTitle")}</h2>
+            {showPagination && !loading ? (
+              <div
+                className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+                aria-label={t("paginationAria")}
+              >
+                <p className="text-xs text-union-muted">
+                  <span className="font-medium text-[#d1fe17]">
+                    {t("paginationRange", { from: rangeFrom, to: rangeTo, total })}
+                  </span>
+                  {hasActiveFilters ? t("paginationFilterFound", { found: total }) : null}
+                  <span className="hidden sm:inline">
+                    {" · "}
+                    {t("paginationSummary", { current: page, total: totalPages })}
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={seoBtnLimeOutline}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1 || loading}
+                  >
+                    <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                    {t("navBack")}
+                  </button>
+                  <button
+                    type="button"
+                    className={seoBtnLimeOutline}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages || loading}
+                  >
+                    {t("navForward")}
+                    <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                </div>
               </div>
+            ) : null}
+          </div>
+
+          <div
+            className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end"
+            aria-label={t("historyFiltersAria")}
+          >
+            <div className="min-w-0 flex-1 space-y-1 lg:min-w-[12rem]">
+              <label htmlFor="usage-history-search" className="sr-only">
+                {t("searchAria")}
+              </label>
+              <input
+                id="usage-history-search"
+                type="search"
+                className={`${seoInput} w-full`}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={t("searchPlaceholder")}
+                aria-label={t("searchAria")}
+                disabled={loading && !history.length && !searchInput}
+                autoComplete="off"
+                spellCheck={false}
+              />
             </div>
+            <div className="w-full space-y-1 sm:w-44 shrink-0">
+              <label htmlFor="usage-history-status" className="text-xs font-medium text-union-muted">
+                {t("filterLabel")}
+              </label>
+              <select
+                id="usage-history-status"
+                className={`${seoSelect} w-full`}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as StatusFilter);
+                  setPage(1);
+                }}
+                disabled={loading && !history.length}
+              >
+                <option value="all">{t("filterAll")}</option>
+                <option value="done">{t("filterDone")}</option>
+                <option value="error">{t("filterError")}</option>
+                <option value="cancelled">{t("filterCancelled")}</option>
+                <option value="dry_run">{t("filterDryRun")}</option>
+              </select>
+            </div>
+          </div>
+          {hasActiveFilters && !loading ? (
+            <p className="text-xs text-union-muted">{t("filterResultCount", { found: total })}</p>
           ) : null}
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-union-border bg-union-bg/50 text-xs text-union-muted">
@@ -209,7 +293,7 @@ export function UsageDashboard() {
               ) : history.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-8 text-center text-union-muted">
-                    {t("empty")}
+                    {emptyMessage}
                   </td>
                 </tr>
               ) : (
@@ -247,23 +331,26 @@ export function UsageDashboard() {
           >
             <p className="text-xs text-union-muted">
               {t("paginationSummary", { current: page, total: totalPages })}
+              {hasActiveFilters ? t("paginationFilterFound", { found: total }) : null}
             </p>
             <div className="flex gap-2">
               <button
                 type="button"
-                className={seoBtnGhost}
+                className={seoBtnLimeOutline}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
               >
+                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
                 {t("navBack")}
               </button>
               <button
                 type="button"
-                className={seoBtnGhost}
+                className={seoBtnLimeOutline}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
               >
                 {t("navForward")}
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
               </button>
             </div>
           </div>

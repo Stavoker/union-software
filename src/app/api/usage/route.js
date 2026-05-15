@@ -15,8 +15,14 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const page = Number.parseInt(searchParams.get("page") || "1", 10);
+    const search = searchParams.get("q") || "";
+    const status = searchParams.get("status") || "all";
 
-    const payload = await fetchGeneratorUsageForUser(supabase, user.id, { page });
+    const payload = await fetchGeneratorUsageForUser(supabase, user.id, {
+      page,
+      search,
+      status,
+    });
     return NextResponse.json(payload);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

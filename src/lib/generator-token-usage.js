@@ -83,7 +83,65 @@ function startOfUtcMonth(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
 
-export const USAGE_HISTORY_PAGE_SIZE = 50;
+export const USAGE_HISTORY_PAGE_SIZE = 30;
+
+const HISTORY_STATUS_FILTERS = new Set(["all", "done", "error", "cancelled", "dry_run"]);
+
+/**
+ * @param {string} raw
+ */
+function normalizeHistoryStatusFilter(raw) {
+  const v = String(raw || "all")
+    .trim()
+    .toLowerCase();
+  return HISTORY_STATUS_FILTERS.has(v) ? v : "all";
+}
+
+/**
+ * @param {string} raw
+ */
+function normalizeHistorySearch(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/[%_]/g, "")
+    .slice(0, 120);
+}
+
+/**
+ * @param {{ search?: string, status?: string }} raw
+ */
+function buildHistoryFilters(raw = {}) {
+  return {
+    search: normalizeHistorySearch(raw.search),
+    status: normalizeHistoryStatusFilter(raw.status),
+  };
+}
+
+/**
+ * @param {import('@supabase/supabase-js').PostgrestFilterBuilder} query
+ * @param {{ search?: string, status?: string }} filters
+ */
+function applyHistoryFilters(query, filters) {
+  let q = query;
+  const { search, status } = buildHistoryFilters(filters);
+
+  if (search) {
+    const pattern = `%${search}%`;
+    q = q.or(`project_name.ilike.${pattern},job_id.ilike.${pattern}`);
+  }
+
+  if (status === "done") {
+    q = q.eq("status", "done").eq("dry_run", false);
+  } else if (status === "error") {
+    q = q.eq("status", "error");
+  } else if (status === "cancelled") {
+    q = q.eq("status", "cancelled");
+  } else if (status === "dry_run") {
+    q = q.eq("dry_run", true);
+  }
+
+  return q;
+}
 
 function mapHistoryRow(r) {
   return {
@@ -141,7 +199,7 @@ function buildSummaryFromRows(list) {
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} userId
- * @param {{ page?: number, pageSize?: number }} [options]
+ * @param {{ page?: number, pageSize?: number, search?: string, status?: string }} [options]
  */
 export async function fetchGeneratorUsageForUser(supabase, userId, options = {}) {
   const pageSize = Math.min(
@@ -149,6 +207,7 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
     Math.max(1, Math.floor(Number(options.pageSize) || USAGE_HISTORY_PAGE_SIZE))
   );
   const page = Math.max(1, Math.floor(Number(options.page) || 1));
+  const historyFilters = buildHistoryFilters(options);
 
   const tableMissingPayload = {
     ok: true,
@@ -156,13 +215,17 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
     dbError: "",
     summary: emptySummary(),
     history: [],
+    filters: historyFilters,
     pagination: { page: 1, pageSize, total: 0, totalPages: 1 },
   };
 
-  const { count: totalCount, error: countError } = await supabase
+  let countQuery = supabase
     .from("generator_token_usage")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId);
+  countQuery = applyHistoryFilters(countQuery, historyFilters);
+
+  const { count: totalCount, error: countError } = await countQuery;
 
   if (countError) {
     if (isGeneratorTokenUsageTableError(countError.message)) {
@@ -190,7 +253,7 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
   const from = (safePage - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data: historyRows, error: historyError } = await supabase
+  let historyQuery = supabase
     .from("generator_token_usage")
     .select(
       "id, job_id, project_name, status, input_tokens, output_tokens, total_tokens, dry_run, created_at"
@@ -198,6 +261,9 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(from, to);
+  historyQuery = applyHistoryFilters(historyQuery, historyFilters);
+
+  const { data: historyRows, error: historyError } = await historyQuery;
 
   if (historyError) {
     if (isGeneratorTokenUsageTableError(historyError.message)) {
@@ -211,6 +277,7 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
     dbReady: true,
     summary: buildSummaryFromRows(summaryRows || []),
     history: (historyRows || []).map(mapHistoryRow),
+    filters: historyFilters,
     pagination: {
       page: safePage,
       pageSize,

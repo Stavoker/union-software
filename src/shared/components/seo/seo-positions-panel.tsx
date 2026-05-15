@@ -2,11 +2,16 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Rocket, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Rocket, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { seoBtnLimeOutline, seoBtnPrimary, seoInput } from "@/shared/components/seo/seo-ui";
+import {
+  seoBtnLimeOutline,
+  seoBtnLimeOutlineMuted,
+  seoBtnPrimary,
+  seoInput,
+} from "@/shared/components/seo/seo-ui";
 
 function parseKeywords(value) {
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
@@ -705,9 +710,6 @@ export function SeoPositionsPanel() {
   const dotIn = "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500";
   const dotOut = "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500/75";
 
-  const btnQuiet =
-    "inline-flex cursor-pointer items-center justify-center rounded-full px-4 py-2 text-sm text-union-muted transition-colors hover:bg-white/[0.06] hover:text-union-text disabled:cursor-not-allowed disabled:opacity-40";
-
   const btnIconQuiet =
     "inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-union-muted transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40";
 
@@ -757,7 +759,7 @@ export function SeoPositionsPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            className={seoBtnLimeOutline}
+            className={seoBtnLimeOutlineMuted}
             onClick={exportCsv}
             disabled={!canExport || loading}
           >
@@ -850,19 +852,21 @@ export function SeoPositionsPanel() {
         <div className="flex gap-2">
           <button
             type="button"
-            className={btnQuiet}
+            className={seoBtnLimeOutline}
             onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
             disabled={currentPage <= 1 || loading}
           >
+            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
             {t("navBack")}
           </button>
           <button
             type="button"
-            className={btnQuiet}
+            className={seoBtnLimeOutline}
             onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
             disabled={currentPage >= totalPages || loading}
           >
             {t("navNext")}
+            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
           </button>
         </div>
       </div>
