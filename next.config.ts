@@ -9,6 +9,8 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  /** Native addons — не бандлити (admin-seo SFTP / SSL deploy). */
+  serverExternalPackages: ["ssh2", "ssh2-sftp-client"],
   turbopack: {
     root: appRoot,
   },

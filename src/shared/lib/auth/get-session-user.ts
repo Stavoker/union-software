@@ -1,4 +1,14 @@
+import type { User } from "@supabase/supabase-js";
+
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
+
+export async function getSessionUser(): Promise<User | null> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user ?? null;
+}
 
 export async function getSessionUserEmail(): Promise<string | null> {
   const supabase = await createSupabaseServerClient();

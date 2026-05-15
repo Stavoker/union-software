@@ -1,7 +1,10 @@
 "use client";
 
+import { Rocket } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+
+import { seoBtnPrimary } from "@/shared/components/seo/seo-ui";
 import { GeneratorOrb } from "./generator-orb";
 
 const POLL_MS = 1500;
@@ -356,8 +359,9 @@ export function GeneratorWorkbench() {
             type="button"
             disabled={starting}
             onClick={() => void startBuild()}
-            className="inline-flex cursor-pointer items-center justify-center rounded-full bg-union-accent px-5 py-2.5 text-sm font-medium text-union-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`${seoBtnPrimary} gap-2`}
           >
+            {!starting ? <Rocket className="h-4 w-4 shrink-0" aria-hidden /> : null}
             {starting ? t("starting") : t("start")}
           </button>
         </div>

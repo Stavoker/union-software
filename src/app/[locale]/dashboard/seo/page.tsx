@@ -1,15 +1,5 @@
-import { getTranslations } from "next-intl/server";
-import { ModulePlaceholder } from "@/shared/components/module-placeholder";
+import { SeoPositionsPanel } from "@/shared/components/seo/seo-positions-panel";
 
-export default async function SeoPage() {
-  const t = await getTranslations("module");
-
-  return (
-    <div className="py-10">
-      <ModulePlaceholder
-        title={t("seoTitle")}
-        description={`${t("seoLead")} ${t("wipBody")}`}
-      />
-    </div>
-  );
+export default function SeoPage() {
+  return <SeoPositionsPanel />;
 }

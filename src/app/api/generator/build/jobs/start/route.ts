@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSessionUserEmail } from "@/shared/lib/auth/get-session-user";
+import { loadIntegrationSettingsForUser, withUserIntegrationEnv } from "@/lib/account-integration-settings";
+import { getSessionUser } from "@/shared/lib/auth/get-session-user";
+import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 900;
@@ -30,14 +32,23 @@ function sanitizeProjectNameForBatch(name: string) {
 }
 
 export async function POST(req: Request) {
-  const email = await getSessionUserEmail();
-  if (!email) {
+  const user = await getSessionUser();
+  if (!user?.id) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
 
+  const supabase = await createSupabaseServerClient();
+  let userEnv: Record<string, string> = {};
+  try {
+    userEnv = await loadIntegrationSettingsForUser(supabase, user.id);
+  } catch {
+    userEnv = {};
+  }
+
+  return withUserIntegrationEnv(userEnv, async () => {
   let getDeepseekPoolSize: () => number;
   let createBuildJob: (payload: Record<string, unknown>) => Promise<string>;
   let runBuildJob: (
@@ -136,12 +147,14 @@ export async function POST(req: Request) {
     jobsOut.push({ jobId, projectName });
 
     setImmediate(() => {
-      void runBuildJob(jobId, async (payload, onLog, shouldStop) =>
-        buildProject({
-          ...payload,
-          onLog,
-          shouldStop,
-        })
+      void withUserIntegrationEnv(userEnv, () =>
+        runBuildJob(jobId, async (payload, onLog, shouldStop) =>
+          buildProject({
+            ...payload,
+            onLog,
+            shouldStop,
+          })
+        )
       ).catch((err: unknown) => {
         console.error("[generator] runBuildJob failed:", err);
       });
@@ -179,5 +192,6 @@ export async function POST(req: Request) {
             pairedFromEnv: false,
             leasePending: false,
           },
+  });
   });
 }
