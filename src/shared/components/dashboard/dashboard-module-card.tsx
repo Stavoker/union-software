@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
@@ -17,9 +18,13 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import dashboardPreviewBg from "@/logo/bg.png";
 import { Link } from "@/i18n/navigation";
 
-const dashboardCard = "rounded-2xl border border-union-border bg-black p-5 md:p-6";
+const dashboardCard = "rounded-2xl border border-union-border bg-transparent p-5 md:p-6";
+
+const dashboardPreviewBadge =
+  "inline-flex items-center rounded-full border border-white/20 bg-white/[0.1] px-2.5 py-1 text-[11px] font-medium text-[#d1fe17] shadow-[0_8px_28px_-10px_rgb(0_0_0_/_0.55)] backdrop-blur-md";
 
 export type DashboardCardId =
   | "generator"
@@ -28,6 +33,16 @@ export type DashboardCardId =
   | "usage"
   | "users"
   | "settings";
+
+/** Slight crop shift so the same bg asset reads differently per card. */
+const PREVIEW_BG_OBJECT_POSITION: Record<DashboardCardId, string> = {
+  generator: "object-[18%_50%]",
+  seo: "object-[82%_48%]",
+  domain: "object-[50%_12%]",
+  usage: "object-[50%_88%]",
+  users: "object-[12%_18%]",
+  settings: "object-[88%_82%]",
+};
 
 type CardMeta = {
   icon: LucideIcon;
@@ -110,28 +125,35 @@ export function DashboardModuleCard({ id, href, navKey, descKey, index }: Props)
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d1fe17]/25 bg-black text-[#d1fe17] transition-colors group-hover:border-[#d1fe17]/50 group-hover:bg-[#d1fe17]/10">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#d1fe17]/25 bg-transparent text-[#d1fe17] transition-colors group-hover:border-[#d1fe17]/50 group-hover:bg-[#d1fe17]/10">
               <HeaderIcon className="h-4 w-4" aria-hidden />
             </span>
             <h2 className="text-base font-semibold tracking-tight text-union-text transition-colors group-hover:text-[#d1fe17]">
               {tNav(navKey)}
             </h2>
           </div>
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-union-muted transition-all duration-300 group-hover:border-[#d1fe17]/30 group-hover:bg-black group-hover:text-[#d1fe17] group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-union-muted transition-all duration-300 group-hover:border-[#d1fe17]/30 group-hover:bg-transparent group-hover:text-[#d1fe17] group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
             <ArrowUpRight className="h-4 w-4" aria-hidden />
           </span>
         </div>
 
-        <div className="relative mt-4 aspect-[16/10] overflow-hidden rounded-2xl border border-[#d1fe17] bg-gradient-to-br from-black to-[#d1fe17]">
-          <div className="relative flex h-full items-center justify-center">
+        <div className="relative mt-4 aspect-[16/10] overflow-hidden rounded-2xl">
+          <Image
+            src={dashboardPreviewBg}
+            alt=""
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+            className={`object-cover ${PREVIEW_BG_OBJECT_POSITION[id]}`}
+            aria-hidden
+          />
+          <div className="relative z-10 flex h-full items-center justify-center">
             <VisualIcon
               className="h-14 w-14 text-[#d1fe17] transition-transform duration-500 group-hover:scale-110"
               strokeWidth={1.5}
               aria-hidden
             />
           </div>
-          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-black bg-[#d1fe17] px-2.5 py-1 text-[11px] font-medium text-black">
-            <span aria-hidden>★</span>
+          <span className={`absolute right-3 top-3 z-10 ${dashboardPreviewBadge}`}>
             {t(meta.badgeKey)}
           </span>
         </div>
@@ -143,7 +165,7 @@ export function DashboardModuleCard({ id, href, navKey, descKey, index }: Props)
             const TagIcon = meta.tagIcons[i];
             return (
               <li key={tagKey}>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-union-border bg-black px-2.5 py-1 text-[11px] font-medium text-union-text transition-colors group-hover:border-[#d1fe17]/30">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-union-border bg-transparent px-2.5 py-1 text-[11px] font-medium text-union-text transition-colors group-hover:border-[#d1fe17]/30">
                   <TagIcon className="h-3 w-3 shrink-0 text-union-muted transition-colors group-hover:text-[#d1fe17]" aria-hidden />
                   {t(tagKey)}
                 </span>

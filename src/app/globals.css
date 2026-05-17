@@ -27,6 +27,41 @@
   --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
 }
 
+@keyframes footer-marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.footer-marquee-track {
+  animation: footer-marquee-scroll 42s linear infinite;
+}
+
+@keyframes login-marquee-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.login-marquee-track {
+  animation: login-marquee-scroll linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-marquee-track,
+  .login-marquee-track {
+    animation: none;
+  }
+}
+
 @keyframes gen-orb-pulse {
   0%,
   100% {

@@ -1,9 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { createSupabaseBrowserClient } from "@/shared/lib/supabase/browser";
 import { useEffect, useRef, useState } from "react";
+
+import userAvatarBg from "@/logo/bg-user.png";
 
 export function UserMenu({ email }: { email: string }) {
   const t = useTranslations("nav");
@@ -36,10 +39,20 @@ export function UserMenu({ email }: { email: string }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex max-w-[200px] items-center gap-2 rounded-full border border-union-border bg-white/[0.05] px-3 py-1.5 text-left text-xs text-union-text transition-colors hover:bg-white/[0.08] md:max-w-[260px] md:text-sm"
+        className="flex max-w-[220px] items-center gap-2.5 rounded-full border border-union-border bg-white/[0.05] py-1.5 pl-1.5 pr-3 text-left text-xs text-union-text transition-colors hover:bg-white/[0.08] md:max-w-[280px] md:text-sm"
         aria-expanded={open}
         aria-haspopup="menu"
       >
+        <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full border border-white/15">
+          <Image
+            src={userAvatarBg}
+            alt=""
+            fill
+            sizes="28px"
+            className="object-cover"
+            aria-hidden
+          />
+        </span>
         <span className="truncate font-medium">{short}</span>
         <span className="text-union-muted" aria-hidden>
           ▾

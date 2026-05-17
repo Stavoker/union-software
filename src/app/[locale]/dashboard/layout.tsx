@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { AppFooter } from "@/shared/components/app-footer";
 import { AppHeader } from "@/shared/components/app-header";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 import { isAccountFrozen } from "@/shared/lib/supabase/is-account-frozen";
@@ -44,6 +45,9 @@ export default async function DashboardLayout({ children, params }: Props) {
     <div className="flex min-h-full flex-col">
       <AppHeader userEmail={email} isAdmin={isAdmin} />
       <main className="flex-1 px-4 md:px-8">{children}</main>
+      <div className="mt-20 md:mt-28">
+        <AppFooter />
+      </div>
     </div>
   );
 }

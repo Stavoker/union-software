@@ -44,7 +44,9 @@ export default async function LocaleLayout({ children, params }: Props) {
     <html lang={locale} className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full bg-union-bg font-sans text-union-text">
         <NextIntlClientProvider messages={messages}>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <div className="flex min-h-full flex-col">{children}</div>
+          </QueryProvider>
         </NextIntlClientProvider>
       </body>
     </html>

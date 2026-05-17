@@ -366,5 +366,38 @@
     "searchNoResults": "No users match this search.",
     "searchSingleMatch": "Found: {name}",
     "searchCannotFreezeSelf": "This is your account — you cannot freeze yourself."
+  },
+  "footer": {
+    "supportLabel": "Support",
+    "lastUpdated": "Last software update: {date}",
+    "faq": "FAQ",
+    "documentation": "Documentation",
+    "linksAria": "Help and documentation"
+  },
+  "faqPage": {
+    "back": "Back",
+    "title": "Frequently asked questions",
+    "lead": "Quick answers about Union, access, and support.",
+    "q1Title": "What is Union?",
+    "q1Body": "Union is a unified platform for website generation, SEO monitoring, domain automation, and AI token usage tracking.",
+    "q2Title": "How do I get access?",
+    "q2Body": "Sign in with the email and password provided by your administrator. If your account is frozen, contact support in Telegram.",
+    "q3Title": "Where are API keys stored?",
+    "q3Body": "Integration secrets are saved in your account settings and applied per user — not shared across accounts.",
+    "q4Title": "How do I contact support?",
+    "q4Body": "Write to @rostyslav_sikora on Telegram — link is always available in the site footer."
+  },
+  "docsPage": {
+    "back": "Back",
+    "title": "Documentation",
+    "lead": "Overview of Union modules and recommended workflow.",
+    "s1Title": "Generator",
+    "s1Body": "Create multi-page sites from a brief: structure, content, and assets are produced in one pipeline. Track jobs and download the archive when the build finishes.",
+    "s2Title": "SEO",
+    "s2Body": "Add keywords, run position checks, export CSV, and automate domain-related SEO tasks from the SEO section.",
+    "s3Title": "Domains & integrations",
+    "s3Body": "Configure Spaceship, Zomro, SSL, and Telegram in Settings. Domain automation runs from the Buy domain module.",
+    "s4Title": "AI tokens",
+    "s4Body": "The Usage page shows Claude/DeepSeek consumption per generation with search and status filters."
   }
 }
