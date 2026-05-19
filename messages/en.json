@@ -377,27 +377,117 @@
   "faqPage": {
     "back": "Back",
     "title": "Frequently asked questions",
-    "lead": "Quick answers about Union, access, and support.",
-    "q1Title": "What is Union?",
-    "q1Body": "Union is a unified platform for website generation, SEO monitoring, domain automation, and AI token usage tracking.",
-    "q2Title": "How do I get access?",
-    "q2Body": "Sign in with the email and password provided by your administrator. If your account is frozen, contact support in Telegram.",
-    "q3Title": "Where are API keys stored?",
-    "q3Body": "Integration secrets are saved in your account settings and applied per user — not shared across accounts.",
-    "q4Title": "How do I contact support?",
-    "q4Body": "Write to @rostyslav_sikora on Telegram — link is always available in the site footer."
+    "lead": "Answers about access, Union modules, Settings variables, and support. Use search or the table of contents on the left.",
+    "searchPlaceholder": "Search questions…",
+    "navTitle": "Contents",
+    "noResults": "Nothing found. Try another query.",
+    "sections": {
+      "whatIsUnion": {
+        "title": "What is Union?",
+        "body": "Union is a single panel for multi-page site generation (SoftGen), SEO monitoring (Yandex XML), domain automation (Spaceship + Zomro + SSL + host deploy), and AI token usage.\n\nAfter sign-in you land on the Dashboard. Each user has private integration keys in Settings — they are not shared between accounts."
+      },
+      "access": {
+        "title": "How do I get access?",
+        "body": "Sign in on the home page with the email and password from your administrator. You will be redirected to /dashboard.\n\nIf the password does not work, contact your admin or Telegram support (footer link). Self-registration is not available."
+      },
+      "frozenAccount": {
+        "title": "My account is frozen",
+        "body": "If the profile is marked frozen, the session ends after login and the login page shows a frozen-account message.\n\nContact @rostyslav_sikora on Telegram — an admin can unfreeze or explain the reason."
+      },
+      "settingsBasics": {
+        "title": "What is Settings?",
+        "body": "Settings (Dashboard → Settings) stores per-account .env-style variables used by the generator, SEO, domains, SSL, Telegram, and auto-script.\n\nRedis, Supabase URL, and server-only secrets live in the server .env only — not in the Settings UI."
+      },
+      "settingsSecrets": {
+        "title": "How are secrets stored?",
+        "body": "Secret fields (API keys, passwords, tokens) are never returned in API responses — only a “saved” marker.\n\n- Leaving a secret field empty on save keeps the previous value.\n- Non-secret fields (host, port, email) are shown as plain text.\n- Booleans: 1 = on, 0 = off, empty = unset.\n\nClick Save at the bottom after changes."
+      },
+      "settingsSections": {
+        "title": "Settings form sections",
+        "body": "The form is grouped like .env blocks:\n\n- Site generator — Claude API (CLAUDE_API_KEY_01…10), model, temperature, soft-subfolder paths.\n- Spaceship — domain registration.\n- Zomro — DNS, Billmgr, dnsmgr, SSL TXT records.\n- SSL — Let's Encrypt and timing options.\n- Host / deploy — SSH, nginx, project directory.\n- SEO — Yandex XML positions.\n- Telegram — bot reports.\n- auto-script-v2 — post-generation webhook.\n\nSee Documentation for each variable."
+      },
+      "generator": {
+        "title": "Generator FAQ",
+        "body": "Minimum to start: at least CLAUDE_API_KEY_01 (sk-ant-…) under Settings → Generator.\n\n- Extra keys (02…10) enable parallel builds.\n- ANTHROPIC_MODEL and ANTHROPIC_MAX_TOKENS_* control model and limits.\n- SOFT_SUBFOLDER_* paths must exist on the server.\n- SOFTGEN_* flags control references and prompt regeneration.\n\nCheck Usage if jobs fail on token budget."
+      },
+      "seo": {
+        "title": "SEO FAQ",
+        "body": "In SEO, add a domain and keywords, run position checks, export CSV.\n\nSet YANDEX_XML_STOCK_BASE_URL under Settings → SEO. Without it, position checks will not work.\n\nSEO domains are scoped per user account."
+      },
+      "domains": {
+        "title": "Domains and SSL",
+        "body": "Domain automation uses Spaceship, Zomro, SSL (Let's Encrypt), and optional SSH deploy.\n\nFill the matching Settings blocks first. ZOMRO_DNSMGR_ENABLED=1 enables dnsmgr; SSL_LETSENCRYPT_EMAIL is required for production certificates.\n\nChange SSL timing variables only if you understand DNS delays."
+      },
+      "usage": {
+        "title": "Usage and AI tokens",
+        "body": "Usage lists Claude/DeepSeek spend per generation job with search and status filter (30 rows per page).\n\nIf generation fails on API limits, verify Claude keys in Settings and your Anthropic quota."
+      },
+      "support": {
+        "title": "Support",
+        "body": "Telegram: @rostyslav_sikora (footer link on dashboard, FAQ, and docs).\n\nInclude your account email, module name, and error time for faster troubleshooting."
+      }
+    }
   },
   "docsPage": {
     "back": "Back",
     "title": "Documentation",
-    "lead": "Overview of Union modules and recommended workflow.",
-    "s1Title": "Generator",
-    "s1Body": "Create multi-page sites from a brief: structure, content, and assets are produced in one pipeline. Track jobs and download the archive when the build finishes.",
-    "s2Title": "SEO",
-    "s2Body": "Add keywords, run position checks, export CSV, and automate domain-related SEO tasks from the SEO section.",
-    "s3Title": "Domains & integrations",
-    "s3Body": "Configure Spaceship, Zomro, SSL, and Telegram in Settings. Domain automation runs from the Buy domain module.",
-    "s4Title": "AI tokens",
-    "s4Body": "The Usage page shows Claude/DeepSeek consumption per generation with search and status filters."
+    "lead": "Step-by-step Union modules and Settings variables. Search and the left contents jump to each topic.",
+    "searchPlaceholder": "Search documentation…",
+    "navTitle": "Contents",
+    "noResults": "Nothing found. Try another query.",
+    "sections": {
+      "overview": {
+        "title": "Platform overview",
+        "body": "Union includes:\n\n- Generator — multi-page sites from a brief.\n- SEO — keywords, Yandex positions, CSV export.\n- Domains — registration, DNS, SSL, VPS deploy.\n- Usage — AI token accounting.\n- Settings — personal .env variables.\n\nRecommended order: Settings → test generator → SEO/domains as needed."
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "body": "After sign-in, the Dashboard page (e.g. /uk/dashboard or /en/dashboard) shows module cards. Access depends on role (user / admin).\n\nThe header has email, UI language (uk/en/ru), and sign out. Admins may see extra user management when enabled."
+      },
+      "generator": {
+        "title": "Generator module",
+        "body": "Open Generator from the Dashboard. Set site folder (slug), theme/semantics, page count, optional base URL, then Start build.\n\nTrack job status and download ZIP when finished. Cancel stops the pipeline.\n\nClaude keys in Settings are required (see below)."
+      },
+      "seo": {
+        "title": "SEO module",
+        "body": "Add a domain, manage keywords, run position checks, export CSV.\n\nConfigure YANDEX_XML_STOCK_BASE_URL in Settings → SEO. The URL depends on your Yandex XML Stock provider.\n\nDomains are isolated per user_id."
+      },
+      "domains": {
+        "title": "Domains and automation",
+        "body": "The Domain module runs registration (Spaceship), DNS (Zomro), SSL, and optional host deploy.\n\nTypical chain: Spaceship → DNS A record to SUBDOMAIN_HOST_IP → ACME TXT → SSL → nginx deploy if SUBDOMAIN_HOST_SSL_DEPLOY=1.\n\nTelegram reports need TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID."
+      },
+      "usage": {
+        "title": "Usage (AI tokens)",
+        "body": "Dashboard → Usage: generations table with tokens and cost. Search by slug/model, filter by status, 30 rows per page.\n\nUseful after changing ANTHROPIC_MODEL or page count in the brief."
+      },
+      "settingsOverview": {
+        "title": "Settings — general rules",
+        "body": "Path: Dashboard → Settings (/dashboard/settings).\n\n- Field names match process.env keys.\n- Save calls PUT /api/settings/integration → account_integration_settings.\n- Secrets are write-only in UI; empty secret field means “keep existing”.\n- Booleans: 1 / 0 / empty.\n- If you see a migration warning, run the SQL in Supabase and reload.\n\nSections below list variables by form group."
+      },
+      "settingsGenerator": {
+        "title": "Settings — generator (Claude / SoftGen)",
+        "body": "Site generator section:\n\n- CLAUDE_API_KEY_01 … 10 — Anthropic keys; at least one required.\n- ANTHROPIC_MODEL, AURORA_GENERATION_TEMPERATURE, ANTHROPIC_MAX_TOKENS_* — model and limits.\n- AURORA_CLAUDE_SITE_OUTPUT_BUDGET, ANTHROPIC_FETCH_TIMEOUT_MS — budget and timeout.\n- AURORA_GATEWAY_URL, AURORA_GATEWAY_DIVERSIFY — optional gateway.\n- SOFT_SUBFOLDER_* — server paths for templates and builds.\n- PHP_BINARY, SOFT_SUBFOLDER_PHP — PHP binary paths.\n- SOFTGEN_* — reference sites, prompt regen/rewrite, similarity thresholds, placeholder fill."
+      },
+      "settingsSpaceshipZomro": {
+        "title": "Settings — Spaceship and Zomro",
+        "body": "Spaceship: SPACESHIP_API_KEY, SPACESHIP_API_SECRET, SPACESHIP_CONTACT_ID.\n\nZomro: ZOMRO_AUTH_TOKEN or ZOMRO_USERNAME + ZOMRO_PASSWORD; ZOMRO_AUTH_THROUGH_KEY, ZOMRO_AUTHINFO; ZOMRO_BILLMGR_*; ZOMRO_DNSMGR_URL, ZOMRO_DNSMGR_DOMAIN_EMAIL; ZOMRO_DNSMGR_ENABLED, ZOMRO_API_DNS_ENABLED; ZOMRO_DNSMGR_TXT_CREATE_FUNC / TXT_DELETE_FUNC."
+      },
+      "settingsSslHost": {
+        "title": "Settings — SSL and host",
+        "body": "SSL: SSL_LETSENCRYPT_EMAIL (required for prod), SSL_LETSENCRYPT_STAGING, SSL_LETSENCRYPT_SKIP_VERIFY, SSL_ASYNC_RETRY_MS, SSL_MIN_AUTHORITATIVE_NS_READY, SSL_DNS_CHALLENGE_REMOVE_DELAY_MS, SSL_DELEGATION_WAIT_TIMEOUT_MS, SSL_DELEGATION_WAIT_POLL_MS, SSL_ZOMRO_DNS_POST_DELAY_MS.\n\nHost: SUBDOMAIN_HOST_IP, SUBDOMAIN_HOST_USER, SUBDOMAIN_HOST_PASSWORD, SUBDOMAIN_HOST_PORT, SUBDOMAIN_HOST_SSL_DEPLOY, SUBDOMAIN_HOST_PROJECTS_DIR, SUBDOMAIN_HOST_NGINX_*, SUBDOMAIN_HOST_NGINX_PHP."
+      },
+      "settingsSeoTelegram": {
+        "title": "Settings — SEO and Telegram",
+        "body": "SEO: YANDEX_XML_STOCK_BASE_URL.\n\nTelegram: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_BOT_USERNAME, cleanup-related TELEGRAM_* vars, CRON_SECRET / TELEGRAM_BOT_CLEANUP_CRON_SECRET."
+      },
+      "settingsAutoscript": {
+        "title": "Settings — auto-script-v2",
+        "body": "AUTOSCRIPT_WEBHOOK_URL — POST URL after a successful generation.\nAUTOSCRIPT_WEBHOOK_SECRET — shared header secret.\n\nLeave empty if you do not use the webhook."
+      },
+      "workflow": {
+        "title": "Recommended workflow",
+        "body": "1. Sign in with admin-provided credentials.\n2. Settings: Claude key + Spaceship/Zomro/SSL/host as needed.\n3. Test build (1 site, few pages), download ZIP.\n4. Check Usage for token spend.\n5. Enable SEO or Domain automation.\n6. Optional: Telegram and AUTOSCRIPT webhook.\n\nFor errors, note time, job slug, and contact @rostyslav_sikora."
+      }
+    }
   }
 }

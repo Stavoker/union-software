@@ -377,27 +377,117 @@
   "faqPage": {
     "back": "Назад",
     "title": "Часті питання",
-    "lead": "Короткі відповіді про Union, доступ і підтримку.",
-    "q1Title": "Що таке Union?",
-    "q1Body": "Union — єдина платформа для генерації сайтів, SEO-моніторингу, автоматизації доменів та обліку токенів AI.",
-    "q2Title": "Як отримати доступ?",
-    "q2Body": "Увійдіть з email і паролем, які надав адміністратор. Якщо акаунт заморожено — напишіть у підтримку в Telegram.",
-    "q3Title": "Де зберігаються API-ключі?",
-    "q3Body": "Секрети інтеграцій зберігаються в налаштуваннях акаунта окремо для кожного користувача.",
-    "q4Title": "Як звʼязатися з підтримкою?",
-    "q4Body": "Напишіть @rostyslav_sikora в Telegram — посилання завжди у футері сайту."
+    "lead": "Відповіді про доступ, модулі Union, налаштування Settings та підтримку. Скористайтесь пошуком або змістом зліва.",
+    "searchPlaceholder": "Пошук по питаннях…",
+    "navTitle": "Зміст",
+    "noResults": "Нічого не знайдено. Спробуйте інший запит.",
+    "sections": {
+      "whatIsUnion": {
+        "title": "Що таке Union?",
+        "body": "Union — єдина панель для генерації багатосторінкових сайтів (SoftGen), SEO-моніторингу (Yandex XML), автоматизації доменів (Spaceship + Zomro + SSL + деплой на хост) та обліку токенів AI.\n\nПісля входу відкривається Dashboard з модулями. Кожен користувач має власні інтеграційні ключі в Settings — вони не спільні між акаунтами."
+      },
+      "access": {
+        "title": "Як отримати доступ?",
+        "body": "Увійдіть на головній сторінці з email і паролем, які видав адміністратор. Після успішного входу вас перенаправить на /dashboard.\n\nЯкщо пароль не підходить — зверніться до адміністратора або в Telegram (посилання у футері). Самостійна реєстрація в Union не передбачена."
+      },
+      "frozenAccount": {
+        "title": "Акаунт заморожено — що робити?",
+        "body": "Якщо профіль позначено як frozen, після входу сесію буде завершено, а на сторінці логіну зʼявиться повідомлення про заморожений акаунт.\n\nНапишіть @rostyslav_sikora в Telegram — адміністратор зніме блокування або пояснить причину."
+      },
+      "settingsBasics": {
+        "title": "Що таке Settings і навіщо змінні?",
+        "body": "Settings (Dashboard → Settings) — це інтеграційні змінні вашого акаунта у форматі .env. Вони підставляються в генератор, SEO, домени, SSL, Telegram та auto-script під час роботи від вашого імені.\n\nRedis, Supabase URL і серверні секрети задаються лише в .env на сервері Union — їх немає в UI Settings."
+      },
+      "settingsSecrets": {
+        "title": "Як зберігаються секрети?",
+        "body": "Поля з типом secret (API keys, паролі, токени) у відповіді API не повертаються повторно — лише мітка «збережено».\n\n- Порожнє secret-поле при збереженні не змінює вже збережене значення.\n- Несекретні поля (host, port, email) показуються як текст.\n- Булеві поля: 1 — увімкнено, 0 — вимкнено, порожньо — не задано.\n\nПісля змін натисніть «Зберегти» внизу форми."
+      },
+      "settingsSections": {
+        "title": "Розділи на сторінці Settings",
+        "body": "Форма згрупована за блоками (як у .env):\n\n- Генератор сайтів — Claude API (до 10 слотів CLAUDE_API_KEY_01…10), модель, температуру, шляхи soft-subfolder.\n- Spaceship — реєстрація домену (API key, secret, contact id).\n- Zomro — DNS, Billmgr, dnsmgr, TXT для SSL challenge.\n- SSL — Let's Encrypt (email, staging, таймаути делегування).\n- Хост / деплой — SSH, nginx, каталог проєктів.\n- SEO — Yandex XML для позицій.\n- Telegram — бот і chat id для звітів.\n- auto-script-v2 — webhook після генерації.\n\nДетальний опис кожної змінної — у Документації."
+      },
+      "generator": {
+        "title": "Генератор: типові питання",
+        "body": "Мінімум для старту: хоча б один CLAUDE_API_KEY_01 (sk-ant-…) у Settings → Генератор.\n\n- Кілька ключів (02…10) дозволяють паралельні збірки.\n- ANTHROPIC_MODEL — модель Claude; ANTHROPIC_MAX_TOKENS_* — ліміти токенів.\n- SOFT_SUBFOLDER_* — де лежать шаблони та зібрані проєкти на сервері.\n- Прапорці SOFTGEN_* керують референсами, регенерацією промптів і суворістю placeholder.\n\nПомилки з бюджетом токенів дивіться на Usage."
+      },
+      "seo": {
+        "title": "SEO: типові питання",
+        "body": "У модулі SEO додайте домен і ключові слова, запускайте перевірку позицій, експортуйте CSV.\n\nДля Yandex XML потрібен YANDEX_XML_STOCK_BASE_URL у Settings → SEO (базовий URL сервісу позицій). Без нього запити позицій не працюватимуть.\n\nДомени для SEO привʼязуються до вашого акаунта окремо від генератора."
+      },
+      "domains": {
+        "title": "Домени та SSL",
+        "body": "Модуль купівлі/автоматизації домену використовує Spaceship (реєстрація), Zomro (DNS/VPS), SSL (Let's Encrypt) і опційно SSH-деплой на хост.\n\nПеред автоматизацією заповніть відповідні блоки в Settings. ZOMRO_DNSMGR_ENABLED=1 увімкне панель dnsmgr; SSL_LETSENCRYPT_EMAIL обовʼязковий для сертифіката.\n\nТаймаути SSL (SSL_DELEGATION_WAIT_* тощо) змінюйте лише якщо розумієте затримки DNS."
+      },
+      "usage": {
+        "title": "Usage та токени AI",
+        "body": "Сторінка Usage показує витрати Claude/DeepSeek по job генерації: модель, вхідні/вихідні токени, вартість, статус.\n\nЄ пошук за slug/моделлю та фільтр за статусом, пагінація по 30 записів. Якщо генерація впала через ліміт API — перевірте ключі в Settings і ліміти Anthropic."
+      },
+      "support": {
+        "title": "Підтримка",
+        "body": "Telegram: @rostyslav_sikora (посилання в футері на всіх сторінках кабінету, FAQ і документації).\n\nУ зверненні вкажіть email акаунта, модуль (генератор / SEO / домен) і час помилки — так швидше знайдемо job або лог."
+      }
+    }
   },
   "docsPage": {
     "back": "Назад",
     "title": "Документація",
-    "lead": "Огляд модулів Union і рекомендований порядок роботи.",
-    "s1Title": "Генератор",
-    "s1Body": "Створюйте багатосторінкові сайти з брифу: структура, контент і файли збираються в одному пайплайні. Слідкуйте за job і завантажуйте архів після завершення.",
-    "s2Title": "SEO",
-    "s2Body": "Додавайте ключові слова, перевіряйте позиції, експортуйте CSV і запускайте SEO-автоматизацію доменів.",
-    "s3Title": "Домени та інтеграції",
-    "s3Body": "Налаштуйте Spaceship, Zomro, SSL і Telegram у Settings. Автоматизація доменів — у модулі «Купити домен».",
-    "s4Title": "Токени AI",
-    "s4Body": "На сторінці Usage — витрати Claude/DeepSeek по генераціях з пошуком і фільтром статусу."
+    "lead": "Покроковий опис модулів Union і змінних Settings. Пошук і зміст зліва допоможуть швидко перейти до потрібної теми.",
+    "searchPlaceholder": "Пошук по документації…",
+    "navTitle": "Зміст",
+    "noResults": "Нічого не знайдено. Спробуйте інший запит.",
+    "sections": {
+      "overview": {
+        "title": "Огляд платформи",
+        "body": "Union обʼєднує:\n\n- Генератор — багатосторінкові сайти з брифу (тема, кількість сторінок, slug).\n- SEO — ключові слова, позиції Yandex, експорт.\n- Домени — реєстрація, DNS, SSL, деплой на VPS.\n- Usage — облік токенів AI по генераціях.\n- Settings — персональні .env-змінні.\n\nРекомендований порядок: Settings → тест генератора → SEO/домени за потреби."
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "body": "Після входу відкривається Dashboard (наприклад /uk/dashboard або /en/dashboard) з картками модулів. Доступ залежить від ролі (звичайний користувач / admin).\n\nУ шапці — email, перемикач мови UI (uk/en/ru), вихід. Адміністратор бачить додаткові пункти керування користувачами (якщо увімкнено в проєкті)."
+      },
+      "generator": {
+        "title": "Модуль генератора",
+        "body": "Відкрийте модуль «Генератор» з Dashboard. Заповніть:\n\n- Папка сайту (slug) — імʼя каталогу проєкту.\n- Тема / семантика — ніша та стиль контенту.\n- Кількість сторінок і сайтів у пакеті.\n- Базовий URL (опційно) для canonical/посилань.\n\nНатисніть «Запустити збірку», стежте за статусом job. Після завершення — «Завантажити ZIP». Скасування зупиняє поточний пайплайн.\n\nПотрібні ключі Claude в Settings (розділ нижче)."
+      },
+      "seo": {
+        "title": "Модуль SEO",
+        "body": "Додайте домен, імпортуйте або введіть ключові слова, запустіть перевірку позицій. Результати можна експортувати в CSV.\n\nНалаштуйте YANDEX_XML_STOCK_BASE_URL у Settings → SEO. URL залежить від вашого провайдера Yandex XML Stock — уточніть у адміністратора.\n\nSEO-домени ізольовані по user_id; інший користувач їх не бачить."
+      },
+      "domains": {
+        "title": "Домени та автоматизація",
+        "body": "Модуль купівлі/прогону домену (Domain) приймає імʼя домену, contact id Spaceship (якщо не в Settings), опції DNS/SSL.\n\nТиповий ланцюжок:\n\n- Реєстрація в Spaceship (SPACESHIP_*).\n- DNS у Zomro (A-запис на SUBDOMAIN_HOST_IP, TXT для ACME).\n- Випуск SSL (SSL_LETSENCRYPT_*).\n- Деплой на хост (SUBDOMAIN_HOST_*), якщо SUBDOMAIN_HOST_SSL_DEPLOY=1.\n\nTelegram-звіти потребують TELEGRAM_BOT_TOKEN і TELEGRAM_CHAT_ID."
+      },
+      "usage": {
+        "title": "Usage (токени AI)",
+        "body": "Dashboard → Usage: таблиця генерацій з токенами та вартістю.\n\n- Пошук — за slug, моделлю або фрагментом id job.\n- Фільтр статусу — success / error / in progress.\n- Пагінація — 30 записів на сторінку.\n\nКорисно для контролю витрат Claude після зміни ANTHROPIC_MODEL або кількості сторінок у брифі."
+      },
+      "settingsOverview": {
+        "title": "Settings — загальні правила",
+        "body": "Шлях: Dashboard → Settings (/dashboard/settings).\n\n- Кожне поле відповідає змінній process.env з тим самим імʼям (моноширинний label).\n- Збереження — PUT на /api/settings/integration; дані в таблиці account_integration_settings.\n- Секрети не показуються повторно; порожнє secret-поле = «не чіпати».\n- Булеві: 1 / 0 / порожньо.\n- Якщо бачите попередження про міграцію — виконайте SQL з підказки в Supabase, потім оновіть сторінку.\n\nНижче — змінні по розділах форми."
+      },
+      "settingsGenerator": {
+        "title": "Settings — генератор (Claude / SoftGen)",
+        "body": "Розділ «Генератор сайтів»:\n\n- CLAUDE_API_KEY_01 … CLAUDE_API_KEY_10 — ключі Anthropic (sk-ant-…); мінімум один; кілька слотів для паралелізму.\n- ANTHROPIC_MODEL — модель (напр. claude-sonnet-4-6).\n- AURORA_GENERATION_TEMPERATURE — температура 0–1.\n- ANTHROPIC_MAX_TOKENS_PAGE / _ARCHITECT / _JSFIX — ліміти відповіді.\n- AURORA_CLAUDE_SITE_OUTPUT_BUDGET — бюджет output-токенів на 1 сайт.\n- ANTHROPIC_FETCH_TIMEOUT_MS — таймаут HTTP до API.\n- AURORA_GATEWAY_URL, AURORA_GATEWAY_DIVERSIFY — опційний gateway.\n- SOFT_SUBFOLDER_ROOT_DIR, SOFT_SUBFOLDER_TEMPLATES_DIR, SOFT_SUBFOLDER_PROJECTS_DIR — шляхи на сервері.\n- PHP_BINARY, SOFT_SUBFOLDER_PHP — PHP для subfolder-скриптів.\n- SOFTGEN_REQUIRE_REFERENCE_STRUCTURE, SOFTGEN_REFERENCE_TEMPLATE_MODE — робота з референс-сайтами.\n- SOFTGEN_PROMPT_REGEN_*, SOFTGEN_PROMPT_REWRITE_* — регенерація/перепис промптів.\n- SOFTGEN_REFERENCE_SIMILARITY_THRESHOLD та інші SOFTGEN_REFERENCE_* — пороги схожості та ліміти символів.\n- SOFTGEN_TEXT_FILL_MAX_ATTEMPTS, SOFTGEN_STRICT_PLACEHOLDER_FILL — якість заповнення тексту."
+      },
+      "settingsSpaceshipZomro": {
+        "title": "Settings — Spaceship та Zomro",
+        "body": "Spaceship (реєстрація домену):\n\n- SPACESHIP_API_KEY, SPACESHIP_API_SECRET — API доступ.\n- SPACESHIP_CONTACT_ID — contact для реєстрації.\n\nZomro (DNS / панель):\n\n- ZOMRO_AUTH_TOKEN або пара ZOMRO_USERNAME + ZOMRO_PASSWORD — авторизація API.\n- ZOMRO_AUTH_THROUGH_KEY, ZOMRO_AUTHINFO — альтернативні методи auth.\n- ZOMRO_BILLMGR_URL / HOST / PORT / ZOMRO_BILLMGR_USE_HTTP — Billmgr.\n- ZOMRO_DNSMGR_URL, ZOMRO_DNSMGR_DOMAIN_EMAIL — dnsmgr для TXT challenge.\n- ZOMRO_DNSMGR_ENABLED=1 — викликати dnsmgr; ZOMRO_API_DNS_ENABLED — API DNS на api.zomro.com.\n- ZOMRO_DNSMGR_TXT_CREATE_FUNC / TXT_DELETE_FUNC — імена func для TXT записів."
+      },
+      "settingsSslHost": {
+        "title": "Settings — SSL та хост (деплой)",
+        "body": "SSL (Let's Encrypt):\n\n- SSL_LETSENCRYPT_EMAIL — email для ACME (обовʼязково для прод).\n- SSL_LETSENCRYPT_STAGING=1 — тестовий ACME.\n- SSL_LETSENCRYPT_SKIP_VERIFY=1 — не перевіряти TLS (лише діагностика).\n- SSL_ASYNC_RETRY_MS, SSL_MIN_AUTHORITATIVE_NS_READY — повтори та NS.\n- SSL_DNS_CHALLENGE_REMOVE_DELAY_MS — пауза перед видаленням TXT.\n- SSL_DELEGATION_WAIT_TIMEOUT_MS / SSL_DELEGATION_WAIT_POLL_MS — очікування делегування.\n- SSL_ZOMRO_DNS_POST_DELAY_MS — пауза після змін DNS у Zomro.\n\nХост:\n\n- SUBDOMAIN_HOST_IP — IP для A-запису та SSH.\n- SUBDOMAIN_HOST_USER, SUBDOMAIN_HOST_PASSWORD, SUBDOMAIN_HOST_PORT — SSH.\n- SUBDOMAIN_HOST_SSL_DEPLOY=1 — nginx + сертифікат на сервері.\n- SUBDOMAIN_HOST_PROJECTS_DIR — корінь сайтів (напр. /var/www).\n- SUBDOMAIN_HOST_NGINX_* — шляхи sites-available/enabled, reload cmd, PHP-FPM socket.\n- SUBDOMAIN_HOST_NGINX_PHP=1 — увімкнути PHP у vhost."
+      },
+      "settingsSeoTelegram": {
+        "title": "Settings — SEO та Telegram",
+        "body": "SEO:\n\n- YANDEX_XML_STOCK_BASE_URL — базовий URL API перевірки позицій (Yandex XML Stock).\n\nTelegram:\n\n- TELEGRAM_BOT_TOKEN — токен @BotFather.\n- TELEGRAM_CHAT_ID — чат для звітів (число або @channel).\n- TELEGRAM_WEBHOOK_SECRET — секрет вебхука бота.\n- TELEGRAM_BOT_USERNAME — @username бота.\n- TELEGRAM_BOT_MESSAGES_MAX_AGE_HOURS, TELEGRAM_BOT_MESSAGES_CLEANUP_BATCH — cleanup повідомлень.\n- TELEGRAM_DELETE_COMMAND_MAX_MESSAGES, TELEGRAM_DELETE_TRY_BULK_IN_GROUPS — команда /delete.\n- CRON_SECRET або TELEGRAM_BOT_CLEANUP_CRON_SECRET — захист cron API cleanup."
+      },
+      "settingsAutoscript": {
+        "title": "Settings — auto-script-v2",
+        "body": "Після успішної генерації Union може викликати зовнішній auto-script-v2:\n\n- AUTOSCRIPT_WEBHOOK_URL — повний URL webhook (POST).\n- AUTOSCRIPT_WEBHOOK_SECRET — спільний секрет у заголовку запиту.\n\nЯкщо webhook не потрібен — залиште поля порожніми."
+      },
+      "workflow": {
+        "title": "Рекомендований workflow",
+        "body": "1. Отримайте логін від адміністратора, увійдіть.\n2. Settings: Claude ключ + мінімум Spaceship/Zomro/SSL/host за ваш сценарій.\n3. Запустіть тестову генерацію (1 сайт, 3–5 сторінок), завантажте ZIP.\n4. Перевірте Usage — токени в межах очікувань.\n5. Підключіть SEO (домен + Yandex URL) або Domain automation.\n6. За потреби — Telegram і AUTOSCRIPT webhook.\n\nПри помилках зніміть час, slug job і напишіть у підтримку @rostyslav_sikora."
+      }
+    }
   }
 }
