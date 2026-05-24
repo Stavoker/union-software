@@ -44,6 +44,7 @@ import {
   pickChromeHeaderFooterOptions,
   uniqueSitePalettePromptBlock,
   uniqueSiteStructurePromptBlock,
+  buildAiChromeBaselineCss,
 } from "@/src/lib/brand-chrome";
 import {
   buildAnthropicRequestHeaders,
@@ -88,6 +89,36 @@ function buildFallbackAiChromeHeader(classPrefix, chromeVariant, navLinks, opts 
     ? `<a class="${classPrefix}btn ${classPrefix}btn-reg" href="${gtw}" target="_blank" rel="noopener noreferrer nofollow">Регистрация</a><a class="${classPrefix}btn ${classPrefix}btn-login" href="${gtw}" target="_blank" rel="noopener noreferrer nofollow">Вход</a>`
     : "";
   return `<header class="${classPrefix}site-header"><div class="${classPrefix}header-inner"><a class="${classPrefix}brand" href="./index.php"><img class="${classPrefix}logo lw-logo-img" src="${logo}" alt="${brand}"></a><nav class="${classPrefix}nav" aria-label="Основное меню">${navItems}</nav><div class="${classPrefix}header-actions">${gwBtns}</div></div></header>`;
+}
+
+function isWellFormedChromeFragment(html, tagName) {
+  const s = String(html || "").trim();
+  if (!s) return false;
+  const tag = String(tagName || "").toLowerCase();
+  const openRe = new RegExp(`<${tag}\\b`, "i");
+  const closeRe = new RegExp(`</${tag}\\s*>`, "i");
+  if (!openRe.test(s) || !closeRe.test(s)) return false;
+  const opens = (s.match(openRe) || []).length;
+  const closes = (s.match(closeRe) || []).length;
+  return opens >= 1 && opens === closes;
+}
+
+/** Прибирає header/footer з main (збирач додає їх окремо в body). */
+function stripChromeFromMain(mainHtml) {
+  let out = String(mainHtml || "");
+  out = out.replace(/<header\b[\s\S]*?<\/header>/gi, "");
+  out = out.replace(/<footer\b[\s\S]*?<\/footer>/gi, "");
+  out = out.replace(/<header\b[\s\S]*$/i, "");
+  out = out.replace(/<footer\b[\s\S]*$/i, "");
+  return out.trim();
+}
+
+function ensureMainClosedBeforeChrome(mainHtml) {
+  let out = stripChromeFromMain(mainHtml);
+  const lo = out.toLowerCase();
+  if (!lo.includes("<main")) return out;
+  if (lo.includes("</main>")) return out;
+  return `${out}\n</main>`;
 }
 
 function buildFallbackAiChromeFooter(classPrefix, chromeVariant, navLinks, opts = {}) {
@@ -2899,7 +2930,7 @@ function buildPagePrompt({
 `;
   const uiPolishRuBlock = `
 UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, оформленного как кнопка) в <main> должен быть **видимый русский текст не короче 3 символов** внутри тега (не только SVG/иконка); при необходимости дублируй смысл в aria-label. Не добавляй большой margin-top / padding-top у **первого** крупного блока сразу под <main> — отступ под шапку задаёт **css/chrome.css**; лишний «воздух» сверху выглядит как баг.
-СТИЛИ И АНИМАЦИЯ: в **pageCss** оформи карточки, кнопки, promo-блоки и **все <table>** (рамки, чередование строк, hover, адаптив на узком экране); добавь @keyframes и плавные transition/hover. Контент **на всю ширину** экрана — без узкой колонки ~60–72ch; секции width:100%, сетки на clamp/grid.
+СТИЛИ И АНИМАЦИЯ: в **pageCss** обязательно оформи **headerHtml и footerHtml** (flex, фон, hover, CTA) с префиксом «${classPrefix}»; плюс карточки, promo и **все <table>**. Базовые стили header/footer/секций уже в chrome.css — **дополни** их в pageCss под палитру. Контент на всю ширину; сетки на clamp/grid.
 ТАБЛИЦЫ: если есть сравнение форматов/бонусов — полноценная <table> с <thead>/<tbody>, классы с префиксом «${classPrefix}»; базовые стили таблиц уже в chrome.css, **дополни** их в pageCss под палитру билда.
 `;
   const igamingContentBlock = `
@@ -5982,7 +6013,7 @@ async function generatePageBundle(
         String(data.headerHtml || "").trim()
       );
       if (
-        /<header\b/i.test(cand) &&
+        isWellFormedChromeFragment(cand, "header") &&
         cand.length >= minRefChromeHtmlLen
       ) {
         headerBlock = enforceCanonicalLogoInChromeHtml(
@@ -6023,7 +6054,7 @@ async function generatePageBundle(
         String(data.headerHtml || "").trim()
       );
       if (
-        /<header\b/i.test(cand) &&
+        isWellFormedChromeFragment(cand, "header") &&
         cand.length >= minRefChromeHtmlLen
       ) {
         headerBlock = enforceCanonicalLogoInChromeHtml(
@@ -6043,7 +6074,7 @@ async function generatePageBundle(
       } else {
         emitLog(
           onLog,
-          `«${pageMeta.file}» — нет headerHtml от модели, подставляем компактную AI-шапку.`
+          `«${pageMeta.file}» — нет валидного headerHtml от модели, подставляем компактную AI-шапку.`
         );
         headerBlock = enforceCanonicalLogoInChromeHtml(
           buildFallbackAiChromeHeader(
@@ -6057,6 +6088,15 @@ async function generatePageBundle(
       }
     }
   }
+  const footerBrandName =
+    String(ctx.publicBrandName || "").trim() ||
+    String(ctx.themeBrandHint || "").trim() ||
+    "Бренд";
+  const footerOpts = {
+    brandName: footerBrandName,
+    logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+    footerShowLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
+  };
   if (shell.includeFooter) {
     const navEntries = buildOrderedNavEntries(
       ctx.chromeVariant,
@@ -6066,15 +6106,6 @@ async function generatePageBundle(
       href: e.href,
       label: e.label,
     }));
-    const footerBrandName =
-      String(ctx.publicBrandName || "").trim() ||
-      String(ctx.themeBrandHint || "").trim() ||
-      "Бренд";
-    const footerOpts = {
-      brandName: footerBrandName,
-      logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
-      footerShowLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
-    };
     if (useTemplateChrome && !useRefChromeAssembly) {
       footerBlock = enforceCanonicalLogoInChromeHtml(
         buildBrandFooterHtml({
@@ -6092,8 +6123,7 @@ async function generatePageBundle(
         String(data.footerHtml || "").trim()
       );
       if (
-        (/<footer\b/i.test(cand) ||
-          /\bid\s*=\s*["']footer["']/i.test(cand)) &&
+        isWellFormedChromeFragment(cand, "footer") &&
         cand.length >= minRefChromeHtmlLen
       ) {
         footerBlock = enforceCanonicalLogoInChromeHtml(
@@ -6136,8 +6166,7 @@ async function generatePageBundle(
         String(data.footerHtml || "").trim()
       );
       if (
-        (/<footer\b/i.test(cand) ||
-          /\bid\s*=\s*["']footer["']/i.test(cand)) &&
+        isWellFormedChromeFragment(cand, "footer") &&
         cand.length >= minRefChromeHtmlLen
       ) {
         footerBlock = enforceCanonicalLogoInChromeHtml(
@@ -6159,7 +6188,7 @@ async function generatePageBundle(
       } else {
         emitLog(
           onLog,
-          `«${pageMeta.file}» — нет footerHtml от модели, подставляем компактный AI-подвал.`
+          `«${pageMeta.file}» — нет валидного footerHtml от модели, подставляем компактный AI-подвал.`
         );
         footerBlock = enforceCanonicalLogoInChromeHtml(
           buildFallbackAiChromeFooter(
@@ -6197,7 +6226,37 @@ async function generatePageBundle(
       onLog,
       `Предупреждение: «${pageMeta.file}» — footerHtml без тега <footer>; оборачиваем.`
     );
-    footerBlock = `<footer class="${classPrefix}ai-footer" id="lw-contact">${footerBlock}</footer>`;
+    footerBlock = `<footer class="${classPrefix}ai-footer" id="footer">${footerBlock}</footer>`;
+  }
+  if (shell.includeHeader && (!headerBlock || !isWellFormedChromeFragment(headerBlock, "header"))) {
+    emitLog(
+      onLog,
+      `«${pageMeta.file}» — гарантированная AI-шапка (модель не дала валидный header).`
+    );
+    headerBlock = enforceCanonicalLogoInChromeHtml(
+      buildFallbackAiChromeHeader(
+        classPrefix,
+        ctx.chromeVariant,
+        ctx.navLinks || [],
+        headerChromeOpts
+      ),
+      ctx.logoSrc || LAKI_LOGO_IMG_SRC
+    );
+  }
+  if (shell.includeFooter && (!footerBlock || !isWellFormedChromeFragment(footerBlock, "footer"))) {
+    emitLog(
+      onLog,
+      `«${pageMeta.file}» — гарантированный AI-подвал (модель не дала валидный footer).`
+    );
+    footerBlock = enforceCanonicalLogoInChromeHtml(
+      buildFallbackAiChromeFooter(
+        classPrefix,
+        ctx.chromeVariant,
+        ctx.navLinks || [],
+        footerOpts
+      ),
+      ctx.logoSrc || LAKI_LOGO_IMG_SRC
+    );
   }
   if (headerBlock) {
     headerBlock = rewriteProseGatewayAnchorsInMainToInternal(
@@ -6216,6 +6275,7 @@ async function generatePageBundle(
     );
   }
   let mainRaw = normalizeEscapedHtmlFragment(String(data.mainHtml));
+  mainRaw = ensureMainClosedBeforeChrome(mainRaw);
   mainRaw = rewriteProseGatewayAnchorsInMainToInternal(
     mainRaw,
     pageMeta,
@@ -6263,7 +6323,9 @@ ${footerBlock}
   const mainText = htmlToPlainText(mainOnly);
   return {
     html: finalHtml,
-    css: enforceMainVisualRules(data.pageCss || "", ctx.sitePalette),
+    css: `${enforceMainVisualRules(data.pageCss || "", ctx.sitePalette)}${
+      useTemplateChrome ? "" : `\n\n${buildAiChromeBaselineCss()}`
+    }`,
     js: `${buildInteractionRuntime(
       ctx.gatewayUrl || DEFAULT_GATEWAY_URL
     )}\n\n${String(data.pageJs || "")}`,
