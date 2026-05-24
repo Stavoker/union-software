@@ -121,6 +121,170 @@ function ensureMainClosedBeforeChrome(mainHtml) {
   return `${out}\n</main>`;
 }
 
+/** Обрізаний pageCss ламає весь файл — відсікаємо незакриті правила перед guard-блоком. */
+function repairUnbalancedPageCss(css) {
+  let s = String(css || "");
+  if (!s.trim()) return s;
+  const guardIdx = s.search(/\/\*\s*[a-f0-9]{6,12}\s*\*\//i);
+  const scanEnd = guardIdx >= 0 ? guardIdx : s.length;
+  const head = s.slice(0, scanEnd);
+  let depth = 0;
+  let lastBalanced = 0;
+  for (let i = 0; i < head.length; i++) {
+    const c = head[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth <= 0) {
+        depth = 0;
+        lastBalanced = i + 1;
+      }
+    }
+  }
+  if (depth > 0) {
+    if (lastBalanced > 0) {
+      s = s.slice(0, lastBalanced) + (guardIdx >= 0 ? s.slice(guardIdx) : "");
+    } else if (guardIdx >= 0) {
+      s = s.slice(guardIdx);
+    } else {
+      s = "";
+    }
+  }
+  return s.trim();
+}
+
+/** Відповідь моделі обірвалась посередині main / тега. */
+function isMainHtmlLikelyTruncated(html) {
+  const src = String(html || "").trim();
+  if (!src) return true;
+  if (/<main\b/i.test(src) && !/<\/main>/i.test(src)) return true;
+  if (/[<][^>]*$/.test(src)) return true;
+  const mainInner = (() => {
+    const m = src.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+    if (m) return m[1];
+    const open = src.match(/<main\b[^>]*>([\s\S]*)$/i);
+    return open ? open[1] : src;
+  })();
+  const tail = mainInner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (tail.length < 40) return false;
+  const lastBit = tail.slice(-100);
+  if (/[.!?…»")\]]\s*$/.test(lastBit)) return false;
+  const openTags =
+    (mainInner.match(/<(section|div|article|details|ul|ol|table|p)\b/gi) || [])
+      .length;
+  const closeTags =
+    (mainInner.match(/<\/(section|div|article|details|ul|ol|table|p)>/gi) || [])
+      .length;
+  if (openTags > closeTags) return true;
+  const lastWord = (lastBit.split(" ").pop() || "").trim();
+  if (lastWord.length > 0 && lastWord.length < 14 && /[а-яёa-z]/i.test(lastWord)) {
+    return true;
+  }
+  return false;
+}
+
+function repairCorruptedHtmlMarkup(html) {
+  let out = String(html || "");
+  out = out.replace(
+    /(class=["'][^"']*)["']?\s*smooth['"]?\}\)["']?>/gi,
+    '$1">'
+  );
+  out = out.replace(/<button\b([^>]*?)smooth['"]?\}\)["']?>/gi, "<button$1>");
+  out = out.replace(/\bon\w+\s*=\s*["'][^"']*smooth[^"']*["']/gi, "");
+  return out;
+}
+
+function normalizeGatewayUrlsInHtml(html, gatewayUrl, brandName = "") {
+  const gw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim();
+  if (!gw || !html) return html;
+  let canonical;
+  try {
+    canonical = new URL(gw);
+  } catch {
+    return html;
+  }
+  const brandSlug = String(brandName || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  const gwHost = canonical.host.toLowerCase();
+  return String(html).replace(
+    /\bhref=(["'])([^"']+)\1/gi,
+    (full, q, href) => {
+      const raw = String(href || "").trim();
+      if (!raw || raw.startsWith("./") || raw.startsWith("/") && !raw.startsWith("//")) {
+        return full;
+      }
+      let u;
+      try {
+        u = new URL(raw.includes("://") ? raw : `https://${raw.replace(/^\/\//, "")}`);
+      } catch {
+        return full;
+      }
+      const host = u.host.toLowerCase();
+      const brandGateway =
+        brandSlug && host.includes(`${brandSlug}-gateway`);
+      const wrongGateway =
+        /gateway/i.test(host) && host !== gwHost;
+      if (!wrongGateway && !brandGateway) return full;
+      return `href=${q}${gw}${q}`;
+    }
+  );
+}
+
+function enforceRegistrationCtasToGateway(html, gatewayUrl) {
+  const gw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim();
+  if (!gw || !html) return html;
+  const regText =
+    /регистра|зарегистр|signup|получить\s+бонус|начать\s+играть|создать\s+аккаунт|войти\s+в\s+аккаунт/i;
+  return String(html).replace(
+    /<a\b([^>]*)\bhref=(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi,
+    (full, pre, q, href, post, inner) => {
+      const blob = `${pre} ${post} ${inner}`.replace(/<[^>]+>/g, " ");
+      const isGatewayCta =
+        /\b(lw-cta-solid|lw-cta-outline|lw-btn|lw-cta)\b/i.test(`${pre}${post}`) ||
+        /\b(cta-btn|cta-button|btn-reg|hero-cta|game-card|cta_banner|cta-button)\b/i.test(
+          `${pre}${post}`
+        );
+      const isReg = regText.test(blob);
+      if (!isGatewayCta && !isReg) return full;
+      if (/\.php(\?|#|$)/i.test(href) && !/gateway/i.test(href)) {
+        const cleanPost = String(post || "")
+          .replace(/\s*target\s*=\s*(["'])[^"']*\1/gi, "")
+          .replace(/\s*rel\s*=\s*(["'])[^"']*\1/gi, "");
+        return `<a${pre}href=${q}${gw}${q} target="_blank" rel="noopener noreferrer nofollow"${cleanPost}>${inner}</a>`;
+      }
+      if (/gateway/i.test(href) && href !== gw) {
+        const cleanPost = String(post || "");
+        return `<a${pre}href=${q}${gw}${q}${cleanPost.includes("target=") ? cleanPost : ` target="_blank" rel="noopener noreferrer nofollow"${cleanPost}`}>${inner}</a>`;
+      }
+      return full;
+    }
+  );
+}
+
+async function ensureProjectFaviconIco(imgDir, onLog) {
+  const dir = String(imgDir || "").trim();
+  if (!dir) return;
+  const icoPath = path.join(dir, "favicon.ico");
+  try {
+    await fs.access(icoPath);
+    return;
+  } catch {
+    /* create below */
+  }
+  for (const name of ["favicon.png", "favicon.webp", "Favicon.png", "logo.png"]) {
+    const src = path.join(dir, name);
+    try {
+      await fs.copyFile(src, icoPath);
+      emitLog(onLog, `img/: favicon.ico ← ${name}`);
+      return;
+    } catch {
+      /* try next */
+    }
+  }
+}
+
 function buildFallbackAiChromeFooter(classPrefix, chromeVariant, navLinks, opts = {}) {
   const entries = buildOrderedNavEntries(chromeVariant, navLinks || []);
   const year = new Date().getFullYear();
@@ -3884,6 +4048,15 @@ function rewriteProseGatewayAnchorsInMainToInternal(
   );
 
   const replaceOne = (_full, pre, q, post, inner) => {
+    const attrBlob = `${pre} ${post}`;
+    if (
+      /\b(lw-cta-solid|lw-cta-outline|lw-btn|lw-cta)\b/i.test(attrBlob) ||
+      /\b(cta-btn|cta-button|btn-reg|hero-cta|game-card|cta_banner)\b/i.test(
+        attrBlob
+      )
+    ) {
+      return _full;
+    }
     const target = pickInternalTarget(inner, pre, post);
     const cleanPost = String(post || "")
       .replace(/\s*target\s*=\s*(["'])[^"']*\1/gi, "")
@@ -6258,24 +6431,42 @@ async function generatePageBundle(
       ctx.logoSrc || LAKI_LOGO_IMG_SRC
     );
   }
+  const gwNormOpts = {
+    gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
+    brandName:
+      String(ctx.publicBrandName || "").trim() ||
+      String(ctx.themeBrandHint || "").trim() ||
+      "",
+  };
   if (headerBlock) {
-    headerBlock = rewriteProseGatewayAnchorsInMainToInternal(
+    headerBlock = repairCorruptedHtmlMarkup(headerBlock);
+    headerBlock = normalizeGatewayUrlsInHtml(
       headerBlock,
-      pageMeta,
-      ctx.allPages,
-      ctx.gatewayUrl
+      gwNormOpts.gatewayUrl,
+      gwNormOpts.brandName
+    );
+    headerBlock = enforceRegistrationCtasToGateway(
+      headerBlock,
+      gwNormOpts.gatewayUrl
     );
   }
   if (footerBlock) {
-    footerBlock = rewriteProseGatewayAnchorsInMainToInternal(
+    footerBlock = repairCorruptedHtmlMarkup(footerBlock);
+    footerBlock = normalizeGatewayUrlsInHtml(
       footerBlock,
-      pageMeta,
-      ctx.allPages,
-      ctx.gatewayUrl
+      gwNormOpts.gatewayUrl,
+      gwNormOpts.brandName
     );
   }
   let mainRaw = normalizeEscapedHtmlFragment(String(data.mainHtml));
   mainRaw = ensureMainClosedBeforeChrome(mainRaw);
+  mainRaw = repairCorruptedHtmlMarkup(mainRaw);
+  mainRaw = normalizeGatewayUrlsInHtml(
+    mainRaw,
+    gwNormOpts.gatewayUrl,
+    gwNormOpts.brandName
+  );
+  mainRaw = enforceRegistrationCtasToGateway(mainRaw, gwNormOpts.gatewayUrl);
   mainRaw = rewriteProseGatewayAnchorsInMainToInternal(
     mainRaw,
     pageMeta,
@@ -6321,15 +6512,18 @@ ${footerBlock}
 
   emitLog(onLog, `LLM: «${pageMeta.file}» — ответ получен, сборка файлов страницы`);
   const mainText = htmlToPlainText(mainOnly);
+  const pageCssRaw = repairUnbalancedPageCss(String(data.pageCss || ""));
+  const truncatedMain = isMainHtmlLikelyTruncated(mainOnly);
   return {
     html: finalHtml,
-    css: `${enforceMainVisualRules(data.pageCss || "", ctx.sitePalette)}${
+    css: `${enforceMainVisualRules(pageCssRaw, ctx.sitePalette)}${
       useTemplateChrome ? "" : `\n\n${buildAiChromeBaselineCss()}`
     }`,
     js: `${buildInteractionRuntime(
       ctx.gatewayUrl || DEFAULT_GATEWAY_URL
     )}\n\n${String(data.pageJs || "")}`,
     mainText,
+    truncatedMain,
   };
 }
 
@@ -6666,6 +6860,10 @@ export async function buildMultipageSite({
       onLog,
       `img/: ${imageFiles.length} файл(ов)${imageFiles.length ? ` (${imageFiles.slice(0, 5).join(", ")}${imageFiles.length > 5 ? "…" : ""})` : ""}`
     );
+  }
+  await ensureProjectFaviconIco(imgDir, onLog);
+  if (!imageFiles.includes("favicon.ico")) {
+    imageFiles = [...imageFiles, "favicon.ico"];
   }
 
   const cssDir = path.join(outputDir, "css");
@@ -7263,6 +7461,36 @@ export async function buildMultipageSite({
       i + 1,
       onLog
     );
+    const maxTruncRetries = Math.max(
+      0,
+      Number(process.env.SOFTGEN_TRUNCATED_PAGE_RETRIES ?? 1) || 0
+    );
+    for (let tr = 0; bundle.truncatedMain && tr < maxTruncRetries; tr++) {
+      ensureNotStopped();
+      emitLog(
+        onLog,
+        `Страница «${pageMeta.file}»: обрезанный HTML — повтор ${tr + 1}/${maxTruncRetries}…`
+      );
+      ctx.wordCountRetryCount = Math.max(
+        Number(ctx.wordCountRetryCount) || 0,
+        tr + 1
+      );
+      try {
+        bundle = await generatePageBundle(
+          claudeKey,
+          ctx,
+          pageMeta,
+          i + 1,
+          onLog
+        );
+      } catch (truncErr) {
+        emitLog(
+          onLog,
+          `Предупреждение: «${pageMeta.file}» — повтор после обрезки не удался (${String(truncErr?.message || truncErr).slice(0, 180)})`
+        );
+        break;
+      }
+    }
     const textRegenStages = getTextRegenStages();
     for (let retry = 0; retry < textRegenStages; retry++) {
         ensureNotStopped();
@@ -7313,6 +7541,7 @@ export async function buildMultipageSite({
         const minWordsPage = minWordsTargetForPageFile(pageMeta.file);
         const tooShort = words < minWordsPage;
         const tooLong = words > MAX_PAGE_WORDS;
+        const truncatedMain = Boolean(bundle.truncatedMain);
         const headingBrandMentions = countBrandMentionsInHeadings(
           bundle.html || "",
           ctx.brandTerms || []
@@ -7361,6 +7590,7 @@ export async function buildMultipageSite({
         if (
           !tooShort &&
           !tooLong &&
+          !truncatedMain &&
           !tooSimilar &&
           !tooSimilarCrossBuild &&
           !tooFarFromReference &&
@@ -7376,9 +7606,10 @@ export async function buildMultipageSite({
         ctx.similarityRetryCount = retry + 1;
         if (tooShort) ctx.wordCountRetryCount = retry + 1;
         if (tooLong) ctx.wordCountOverMaxRetryCount = retry + 1;
+        if (truncatedMain) ctx.wordCountRetryCount = retry + 1;
         emitLog(
           onLog,
-          `Страница «${pageMeta.file}»: ${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${textRegenStages}…`
+          `Страница «${pageMeta.file}»: ${truncatedMain ? "обрезанный HTML (нет </main> или обрыв текста); " : ""}${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${textRegenStages}…`
         );
         const mergedAvoid = buildAvoidPhrases([
           ...previousMainTexts,
