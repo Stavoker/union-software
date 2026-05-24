@@ -50,21 +50,32 @@ function normalizeStoredValues(raw) {
   return out;
 }
 
-/** Рядок БД (колонки) → map ENV_KEY → value. */
+import {
+  isAcceptableClaudeApiKey,
+  normalizeClaudeApiKeyInput,
+} from "@/lib/generator-llm-endpoint";
+
+const CLAUDE_KEY_RE = /^CLAUDE_API_KEY_\d+$/i;
+
+export { normalizeClaudeApiKeyInput, isAcceptableClaudeApiKey as isValidClaudeApiKey };
+
+/** Рядок БД: legacy `values` jsonb + колонки; колонки мають пріоритет. */
 export function rowToEnvMap(row) {
   if (!row || typeof row !== "object") {
     return {};
   }
+  let out = {};
   if (row.values && typeof row.values === "object" && !Array.isArray(row.values)) {
-    return normalizeStoredValues(row.values);
+    out = normalizeStoredValues(row.values);
   }
-  const out = {};
   for (const key of INTEGRATION_SETTING_KEYS) {
     const col = envKeyToColumn(key);
+    if (!Object.prototype.hasOwnProperty.call(row, col)) continue;
     const v = row[col];
     if (v === undefined || v === null) continue;
     const s = String(v).trim();
     if (s) out[key] = s;
+    else delete out[key];
   }
   return out;
 }
@@ -110,21 +121,50 @@ export async function withUserIntegrationEnv(userEnv, fn) {
   }
 }
 
-/** Відповідь для UI: секрети не повертаємо, лише configured. */
+/** Маскований прев’ю секрету для UI (повне значення не віддаємо). */
+export function maskSecretForDisplay(value) {
+  const s = String(value || "").trim();
+  if (!s) return "";
+  if (s.length <= 8) return "••••••••";
+  const head = s.slice(0, Math.min(12, Math.floor(s.length / 3)));
+  const tail = s.slice(-4);
+  const hidden = Math.max(4, s.length - head.length - tail.length);
+  return `${head}${"•".repeat(Math.min(hidden, 12))}${tail}`;
+}
+
+/** Env map (CLAUDE_API_KEY_01) або рядок Supabase. */
+function resolveIntegrationValues(stored) {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return {};
+  }
+  const looksLikeEnvMap = INTEGRATION_SETTING_KEYS.some((k) =>
+    Object.prototype.hasOwnProperty.call(stored, k)
+  );
+  if (looksLikeEnvMap) {
+    return normalizeStoredValues(stored);
+  }
+  return rowToEnvMap(stored);
+}
+
+/** Відповідь для UI: storedPreview — що показувати в інпуті; fields — лише під час редагування. */
 export function toPublicSettingsResponse(stored) {
-  const values = rowToEnvMap(stored);
+  const values = resolveIntegrationValues(stored);
   const fields = {};
   const configured = {};
+  const storedPreview = {};
   for (const def of INTEGRATION_SETTING_DEFINITIONS) {
-    const has = !!values[def.key];
+    const raw = values[def.key] || "";
+    const has = !!raw;
     configured[def.key] = has;
     if (!def.secret) {
-      fields[def.key] = values[def.key] || "";
+      fields[def.key] = raw;
+      storedPreview[def.key] = has ? raw : "";
     } else {
       fields[def.key] = "";
+      storedPreview[def.key] = has ? maskSecretForDisplay(raw) : "";
     }
   }
-  return { fields, configured };
+  return { fields, configured, storedPreview };
 }
 
 /** Злиття PATCH з існуючим; порожній secret = не змінювати. */
@@ -142,9 +182,22 @@ export function mergeIntegrationSettings(existing, patch) {
     if (incoming === undefined || incoming === null) {
       continue;
     }
-    const s = String(incoming).trim();
+    let s = String(incoming).trim();
     if (SECRET_KEYS.has(key) && !s) {
       continue;
+    }
+    if (CLAUDE_KEY_RE.test(key) && s) {
+      s = normalizeClaudeApiKeyInput(s);
+      const baseUrl =
+        next.ANTHROPIC_BASE_URL ??
+        current.ANTHROPIC_BASE_URL ??
+        process.env.ANTHROPIC_BASE_URL;
+      if (!isAcceptableClaudeApiKey(s, baseUrl)) {
+        const err = new Error(`INVALID_CLAUDE_KEY:${key}`);
+        err.code = "INVALID_CLAUDE_KEY";
+        err.envKey = key;
+        throw err;
+      }
     }
     if (!s) {
       delete next[key];

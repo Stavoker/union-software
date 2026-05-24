@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSessionUserEmail } from "@/shared/lib/auth/get-session-user";
+import { getSessionUser } from "@/shared/lib/auth/get-session-user";
 
 export const runtime = "nodejs";
 
@@ -7,8 +7,8 @@ export async function POST(
   _req: Request,
   context: { params: Promise<{ jobId: string }> }
 ) {
-  const email = await getSessionUserEmail();
-  if (!email) {
+  const user = await getSessionUser();
+  if (!user?.id) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
@@ -24,12 +24,20 @@ export async function POST(
     );
   }
 
-  const { cancelBuildJob, getBuildJob } = await import("@/src/lib/build-jobs.js");
+  const { cancelBuildJob, getBuildJob, isBuildJobOwnedByUser } = await import(
+    "@/src/lib/build-jobs.js"
+  );
   const job = await getBuildJob(jobId);
   if (!job) {
     return NextResponse.json(
       { ok: false, error: "Job not found" },
       { status: 404 }
+    );
+  }
+  if (!isBuildJobOwnedByUser(job, user.id)) {
+    return NextResponse.json(
+      { ok: false, error: "Forbidden" },
+      { status: 403 }
     );
   }
   await cancelBuildJob(jobId);

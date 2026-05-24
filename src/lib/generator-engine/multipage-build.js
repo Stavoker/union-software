@@ -45,6 +45,21 @@ import {
   uniqueSitePalettePromptBlock,
   uniqueSiteStructurePromptBlock,
 } from "@/src/lib/brand-chrome";
+import {
+  buildAnthropicRequestHeaders,
+  describeClaudeKeyForBuildLog,
+  formatAnthropicHttpError,
+  getAnthropicMessagesUrl,
+  isAcceptableClaudeApiKey,
+} from "@/lib/generator-llm-endpoint";
+import {
+  isCrossBuildMemoryEnabled,
+  isFreeGenerationMode,
+  isPromptRegenEnabled,
+  isPromptRewriteEnabled,
+  isQualityRegenEnabled,
+  usesTemplateChrome,
+} from "@/lib/generator-engine/softgen-flags";
 
 const PROJECTS_DIR = getProjectsDir();
 
@@ -53,6 +68,45 @@ function navHrefForAiPrompt(href) {
   if (h === "/" || h === "") return "./index.php";
   if (/^https?:\/\//i.test(h)) return h;
   return h.startsWith("./") ? h : `./${h.replace(/^\.\//, "")}`;
+}
+
+function buildFallbackAiChromeHeader(classPrefix, chromeVariant, navLinks, opts = {}) {
+  const entries = buildOrderedNavEntries(chromeVariant, navLinks || []);
+  const navItems = entries
+    .map(
+      (e) =>
+        `<a class="${classPrefix}nav-link" href="${navHrefForAiPrompt(e.href)}">${escapeHtmlLite(
+          e.label
+        )}</a>`
+    )
+    .join("");
+  const logo = String(opts.logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC;
+  const brand = escapeHtmlLite(String(opts.brandName || "Бренд").trim() || "Бренд");
+  const gtw = String(opts.gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
+  const showGw = opts.headerShowGatewayCtas !== false;
+  const gwBtns = showGw
+    ? `<a class="${classPrefix}btn ${classPrefix}btn-reg" href="${gtw}" target="_blank" rel="noopener noreferrer nofollow">Регистрация</a><a class="${classPrefix}btn ${classPrefix}btn-login" href="${gtw}" target="_blank" rel="noopener noreferrer nofollow">Вход</a>`
+    : "";
+  return `<header class="${classPrefix}site-header"><div class="${classPrefix}header-inner"><a class="${classPrefix}brand" href="./index.php"><img class="${classPrefix}logo lw-logo-img" src="${logo}" alt="${brand}"></a><nav class="${classPrefix}nav" aria-label="Основное меню">${navItems}</nav><div class="${classPrefix}header-actions">${gwBtns}</div></div></header>`;
+}
+
+function buildFallbackAiChromeFooter(classPrefix, chromeVariant, navLinks, opts = {}) {
+  const entries = buildOrderedNavEntries(chromeVariant, navLinks || []);
+  const year = new Date().getFullYear();
+  const brand = escapeHtmlLite(String(opts.brandName || "Бренд").trim() || "Бренд");
+  const linkItems = entries
+    .slice(0, 5)
+    .map(
+      (e, i) =>
+        `${i > 0 ? '<span class="' + classPrefix + 'footer-sep"> · </span>' : ""}<a href="${navHrefForAiPrompt(e.href)}">${escapeHtmlLite(e.label)}</a>`
+    )
+    .join("");
+  const logo = String(opts.logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC;
+  const showLogo = opts.footerShowLogo !== false;
+  const logoBlock = showLogo
+    ? `<div class="${classPrefix}footer-brand"><img class="${classPrefix}footer-logo lw-footer-logo" src="${logo}" alt="${brand}"></div>`
+    : "";
+  return `<footer class="${classPrefix}site-footer" id="footer"><div class="${classPrefix}footer-inner">${logoBlock}<div class="${classPrefix}footer-links">${linkItems}</div><p class="${classPrefix}footer-copy">© ${year} ${brand}</p></div></footer>`;
 }
 
 function formatNavLayoutForAiPagePrompt(chromeVariant, navLinks) {
@@ -143,7 +197,6 @@ function rewriteImgUrlsForExternalPageCss(cssText) {
 /** Візуальна мова білду: палітра та `./img/` лише з контексту поточної генерації (без копіювання верстки сторонніх сайтів як зразка). */
 const ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const GENERATION_TEMPERATURE = Math.max(
   0.9,
   Math.min(1, Number(process.env.AURORA_GENERATION_TEMPERATURE) || 0.95)
@@ -161,23 +214,17 @@ const JS_FIX_MAX_TOKENS = Math.max(
   1,
   Number(process.env.ANTHROPIC_MAX_TOKENS_JSFIX) || PAGE_MAX_TOKENS
 );
-const PROMPT_REGEN_ENABLED = String(
-  process.env.SOFTGEN_PROMPT_REGEN_ENABLED ?? "1"
-).trim() !== "0";
 const PROMPT_REGEN_MAX_TOKENS = Math.max(
   512,
   Math.min(4096, Number(process.env.SOFTGEN_PROMPT_REGEN_MAX_TOKENS) || 1200)
 );
-const PROMPT_REWRITE_ENABLED = String(
-  process.env.SOFTGEN_PROMPT_REWRITE_ENABLED ?? "1"
-).trim() !== "0";
 /** Якщо 0 — при перегенерації сторінки (quality retry) не викликати Claude rewrite промпта, лише base prompt + entropy/urgency. 1 — як раніше, rewrite на кожній спробі. */
 const PROMPT_REWRITE_PAGE_ON_RETRY = String(
   process.env.SOFTGEN_PROMPT_REWRITE_PAGE_ON_RETRY ?? "0"
 ).trim() !== "0";
 /** Якщо 1 — збірка обов'язково вимагає валідний reference_url + структурний snapshot; інакше кидаємо помилку, щоб не генерувати випадковий каркас. */
 const REQUIRE_REFERENCE_STRUCTURE = String(
-  process.env.SOFTGEN_REQUIRE_REFERENCE_STRUCTURE ?? "1"
+  process.env.SOFTGEN_REQUIRE_REFERENCE_STRUCTURE ?? "0"
 ).trim() !== "0";
 /** Поріг ref-structure (каркас vs знімок); за замовчуванням ~92% — вища схожість з референсом. Env SOFTGEN_REFERENCE_SIMILARITY_THRESHOLD перебиває. */
 const REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD = Math.max(
@@ -633,6 +680,14 @@ function extractHeadFromRaw(rawText) {
   return m ? m[0].trim() : null;
 }
 
+/** Відповідь моделі без mainHtml (типово output≈6 через проксі / обрізання). */
+function isTrivialLayoutModelText(text) {
+  const s = String(text || "").trim();
+  if (s.length < 120) return true;
+  if (!/"mainHtml"\s*:/i.test(s) && !/<main\b/i.test(s)) return true;
+  return false;
+}
+
 /**
  * Парсинг відповіді сторінки: спочатку валідний JSON, інакше евристики + часткові поля.
  */
@@ -713,8 +768,10 @@ async function callClaudeOnly({
 }) {
   const key = String(apiKey || "").trim();
   if (!key) throw new Error("Пустой Claude API key.");
-  if (!key.startsWith("sk-ant-")) {
-    throw new Error("Ожидается Anthropic API key (sk-ant-…).");
+  if (!isAcceptableClaudeApiKey(key)) {
+    throw new Error(
+      "Недопустимый Claude API key. Для Anthropic — sk-ant-…; для локального прокси задайте ANTHROPIC_BASE_URL (напр. http://localhost:3001) и ключ прокси sk-…"
+    );
   }
   if (budgetTracker && Number(budgetTracker.used || 0) >= Number(budgetTracker.budget || 0)) {
     throw new Error(
@@ -743,13 +800,9 @@ async function callClaudeOnly({
       let res;
       let rawText = "";
       try {
-        res = await fetch(ANTHROPIC_URL, {
+        res = await fetch(getAnthropicMessagesUrl(), {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-          },
+          headers: buildAnthropicRequestHeaders(key),
           body: payload,
           signal,
         });
@@ -772,7 +825,7 @@ async function callClaudeOnly({
       }
 
       if (!res.ok) {
-        const msg = `Anthropic HTTP ${res.status}: ${rawText.slice(0, 400)}`;
+        const msg = formatAnthropicHttpError(res.status, rawText);
         const transient =
           res.status === 429 ||
           res.status === 529 ||
@@ -1128,7 +1181,7 @@ const INNER_PAGE_SLUG_POOL = [
   "policy",
 ];
 
-/** Загальна кількість PHP-сторінок сайту (головна + внутрішні), мін 3, макс 4. Завжди є zerkalo.php (дзеркало). */
+/** Загальна кількість PHP-сторінок (головна + внутрішні), мін 3, макс 4. Сторінки з пулу — за темою, без обовʼязкового zerkalo. */
 function pickExpectedMultipageFiles(seed, totalPagesExplicit) {
   let n;
   if (totalPagesExplicit != null && Number.isFinite(Number(totalPagesExplicit))) {
@@ -1137,17 +1190,10 @@ function pickExpectedMultipageFiles(seed, totalPagesExplicit) {
     n = 3 + (siteHash32(`${seed}|pc`) % 2);
   }
   const innerCount = Math.max(1, n - 1);
-  const mustSlug = "zerkalo";
-  const poolSans = INNER_PAGE_SLUG_POOL.filter((s) => s !== mustSlug);
-  const shuffled = shuffleWithSeed([...poolSans], `${seed}|slugs`);
-  const extra = Math.max(0, innerCount - 1);
-  const innerSlugs = [mustSlug, ...shuffled.slice(0, extra)].slice(0, innerCount);
-  const ordered = shuffleWithSeed([...innerSlugs], `${seed}|innerorder`);
-  const inner = ordered.map((s) => `${s}.php`);
-  if (!inner.includes("zerkalo.php")) {
-    inner[0] = "zerkalo.php";
-  }
-  return ["index.php", ...inner];
+  const shuffled = shuffleWithSeed([...INNER_PAGE_SLUG_POOL], `${seed}|slugs`);
+  const inner = shuffled.slice(0, innerCount).map((s) => `${s}.php`);
+  const ordered = shuffleWithSeed([...inner], `${seed}|innerorder`);
+  return ["index.php", ...ordered];
 }
 
 function pickNShuffled(pool, n, seedStr) {
@@ -1354,7 +1400,7 @@ function formatSiblingPlanSummary(allPages, currentFile) {
  * Порядок expectedFiles: головна може бути першою або не першою — inner без index.
  */
 const STRUCTURAL_ARCHETYPE_DEFS = [
-  { id: "cmp-table", hint: "по возможности без <table>: два блока текста или список пар «условие / смысл»; одна компактная таблица только если без неё никак" },
+  { id: "cmp-table", hint: "сравнение в оформленной <table> (thead/tbody) с классами префикса билда; стили таблицы в pageCss + база в chrome.css" },
   { id: "timeline-v", hint: "вертикальный timeline 4–6 пунктов" },
   { id: "myth-fact", hint: "пары «миф / факт»" },
   { id: "glossary", hint: "глоссарий 5–8 терминов" },
@@ -1444,8 +1490,25 @@ const MAIN_WORD_VOLUME_GUIDE = `950–${MAX_PAGE_WORDS}`;
 const PH_MAIN_PLACEHOLDERS_MIN = 50;
 /** Верх орієнтиру кількості маркерів у <main> (у промптах). */
 const PH_MAIN_PLACEHOLDERS_TARGET = 60;
-/** Скільки додаткових спроб перегенерації (обсяг/схожість/бренд/DOM) після першого варіанту сторінки. */
-const TEXT_REGEN_STAGES = 2;
+function getTextRegenStages() {
+  if (!isQualityRegenEnabled()) return 0;
+  return Math.max(
+    0,
+    Math.min(4, Number(process.env.SOFTGEN_TEXT_REGEN_STAGES) || 2)
+  );
+}
+/** Спроби LLM+parse для вёрстки сторінки (1-й запит + повтори при помилці). */
+function getPageLayoutLlmAttempts() {
+  const envAttempts = Number(process.env.SOFTGEN_PAGE_LAYOUT_LLM_ATTEMPTS);
+  if (Number.isFinite(envAttempts) && envAttempts >= 2) {
+    return Math.min(6, Math.max(2, Math.trunc(envAttempts)));
+  }
+  const maxRetries = Math.max(
+    0,
+    Math.min(4, Number(process.env.SOFTGEN_PAGE_LAYOUT_MAX_RETRIES ?? 2) || 2)
+  );
+  return maxRetries + 1;
+}
 const CROSS_BUILD_HISTORY_PAGES = 220;
 const CROSS_BUILD_DOM_SIM_THRESHOLD = 0.43;
 const CROSS_BUILD_CLASS_SIM_THRESHOLD = 0.5;
@@ -2086,7 +2149,7 @@ async function rewritePromptByClaude({
 }) {
   const src = String(basePrompt || "").trim();
   if (!src) return "";
-  if (!PROMPT_REWRITE_ENABLED) return src;
+  if (!isPromptRewriteEnabled()) return src;
   const systemB64 =
     "Ты переписываешь промпт для другой LLM-модели. " +
     "Сохраняй ключевые требования и форматные ограничения, но радикально меняй структуру и формулировки. " +
@@ -2222,22 +2285,19 @@ const SLUG_ROLE_HINTS = {
   policy: "Политика и документы",
 };
 
-function mirrorPageRoleForBrand(brandKey) {
-  const b = String(brandKey || "").trim().toLowerCase();
-  if (b === "lakiworld") {
-    return "Официальное зеркало Лаки Ворлд — рабочий адрес, доступ при блокировке провайдера, безопасный вход и защита от подделок";
-  }
-  return "Официальное зеркало Лаки — рабочий адрес, доступ при блокировке провайдера, безопасный вход и защита от подделок";
+function mirrorPageRoleForBrand(brandName) {
+  const bn = String(brandName || "").trim() || "бренда";
+  return `Официальное зеркало ${bn} — рабочий адрес, доступ при блокировке провайдера, безопасный вход и защита от подделок`;
 }
 
-function defaultRoleForFile(file, brandKey = "") {
+function defaultRoleForFile(file, brandName = "") {
   const lower = String(file || "").toLowerCase();
   if (lower === "index.php" || lower === "index.html") {
     return "Главная — обзор темы, игры, VIP";
   }
   const slug = lower.replace(/\.(php|html)$/i, "");
   if (slug === "zerkalo" || slug === "mirror") {
-    return mirrorPageRoleForBrand(brandKey);
+    return mirrorPageRoleForBrand(brandName);
   }
   if (SLUG_ROLE_HINTS[slug]) return SLUG_ROLE_HINTS[slug];
   return `Тематическая страница: ${slug.replace(/[-_]+/g, " ")}`;
@@ -2259,8 +2319,8 @@ function shouldReplaceArchitectRole(role) {
 function enforceZerkaloPageFocus(page, brandName, brandKey = "") {
   const file = String(page?.file || "").toLowerCase();
   if (file !== "zerkalo.php" && file !== "mirror.php") return page;
-  const mirrorRole = mirrorPageRoleForBrand(brandKey || brandName);
-  const bn = String(brandName || "").trim() || "Лаки";
+  const bn = String(brandName || "").trim() || "Бренд";
+  const mirrorRole = mirrorPageRoleForBrand(bn);
   return {
     ...page,
     role: mirrorRole,
@@ -2370,9 +2430,9 @@ function normalizePagesPlan(rawPages, expectedFiles, opts) {
     const p = map.get(file) || {};
     const h = siteHash32(`${seed}|${file}|${i}`);
     let role =
-      String(p.role || "").trim() || defaultRoleForFile(file, brandKey);
+      String(p.role || "").trim() || defaultRoleForFile(file, brandName);
     if (shouldReplaceArchitectRole(role)) {
-      role = defaultRoleForFile(file, brandKey);
+      role = defaultRoleForFile(file, brandName);
     }
     let title = String(p.title || "").trim();
     if (!title || isSlugStyleSeoTitle(title, file, brandName)) {
@@ -2570,13 +2630,13 @@ function buildArchitectPrompt({
   const internalTag = String(buildNonce || "").slice(0, 12);
   const hk = String(themeBrandHint || "").trim();
   const brandFromTheme = hk || "сформируй из темы читаемое русское имя бренда";
-  const lockBrandNameToHint = /^лаки$/i.test(hk) || /^лаки\s+ворлд$/i.test(hk);
+  const lockBrandNameToHint = Boolean(hk) && !isLegacyLakiBrandLabel(hk);
   const filesArr = Array.isArray(expectedFiles) ? expectedFiles : [];
   const needsMirrorPage = filesArr.some((f) =>
-    /(^|\/)zerkalo\.php$/i.test(String(f))
+    /(^|\/)(zerkalo|mirror)\.php$/i.test(String(f))
   );
   const mirrorArchitectBlock = needsMirrorPage
-    ? `3.4) Файл zerkalo.php обязателен в списке URL: для него в JSON задай role/title/description строго про официальное зеркало и стабильный вход (только русский текст бренда из поля «Бренд из темы», без латиницы в role и без вариантов через «/»): рабочие адреса, блокировки провайдера, безопасный вход, фишинг и подделки; это не страница «о компании» и не общий лендинг.
+    ? `3.4) Если в списке есть zerkalo.php или mirror.php — role/title/description только про зеркало/доступ/безопасный вход (русский текст бренда из «Бренд из темы»).
 `
     : "";
   const architectSkeletonCatalog = buildArchitectSkeletonCatalogBlock();
@@ -2605,7 +2665,7 @@ function buildArchitectPrompt({
 Служебная метка: ${internalTag} (не выводить в тексты сайта).
 URL: ${baseUrl}
 Файлы страниц (строго): ${fileList}
-Обязательные страницы: index.php и zerkalo.php.
+Обязательная страница: index.php. Остальные URL — внутренние разделы под тему «${theme}» (смысл role/title/description должен раскрывать тему, а не шаблон «зеркало»).
 
 ${architectSkeletonCatalog}
 ${randomPolicy}
@@ -2620,10 +2680,11 @@ ${referenceBlendPreamble}
 - Для каждой страницы: file, role, title, description, contentAngle, tone, **layoutVariant**, **sectionOrder**, **mainComponents**, **structuralArchetypeIds** (см. блок «КАРКАС КАЖДОЙ СТРАНИЦЫ» выше).
 - Поле **role** (короткая строка для меню и плана): только **русский** язык, 2–7 слов; **запрещены** латинские слуги вроде onboarding/reviews/payments как единственный текст; **запрещены** варианты названий через «/» (например «X / Y»). Для зеркала — смысл «рабочее зеркало», «доступ», без дублирования бренда латиницей и кириллицей через слэш.
 - Без jsonLd, без комментариев, без лишних полей.
-- zerkalo.php — строго про официальное зеркало/доступ/безопасный вход.
+- Если среди файлов есть zerkalo.php/mirror.php — только про зеркало/доступ; иначе каждая страница раскрывает свой аспект темы.
 - title/description не дублировать между страницами.
 - Поле title: полноценный русский заголовок страницы по теме и role (ориентир 28–90 символов), осмысленный для <title>; ЗАПРЕЩЕНО: «brandName — index», «бренд — имя_файла», латинские slug-и вместо заголовка.
 - Контентные тексты позже должны укладываться в объём: index не меньше ${MIN_INDEX_PAGE_WORDS} слов, остальные не меньше ${MIN_PAGE_WORDS}.
+- Тематика **iGaming / онлайн-казино**: на разных URL раскрывай разные аспекты — приветственные и reload-бонусы, фриспины, кэшбэк, турниры, слоты и live-столы, промокоды, вейджер, RTP, лимиты, VIP-уровни; contentAngle и role должны звучать как реальный игровой портал, а не абстрактная «история компании».
 ${lockBrandNameToHint ? `- Поле **brandName** в корне JSON — строго «${hk}» (бренд задан сборщиком из UI); не подставляй обобщения вроде «Онлайн казино», «Казино онлайн», выдуманные торговые имена.` : ""}
 
 Формат:
@@ -2780,6 +2841,7 @@ function buildPagePrompt({
   navLinks = [],
   gatewayUrl = DEFAULT_GATEWAY_URL,
   logoSrcForPrompt = LAKI_LOGO_IMG_SRC,
+  useTemplateChrome: useTemplateChromeIn = usesTemplateChrome(),
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const logoPrompt =
@@ -2803,7 +2865,25 @@ function buildPagePrompt({
     refFooterTpl.length > REF_CHROME_PROMPT_SNIP
       ? `${refFooterTpl.slice(0, REF_CHROME_PROMPT_SNIP)}\n<!-- … truncated … -->`
       : refFooterTpl;
-  const classPrefix = `p${pageIndex}_${buildNonce.slice(0, 10)}_`;
+  const classPrefix = buildSemanticClassPrefix(
+    themeBrandHint || (brandTerms && brandTerms[0]) || "",
+    pageMeta.file,
+    pageIndex
+  );
+  const allowedImgList = (Array.isArray(imageFiles) ? imageFiles : [])
+    .map((f) => String(f || "").replace(/^\.\/img\//, ""))
+    .filter(Boolean)
+    .join(", ");
+  const brandAssetRules = `
+БРЕНД И АССЕТЫ:
+- Публичный бренд только: «${String(themeBrandHint || "").trim() || "из темы"}». ЗАПРЕЩЕНО: Laki, Лаки, Laki World, ЛАКИ ВОРЛД, laki_world и любые чужие торговые имена.
+- Логотип в chrome: ${logoPrompt}. В <main> не подставляй ./img/laki* и файлы, которых нет в проекте.
+- Допустимые файлы в ./img/ (только они): ${allowedImgList || "logo.png, favicon.png и ассеты бренда"}.
+- alt у изображений — на русском, с названием бренда где уместно.
+- CSS-классы в <main>: префикс «${classPrefix}» + осмысленные суффиксы (hero_title, faq_item, promo_card), НЕ хеши вида p1_e5b60fe2b1_.
+- pageJs: осмысленные имена (gamesTabs, faqAccordion); ЗАПРЕТ function-1223131, var p_e5b60f, однобуквенных обработчиков.
+- Контейнеры: max-width и ровные боковые отступы; текст в <p> с нормальным line-height; img { max-width:100%; height:auto }.
+`;
   const P = {
     bg: sitePaletteIn?.bg ?? BRAND_BG,
     block: sitePaletteIn?.block ?? BRAND_BLOCK,
@@ -2818,7 +2898,16 @@ function buildPagePrompt({
 АНТИ-КЛИШЕ (текст <main>): не используй буквально и не копируй «шаблонные» формулировки, часто повторяемые между лендингами: «без рекламного тумана», «читайте по диагонали», «миллионы за клик», «редакция проверила», «всё по делу / без воды» как рефрен, «честная игра на реальные деньги» как заголовок секции. Вместо этого — конкретные шаги, нейтральный справочный тон, разные метафоры под тему страницы.
 `;
   const uiPolishRuBlock = `
-UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, оформленного как кнопка) в <main> должен быть **видимый русский текст не короче 3 символов** внутри тега (не только SVG/иконка); при необходимости дублируй смысл в aria-label. Не добавляй большой margin-top / padding-top у **первого** крупного блока сразу под <main> — отступ под фиксированную шапку уже задаётся **css/chrome.css**; лишний «воздух» сверху выглядит как баг.
+UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, оформленного как кнопка) в <main> должен быть **видимый русский текст не короче 3 символов** внутри тега (не только SVG/иконка); при необходимости дублируй смысл в aria-label. Не добавляй большой margin-top / padding-top у **первого** крупного блока сразу под <main> — отступ под шапку задаёт **css/chrome.css**; лишний «воздух» сверху выглядит как баг.
+СТИЛИ И АНИМАЦИЯ: в **pageCss** оформи карточки, кнопки, promo-блоки и **все <table>** (рамки, чередование строк, hover, адаптив на узком экране); добавь @keyframes и плавные transition/hover. Контент **на всю ширину** экрана — без узкой колонки ~60–72ch; секции width:100%, сетки на clamp/grid.
+ТАБЛИЦЫ: если есть сравнение форматов/бонусов — полноценная <table> с <thead>/<tbody>, классы с префиксом «${classPrefix}»; базовые стили таблиц уже в chrome.css, **дополни** их в pageCss под палитру билда.
+`;
+  const igamingContentBlock = `
+КОНТЕНТ iGAMING (обязательно в <main>, русский язык):
+- Пиши про **бонусы** (приветственный пакет, reload, кэшбэк, фриспины), **промоакции** и турниры, **слоты** и **live-казино**, лимиты ставок, вейджер, RTP/волатильность — конкретно, с цифрами-ориентирами (диапазоны допустимы).
+- На главной: hero с оффером, блок преимуществ, сравнение форматов игр или бонусов (таблица или карточки), FAQ по выплатам/верификации, CTA на регистрацию.
+- На внутренних страницах — свой угол (платежи, отзывы, правила бонуса, VIP и т.д.), без «сухой хроники бренда» без игрового контекста.
+- Тон: уверенный маркетинг площадки, но без юридических гарантий выигрыша; не копируй один и тот же абзац на все URL.
 `;
   const preferredHero = [
     "./img/banner-1-mob.webp",
@@ -3000,7 +3089,7 @@ HERO НА ГЛАВНОЙ (палитра и img/bg — по правилам б�
   const zerkaloPageHint =
     /zerkalo\.php$/i.test(lowFile) || /mirror\.php$/i.test(lowFile)
       ? `
-СТРАНИЦА-ЗЕРКАЛО (${pageMeta.file}): только про официальное зеркало и доступ (согласуй с брендом из плана — Лаки / Лаки Ворлд): рабочие адреса, что делать при блокировке, DNS/VPN кратко, безопасный вход, как отличить фишинг. Минимум ${minPageWords} слов развёрнутого русского текста в <main> (не короткий лендинг на 2–3 абзаца).
+СТРАНИЦА-ЗЕРКАЛО (${pageMeta.file}): только про официальное зеркало и доступ для бренда «${String(themeBrandHint || "").trim() || "из плана"}»: рабочие адреса, блокировки провайдера, безопасный вход, фишинг. Минимум ${minPageWords} слов в <main>.
 `
       : "";
   const archForPrompt =
@@ -3228,6 +3317,10 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
     refBlend &&
     ((incH && refHeaderTpl.length > 0) ||
       (incF && refFooterTpl.length > 0));
+  const templateChromeMode =
+    useTemplateChromeIn !== false &&
+    usesTemplateChrome() &&
+    !refChromePromptEnabled;
   const chromeNavHrefContract = (() => {
     try {
       const v =
@@ -3285,20 +3378,35 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
       );
     }
     aiChromeBlock = refChromePieces.filter(Boolean).join("\n\n");
-  } else {
+  } else if (templateChromeMode) {
     aiChromeBlock = [
-      `ШАПКА И ПОДВАЛ: **не генерируй** — сборщик подставит единый chrome в формате референс-билдов lw-*: фиксированный **${logoPrompt}** в шапке и подвале (<img>), меню с подчёркиванием, кнопки «Регистрация» и «Вход» на gateway, .lw-quick-btns. ${chromeVariantHint} Не дублируй эту шапку/подвал в <main> и не переопределяй классы chrome в pageCss.`,
-      incH
-        ? `- **headerHtml**: строго пустая строка "". Не дублируй шапку внутри <main>; отступ под фиксированный header задаёт **css/chrome.css** (не добавляй padding-top к <main> в pageCss ради шапки).`
-        : `- **headerHtml**: пустая строка "".`,
-      incF
-        ? `- **footerHtml**: строго пустая строка "". Не дублируй полноценный подвал внутри <main>.`
-        : `- **footerHtml**: пустая строка "".`,
-      `Пункты меню и href на всех страницах сайта (для справки, в шапке/подвале будут такие же):\n${navLayoutPromptBlock || "  (см. план страниц)"}`,
-      `Не включай в **pageCss** оформление классов .lw-header, .lw-footer, .lw-nav, .lw-btn, .lw-quick-btns — это **chrome.css**; в pageCss только контент с префиксом «${classPrefix}».`,
+      `ШАПКА И ПОДВАЛ: **не генерируй** — сборщик подставит единый chrome lw-*: **${logoPrompt}**, меню, кнопки на gateway. ${chromeVariantHint} Не дублируй шапку/подвал в <main>.`,
+      incH ? `- **headerHtml**: "". Отступ под header — **css/chrome.css**.` : `- **headerHtml**: "".`,
+      incF ? `- **footerHtml**: "". ` : `- **footerHtml**: "".`,
+      `Меню (справка):\n${navLayoutPromptBlock || "  (см. план страниц)"}`,
+      `В pageCss — только контент «${classPrefix}*», не .lw-header/.lw-footer/.lw-nav/.lw-btn.`,
     ]
       .filter(Boolean)
       .join("\n");
+  } else {
+    aiChromeBlock = [
+      `ШАПКА И ПОДВАЛ — **уникальные для этого сайта** (НЕ шаблон lw-header/lw-nav/lw-footer):`,
+      incH
+        ? `- **headerHtml**: полный <header class="${classPrefix}…"> с логотипом <img class="… lw-logo-img" src="${logoPrompt}">, навигацией и CTA; стили шапки — в **pageCss** (flex/grid, фон, hover, transition; допустим position:sticky/fixed с padding у body/main в pageCss).`
+        : `- **headerHtml**: "".`,
+      incF
+        ? `- **footerHtml**: полный <footer> с ссылками, копирайтом, при желании «Вверх»/«Связаться»; стили — в **pageCss**.`
+        : `- **footerHtml**: "".`,
+      hdrGateway
+        ? `Кнопки регистрации/входа: href **только** ${gtw}, target="_blank" rel="noopener noreferrer nofollow".`
+        : `Без gateway-кнопок в шапке — добавь уместную CTA на ${gtw} в <main>.`,
+      `Пункты меню (строго href):\n${chromeNavHrefContract || navLayoutPromptBlock || "  (см. план)"}`,
+      `Запрещены классы lw-header, lw-nav, lw-footer, lw-btn, lw-quick-btns. Префикс классов: «${classPrefix}».`,
+      `Анимации: hover на кнопках/карточках/ссылках меню; @keyframes для появления секций в pageCss.`,
+      `Не дублируй header/footer внутри <main>.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   const chromeHeaderFooterJsonRuleLine =
@@ -3306,7 +3414,9 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
       ? "headerHtml и footerHtml — пустые строки; не дублируй шапку в <main> как отдельный <header> на уровне body."
       : refChromePromptEnabled
         ? `Если шапка включена (${incH}), поле **headerHtml** — одна строка с **полным** валидным <header>...</header> (не пустое). Если подвал включен (${incF}), **footerHtml** — полный <footer>...</footer> или эквивалентный блок с id="footer" (не пустое). Не повторяй их дублирующим блоком внутри <main>.`
-        : "headerHtml и footerHtml в JSON — пустые строки \"\" (шапка/подвал подставляются сборщиком); в <main> только контент страницы, без второй шапки/подвала.";
+        : templateChromeMode
+          ? "headerHtml и footerHtml — пустые строки \"\" (lw-шаблон подставит сборщик); в <main> только контент."
+          : `Если шапка (${incH}) / подвал (${incF}) включены — верни **непустые** полные headerHtml/footerHtml; оформи их в pageCss; не используй lw-* классы.`;
   const chromeJsonHeaderFooterLines =
     !incH && !incF
       ? `  "headerHtml": "",
@@ -3316,9 +3426,13 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
         ? `${incH ? `  "headerHtml": "<header class=\\"${classPrefix}ref-h\\">...</header>",` : `  "headerHtml": "",`}
   "mainHtml": "<main class=\\"...\\">...</main> только main",
 ${incF ? `  "footerHtml": "<footer class=\\"${classPrefix}ref-f\\">...</footer>",` : `  "footerHtml": "",`}`
-        : `  "headerHtml": "",
+        : templateChromeMode
+          ? `  "headerHtml": "",
   "mainHtml": "<main class=\\"...\\">...</main> только main",
-  "footerHtml": "",`;
+  "footerHtml": "",`
+          : `${incH ? `  "headerHtml": "<header class=\\"${classPrefix}site-header\\">...</header>",` : `  "headerHtml": "",`}
+  "mainHtml": "<main class=\\"...\\">...</main> только main",
+${incF ? `  "footerHtml": "<footer class=\\"${classPrefix}site-footer\\">...</footer>",` : `  "footerHtml": "",`}`;
 
   return `Ты senior фронтенд-разработчик. Сгенерируй контент ОДНОЙ страницы для статического сайта.
 
@@ -3341,6 +3455,7 @@ Meta description: ${pageMeta.description}
 Тон: ${String(pageMeta.tone || "уникальный тон для этой страницы")}
 SEO ключевые направления: ${keywordHint}
 ${antiClicheRuBlock}
+${igamingContentBlock}
 ${uiPolishRuBlock}
 ${pagePolicy}
 ${refBlend ? buildAiCreativeReferenceBlendBlock(`${buildNonce}|${pageMeta.file}|${structureFingerprint}`) : buildAiCreativeMaxVarietyBlock(`${buildNonce}|${pageMeta.file}|${structureFingerprint}`)}
@@ -3351,6 +3466,7 @@ ${uniqueSiteStructurePromptBlock(pageMeta.file)}
 ${innerPageLayoutAntiBlock}
 ${games}${vip}${sectionImages}${heroExtras}${homeFlowBlock}${pickIndexHeroOpeningModeBlock(structureFingerprint, buildNonce, pageMeta.file, refBlend || refTpl)}${indexHeroVisualRule}
 ${registrationPageHint}${zerkaloPageHint}
+${brandAssetRules}
 ${buildHeadingFormatPromptBlock(pageMeta, brandTerms)}
 ${referenceStrictBlock}
 ${referenceMainSectionContract}
@@ -3362,12 +3478,12 @@ ${uniquenessUrgencyLevel > 0 ? `\nПОВТОРНАЯ ГЕНЕРАЦИЯ (поп�
 - Русский язык для всего пользовательского текста.
 - Семантика: section/article + корректные h1/h2/h3.
 - Объём plain-текста в <main>: ${minPageWords}–${MAX_PAGE_WORDS} слов.
-- Для zerkalo.php фокус только на зеркале/доступе/безопасности.
+- Для zerkalo.php/mirror.php (если есть в плане) — фокус на зеркале/доступе; для остальных URL — свой угол темы «${theme}».
 - Не копируй каркас и формулировки других страниц сайта.
 - ${chromeHeaderFooterJsonRuleLine}
 - В **headHtml** при желании добавь превью для соцсетей: \`<meta property="og:image" content="${logoPrompt}">\` и \`<meta name="twitter:image" content="${logoPrompt}">\` — **тот же путь**, что у логотипа в chrome (без выдуманных URL); сборщик подставит meta, если ты их пропустишь.
 - Если есть изображения, используй только ./img/...; если нет, делай страницу без обязательных картинок.
-- Добавь 2-4 внутренних ссылки между страницами сайта (например index -> zerkalo -> другая страница) как inline-ссылки в тексте абзацев, синий цвет ссылки обязателен; href только ./имя-страницы.php из списка URL сайта, без ${gtw} и без внешних доменов (кроме cdn.tailwindcss.com при необходимости). Чипы вкладок, фильтры игр и навигационные кнопки **вне** #lw-games — тоже только внутренние \`./\*.php\`; шлюз не использовать для переходов между разделами.
+- Добавь 2-4 внутренних ссылки между страницами пакета как inline-ссылки в абзацах (синий цвет); href только ./имя-страницы.php из списка URL этого сайта, без ${gtw} и без внешних доменов (кроме cdn.tailwindcss.com при необходимости). Чипы вкладок и кнопки **вне** #lw-games — тоже только внутренние \`./\*.php\`.
 - Пользовательские CSS-классы начинай с префикса "${classPrefix}".
 - Избегай клише из списка: ${avoidPhrases.length ? avoidPhrases.join(" | ") : "нет ограничений"}.
 
@@ -3874,9 +3990,7 @@ function ensureMultipageHeadPipeline(
   if (!/cdn\.tailwindcss\.com/i.test(h0)) {
     inject.push('<script src="https://cdn.tailwindcss.com"></script>');
   }
-  const logoPreview = String(
-    logoSrc || LAKI_LOGO_IMG_SRC || "./img/laki_world_golden_logo_08-17-2024.webp"
-  ).trim();
+  const logoPreview = String(logoSrc || LAKI_LOGO_IMG_SRC || "./img/logo.png").trim();
   if (!/property=["']og:image["']/i.test(h0) && !/name=["']twitter:image/i.test(h0)) {
     inject.push(
       `<meta property="og:image" content="${logoPreview.replace(/"/g, "&quot;")}">`
@@ -4250,25 +4364,95 @@ function buildSeoKeywordHint(theme, file, role) {
   return `${base}; ${pageFocus}; онлайн казино; безопасная игра; бонусы и фриспины`;
 }
 
-function normalizeLakiBrandName(theme, suggestedName) {
-  const t = String(theme || "").toLowerCase();
-  const s = String(suggestedName || "").trim();
-  const hasLaki = /\b(laki|лаки)\b/i.test(t);
-  const hasWorld = /\b(world|ворлд)\b/i.test(t);
+function isLegacyLakiBrandLabel(text) {
+  return /\b(laki|лаки)(\s+(world|ворлд))?\b/i.test(String(text || ""));
+}
 
-  if (hasLaki && !hasWorld) {
-    return /[а-яё]/i.test(t) ? "Лаки" : "Laki";
-  }
-  if (hasLaki && hasWorld) {
-    return /[а-яё]/i.test(t) ? "Лаки Ворлд" : "Laki World";
-  }
+/** Імʼя бренду для текстів: admin brand → архітектор → тема (без примусу Laki). */
+function resolveBuildBrandName({ themeBrandHint, architectSuggested, theme }) {
+  const hint = String(themeBrandHint || "").trim();
+  const suggested = String(architectSuggested || "").trim();
+  if (hint && !isLegacyLakiBrandLabel(hint)) return hint;
+  if (suggested && !isLegacyLakiBrandLabel(suggested)) return suggested;
+  if (hint) return hint;
+  const fromTheme = deriveBrandHintFromTheme(String(theme || ""));
+  if (fromTheme && !isLegacyLakiBrandLabel(fromTheme)) return fromTheme;
+  return suggested || hint || "Бренд";
+}
 
-  // If Laki cluster isn't explicit, still keep only allowed variants.
-  if (/^лаки\s+ворлд$/i.test(s)) return "Лаки Ворлд";
-  if (/^лаки$/i.test(s)) return "Лаки";
-  if (/^laki world$/i.test(s)) return "Laki World";
-  if (/^laki$/i.test(s)) return "Laki";
-  return "Laki";
+function slugifyBrandForPrefix(brandName) {
+  const slug = String(brandName || "site")
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/[а-яё]/g, (ch) => {
+      const map = {
+        а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
+        и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
+        с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh",
+        щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+      };
+      return map[ch] || "";
+    })
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (slug || "site").slice(0, 14);
+}
+
+/** Семантичний префікс класів (не хеш білда). */
+function buildSemanticClassPrefix(brandName, pageFile, pageIndex) {
+  const brand = slugifyBrandForPrefix(brandName);
+  const page = String(pageFile || "page")
+    .replace(/\.php$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 18);
+  return `${brand}_${page || `p${pageIndex}`}_`;
+}
+
+/**
+ * Прибирає згадки Laki та сторонні ./img/laki_* з HTML; підставляє логотип бренду.
+ */
+function sanitizeBrandLeaksInHtml(html, { brandName, logoSrc, allowedImageNames = [] }) {
+  let out = String(html || "");
+  const brand = String(brandName || "").trim() || "Бренд";
+  const logo = String(logoSrc || "./img/logo.png").trim();
+  const allowed = new Set(
+    (Array.isArray(allowedImageNames) ? allowedImageNames : []).map((f) =>
+      String(f || "")
+        .replace(/^\.\/img\//, "")
+        .toLowerCase()
+    )
+  );
+
+  out = out.replace(
+    /\b(?:laki\s*world|laki\s*ворлд|лаки\s*ворлд|laki|лаки)\b/gi,
+    brand
+  );
+  out = out.replace(/ЛАКИ\s*ВОРЛД/gi, brand);
+
+  out = out.replace(
+    /<img\b([^>]*)\bsrc=["']([^"']+)["']([^>]*)>/gi,
+    (full, pre, src, post) => {
+      const file = String(src || "")
+        .replace(/^\.\/img\//, "")
+        .toLowerCase();
+      if (!file || !/laki/i.test(file)) return full;
+      if (allowed.size && !allowed.has(file)) {
+        const altMatch = /alt=["']([^"']*)["']/i.exec(full);
+        const alt = altMatch ? altMatch[1] : brand;
+        return `<img${pre}src="${logo}" alt="${alt}"${post}>`;
+      }
+      return full;
+    }
+  );
+
+  out = out.replace(
+    /(property=["']og:image["']|name=["']twitter:image["'])\s+content=["'][^"']*laki[^"']*["']/gi,
+    `$1 content="${logo.replace(/"/g, "&quot;")}"`
+  );
+
+  return out;
 }
 
 function htmlToPlainText(html) {
@@ -5378,6 +5562,7 @@ async function generatePageBundle(
     navLinks: ctx.navLinks || [],
     gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
     logoSrcForPrompt: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+    useTemplateChrome: ctx.useTemplateChrome,
   });
 
   let user = userBase;
@@ -5388,7 +5573,7 @@ async function generatePageBundle(
       Number(ctx.wordCountOverMaxRetryCount) || 0
     ) > 0;
   const runPagePromptRewrite =
-    PROMPT_REWRITE_ENABLED &&
+    isPromptRewriteEnabled() &&
     (!pageQualityRetryAttempt || PROMPT_REWRITE_PAGE_ON_RETRY) &&
     !Boolean(ctx.referenceBlendMode) &&
     !pageReferenceTemplateMode;
@@ -5414,7 +5599,7 @@ async function generatePageBundle(
       );
       user = userBase;
     }
-  } else if (PROMPT_REWRITE_ENABLED && pageQualityRetryAttempt) {
+  } else if (isPromptRewriteEnabled() && pageQualityRetryAttempt) {
     emitLog(
       onLog,
       `Prompt rewrite: «${pageMeta.file}» пропущен при перегенерации страницы (SOFTGEN_PROMPT_REWRITE_PAGE_ON_RETRY=0) — base prompt + слои retry`
@@ -5435,7 +5620,8 @@ async function generatePageBundle(
     "Сразу пиши финальный русский текст для людей (без плейсхолдеров @@PHn@@). " +
     "В JSON обязательны ключи headHtml, headerHtml, mainHtml, footerHtml, pageCss, pageJs (headerHtml/footerHtml могут быть \"\" по инструкции user). " +
     `Визуал <main>: уникальная палитра этого билда — полотно ${bgS}, слоты ${cardS}, блоки ${blockS}, акцент ${accS}; шрифт ${fontS}. Не копируй «фирменный» вид других сгенерированных сайтов. Порядок секций и каркас свободные (левые/правые сайдбары, асимметрия, лонгриды — допустимы). Не используй Tailwind bg-slate/bg-zinc/bg-blue для обложки страницы и секций. Минимум декоративных <img> в <main> (не слоты игр): приоритет полноценному тексту в <p>. ` +
-    `Внутри <main> — много содержательных абзацев и списков; ориентир по объёму: не меньше ~${minWordsDs} слов plain-текста.`;
+    `Внутри <main> — много содержательных абзацев и списков; ориентир по объёму: не меньше ~${minWordsDs} слов plain-текста. ` +
+    "Имена в pageJs — человекочитаемые (initFaqToggle, bindPromoCards), не function-12345 и не однобуквенные идентификаторы.";
 
   const systemDeepseekRetry =
     systemDeepseekPage +
@@ -5452,11 +5638,12 @@ async function generatePageBundle(
   let data;
   let lastParseError = null;
   let lastLayoutModelText = "";
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const pageLayoutAttempts = getPageLayoutLlmAttempts();
+  for (let attempt = 1; attempt <= pageLayoutAttempts; attempt++) {
     if (attempt > 1) {
       emitLog(
         onLog,
-        `Повтор запроса «${pageMeta.file}» (${attempt}/2): прошлый ответ модели с битым JSON`
+        `Повтор запроса «${pageMeta.file}» (${attempt - 1}/${pageLayoutAttempts - 1}): прошлый ответ модели с битым JSON или пустой`
       );
     }
     const text = await callDeepseekChat({
@@ -5470,6 +5657,15 @@ async function generatePageBundle(
       budgetTracker: ctx.claudeBudgetTracker,
     });
     lastLayoutModelText = text;
+    if (isTrivialLayoutModelText(text)) {
+      lastParseError = new Error("пустой или слишком короткий ответ модели");
+      data = null;
+      if (attempt < pageLayoutAttempts) {
+        await sleepMs(getRetryDelayMs(attempt));
+        continue;
+      }
+      break;
+    }
     try {
       data = parsePageBundleFromModelText(
         text,
@@ -5481,6 +5677,9 @@ async function generatePageBundle(
     } catch (e) {
       lastParseError = e;
       data = null;
+      if (attempt < pageLayoutAttempts) {
+        await sleepMs(getRetryDelayMs(attempt));
+      }
     }
   }
 
@@ -5721,7 +5920,19 @@ async function generatePageBundle(
   );
 
   const shell = ctx.chromeShell || { includeHeader: true, includeFooter: true };
-  const classPrefix = `p${pageIndex}_${ctx.buildNonce.slice(0, 10)}_`;
+  const classPrefix = buildSemanticClassPrefix(
+    ctx.publicBrandName || ctx.themeBrandHint || "site",
+    pageMeta.file,
+    pageIndex
+  );
+  const brandSanitizeOpts = {
+    brandName:
+      String(ctx.publicBrandName || "").trim() ||
+      String(ctx.themeBrandHint || "").trim() ||
+      "Бренд",
+    logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+    allowedImageNames: ctx.imageFiles || [],
+  };
   const skins =
     ctx.chromeLayoutSkins ||
     pickChromeLayoutSkins(ctx.structureSeed || ctx.siteSeed || "0");
@@ -5737,16 +5948,36 @@ async function generatePageBundle(
   const useRefChromeAssembly =
     refChromeTplPresent &&
     (Boolean(ctx.referenceBlendMode) || pageReferenceTemplateMode);
+  const useTemplateChrome =
+    ctx.useTemplateChrome !== false && usesTemplateChrome();
   const minRefChromeHtmlLen = 48;
   const headerChromeOpts = {
     ...(ctx.chromeContentOptions || {}),
     gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
     logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+    brandAlt:
+      String(ctx.publicBrandName || "").trim() ||
+      String(ctx.themeBrandHint || "").trim() ||
+      "Логотип",
+    brandName:
+      String(ctx.publicBrandName || "").trim() ||
+      String(ctx.themeBrandHint || "").trim() ||
+      "Бренд",
   };
   let headerBlock = "";
   let footerBlock = "";
   if (shell.includeHeader) {
-    if (useRefChromeAssembly && refAsmHdrTpl) {
+    if (useTemplateChrome && !useRefChromeAssembly) {
+      headerBlock = enforceCanonicalLogoInChromeHtml(
+        buildBrandHeaderHtml(
+          ctx.chromeVariant,
+          ctx.navLinks || [],
+          skins.headerSkin,
+          headerChromeOpts
+        ),
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    } else if (useRefChromeAssembly && refAsmHdrTpl) {
       const cand = sanitizeModelChromeFragment(
         String(data.headerHtml || "").trim()
       );
@@ -5758,10 +5989,10 @@ async function generatePageBundle(
           cand,
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
-      } else {
+      } else if (useTemplateChrome) {
         emitLog(
           onLog,
-          `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml от модели, подставляем lw-шапку.`
+          `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем lw-шапку.`
         );
         headerBlock = enforceCanonicalLogoInChromeHtml(
           buildBrandHeaderHtml(
@@ -5772,17 +6003,58 @@ async function generatePageBundle(
           ),
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
+      } else {
+        emitLog(
+          onLog,
+          `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем компактную AI-шапку.`
+        );
+        headerBlock = enforceCanonicalLogoInChromeHtml(
+          buildFallbackAiChromeHeader(
+            classPrefix,
+            ctx.chromeVariant,
+            ctx.navLinks || [],
+            headerChromeOpts
+          ),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
       }
     } else {
-      headerBlock = enforceCanonicalLogoInChromeHtml(
-        buildBrandHeaderHtml(
-          ctx.chromeVariant,
-          ctx.navLinks || [],
-          skins.headerSkin,
-          headerChromeOpts
-        ),
-        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      const cand = sanitizeModelChromeFragment(
+        String(data.headerHtml || "").trim()
       );
+      if (
+        /<header\b/i.test(cand) &&
+        cand.length >= minRefChromeHtmlLen
+      ) {
+        headerBlock = enforceCanonicalLogoInChromeHtml(
+          cand,
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else if (useTemplateChrome) {
+        headerBlock = enforceCanonicalLogoInChromeHtml(
+          buildBrandHeaderHtml(
+            ctx.chromeVariant,
+            ctx.navLinks || [],
+            skins.headerSkin,
+            headerChromeOpts
+          ),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else {
+        emitLog(
+          onLog,
+          `«${pageMeta.file}» — нет headerHtml от модели, подставляем компактную AI-шапку.`
+        );
+        headerBlock = enforceCanonicalLogoInChromeHtml(
+          buildFallbackAiChromeHeader(
+            classPrefix,
+            ctx.chromeVariant,
+            ctx.navLinks || [],
+            headerChromeOpts
+          ),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      }
     }
   }
   if (shell.includeFooter) {
@@ -5794,7 +6066,28 @@ async function generatePageBundle(
       href: e.href,
       label: e.label,
     }));
-    if (useRefChromeAssembly && refAsmFtrTpl) {
+    const footerBrandName =
+      String(ctx.publicBrandName || "").trim() ||
+      String(ctx.themeBrandHint || "").trim() ||
+      "Бренд";
+    const footerOpts = {
+      brandName: footerBrandName,
+      logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+      footerShowLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
+    };
+    if (useTemplateChrome && !useRefChromeAssembly) {
+      footerBlock = enforceCanonicalLogoInChromeHtml(
+        buildBrandFooterHtml({
+          brandName: footerBrandName,
+          variant: ctx.chromeVariant,
+          footerLinks,
+          footerSkin: skins.footerSkin,
+          showFooterLogo: footerOpts.footerShowLogo !== false,
+          logoSrc: footerOpts.logoSrc,
+        }),
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    } else if (useRefChromeAssembly && refAsmFtrTpl) {
       const cand = sanitizeModelChromeFragment(
         String(data.footerHtml || "").trim()
       );
@@ -5807,41 +6100,77 @@ async function generatePageBundle(
           cand,
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
-      } else {
+      } else if (useTemplateChrome) {
         emitLog(
           onLog,
-          `Референс-chrome: «${pageMeta.file}» — нет валидного footerHtml от модели, подставляем lw-подвал.`
+          `Референс-chrome: «${pageMeta.file}» — нет валидного footerHtml, подставляем lw-подвал.`
         );
         footerBlock = enforceCanonicalLogoInChromeHtml(
           buildBrandFooterHtml({
-            brandName:
-              String(ctx.publicBrandName || "").trim() ||
-              String(ctx.themeBrandHint || "").trim() ||
-              "Лаки",
+            brandName: footerBrandName,
             variant: ctx.chromeVariant,
             footerLinks,
             footerSkin: skins.footerSkin,
-            showFooterLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
-            logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
+            showFooterLogo: footerOpts.footerShowLogo !== false,
+            logoSrc: footerOpts.logoSrc,
           }),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else {
+        emitLog(
+          onLog,
+          `Референс-chrome: «${pageMeta.file}» — нет валидного footerHtml, подставляем компактный AI-подвал.`
+        );
+        footerBlock = enforceCanonicalLogoInChromeHtml(
+          buildFallbackAiChromeFooter(
+            classPrefix,
+            ctx.chromeVariant,
+            ctx.navLinks || [],
+            footerOpts
+          ),
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
       }
     } else {
-      footerBlock = enforceCanonicalLogoInChromeHtml(
-        buildBrandFooterHtml({
-          brandName:
-            String(ctx.publicBrandName || "").trim() ||
-            String(ctx.themeBrandHint || "").trim() ||
-            "Лаки",
-          variant: ctx.chromeVariant,
-          footerLinks,
-          footerSkin: skins.footerSkin,
-          showFooterLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
-          logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
-        }),
-        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      const cand = sanitizeModelChromeFragment(
+        String(data.footerHtml || "").trim()
       );
+      if (
+        (/<footer\b/i.test(cand) ||
+          /\bid\s*=\s*["']footer["']/i.test(cand)) &&
+        cand.length >= minRefChromeHtmlLen
+      ) {
+        footerBlock = enforceCanonicalLogoInChromeHtml(
+          cand,
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else if (useTemplateChrome) {
+        footerBlock = enforceCanonicalLogoInChromeHtml(
+          buildBrandFooterHtml({
+            brandName: footerBrandName,
+            variant: ctx.chromeVariant,
+            footerLinks,
+            footerSkin: skins.footerSkin,
+            showFooterLogo: footerOpts.footerShowLogo !== false,
+            logoSrc: footerOpts.logoSrc,
+          }),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else {
+        emitLog(
+          onLog,
+          `«${pageMeta.file}» — нет footerHtml от модели, подставляем компактный AI-подвал.`
+        );
+        footerBlock = enforceCanonicalLogoInChromeHtml(
+          buildFallbackAiChromeFooter(
+            classPrefix,
+            ctx.chromeVariant,
+            ctx.navLinks || [],
+            footerOpts
+          ),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      }
     }
   }
   if (slugScrubRep && String(ctx.projectSlug || "").trim()) {
@@ -5895,7 +6224,7 @@ async function generatePageBundle(
   );
   mainRaw = enforceForBanerUsage(
     mainRaw,
-    `p${pageIndex}_${ctx.buildNonce.slice(0, 10)}_`,
+    classPrefix,
     ctx.imageFiles,
     ctx.sitePalette
   );
@@ -5912,6 +6241,11 @@ async function generatePageBundle(
   if (!mainOnly.toLowerCase().includes("<main")) {
     throw new Error(`Страница ${pageMeta.file}: нет тега <main>.`);
   }
+
+  headBlock = sanitizeBrandLeaksInHtml(headBlock, brandSanitizeOpts);
+  headerBlock = sanitizeBrandLeaksInHtml(headerBlock, brandSanitizeOpts);
+  footerBlock = sanitizeBrandLeaksInHtml(footerBlock, brandSanitizeOpts);
+  mainOnly = sanitizeBrandLeaksInHtml(mainOnly, brandSanitizeOpts);
 
   const withChrome = `<!DOCTYPE html>
 <html lang="ru-RU">
@@ -6007,7 +6341,7 @@ export async function buildPromptPreview({
     referenceBlend: referenceLockedPreview,
   });
 
-  const promptRemixOverlay = PROMPT_REGEN_ENABLED
+  const promptRemixOverlay = isPromptRegenEnabled()
     ? referenceLockedPreview
       ? "REMIX NOTE: при реальной сборке с активным ref-structure prompt remix **отключён**, entropy — тоже; приоритет у **зеркала каркаса** референса."
       : "REMIX NOTE: при реальной сборке этот блок дополнительно перегенерируется через Claude (prompt remix), поэтому финальный промпт в job будет отличаться от preview."
@@ -6055,7 +6389,11 @@ export async function buildPromptPreview({
   });
 
   let pages = normalizePagesPlan([], expectedFiles, {
-    brandName: normalizeLakiBrandName(themeNorm, themeBrandHintEarly),
+    brandName: resolveBuildBrandName({
+      themeBrandHint: themeBrandHintEarly,
+      architectSuggested: "",
+      theme: themeNorm,
+    }),
     themeNorm,
     seed: structureSeed,
   });
@@ -6105,7 +6443,11 @@ export async function buildPromptPreview({
     projectSlug: safeName,
     buildNonce,
   });
-  const brandName = normalizeLakiBrandName(themeNorm, themeBrandHintEarly);
+  const brandName = resolveBuildBrandName({
+    themeBrandHint: themeBrandHintEarly,
+    architectSuggested: "",
+    theme: themeNorm,
+  });
   const previewNavLinks = buildNavLinkMap(pages, structureSeed);
   const previewNavLayout = formatNavLayoutForAiPagePrompt(
     chromeVariant,
@@ -6154,6 +6496,7 @@ export async function buildPromptPreview({
     navLinks: previewNavLinks,
     gatewayUrl: previewGatewayUrl,
     logoSrcForPrompt: LAKI_LOGO_IMG_SRC,
+    useTemplateChrome: usesTemplateChrome(),
   });
 
   let pagePrompt = pagePromptBase;
@@ -6196,6 +6539,7 @@ export async function buildMultipageSite({
   shouldStop,
   pageCount: pageCountInput,
   brandKey: brandKeyInput,
+  brandKit: brandKitInput = null,
   referenceTemplateMode: referenceTemplateModeInput = false,
 }) {
   const ensureNotStopped = () => {
@@ -6222,7 +6566,7 @@ export async function buildMultipageSite({
   emitLog(onLog, `Базовый URL: ${baseUrl}`);
   emitLog(
     onLog,
-    `Ключи: Claude ${maskApiKey(claudeKey)} (${claudeKey ? "есть" : "нет"}, ожидается sk-ant-…)`
+    `Ключи: Claude ${maskApiKey(claudeKey)} (${describeClaudeKeyForBuildLog(claudeKey)})`
   );
   const shouldStopJob = () =>
     Boolean(typeof shouldStop === "function" && shouldStop());
@@ -6235,11 +6579,32 @@ export async function buildMultipageSite({
   await fs.mkdir(outputDir, { recursive: true });
 
   const imgDir = path.join(outputDir, "img");
-  const imageFiles = await copyImgGenToProject(imgDir);
-  emitLog(
-    onLog,
-    `Скопировано файлов в img/: ${imageFiles.length}${imageFiles.length ? ` (${imageFiles.slice(0, 5).join(", ")}${imageFiles.length > 5 ? "…" : ""})` : ""}`
-  );
+  const brandKit =
+    brandKitInput && typeof brandKitInput === "object" ? brandKitInput : null;
+  let imageFiles;
+  if (brandKit?.userId) {
+    const { materializeBrandImagesForBuild } = await import(
+      "@/lib/generator-brand-kit.js"
+    );
+    imageFiles = await materializeBrandImagesForBuild({
+      userId: brandKit.userId,
+      brandKit,
+      projectImgDir: imgDir,
+      onLog,
+    });
+  } else {
+    imageFiles = await copyImgGenToProject(imgDir);
+    emitLog(
+      onLog,
+      `Скопировано файлов в img/: ${imageFiles.length}${imageFiles.length ? ` (${imageFiles.slice(0, 5).join(", ")}${imageFiles.length > 5 ? "…" : ""})` : ""}`
+    );
+  }
+  if (brandKit?.userId && imageFiles.length) {
+    emitLog(
+      onLog,
+      `img/: ${imageFiles.length} файл(ов)${imageFiles.length ? ` (${imageFiles.slice(0, 5).join(", ")}${imageFiles.length > 5 ? "…" : ""})` : ""}`
+    );
+  }
 
   const cssDir = path.join(outputDir, "css");
   const jsDir = path.join(outputDir, "js");
@@ -6295,7 +6660,12 @@ export async function buildMultipageSite({
     onLog,
     `Claude-only: бюджет ~${SITE_CLAUDE_OUTPUT_BUDGET} output-токенов на сайт → архитектор max≈${claudeArchitectCap}, на страницу max≈${claudePagePassCap} (${pageCountForBudget} стр.)`
   );
-  const themeBrandHintEarly = resolveThemeBrandHint(themeNorm, brandKeyNorm);
+  const themeBrandHintEarly = brandKit?.brandName
+    ? String(brandKit.brandName).trim()
+    : resolveThemeBrandHint(themeNorm, brandKeyNorm);
+  if (brandKit?.brandName) {
+    emitLog(onLog, `Бренд клиента (admin): «${themeBrandHintEarly}»`);
+  }
   const referenceTemplateModeWanted =
     REFERENCE_TEMPLATE_MODE_DEFAULT || Boolean(referenceTemplateModeInput);
 
@@ -6410,7 +6780,7 @@ export async function buildMultipageSite({
   }
 
   let promptRemixOverlay = "";
-  if (PROMPT_REGEN_ENABLED && !referenceLocked) {
+  if (isPromptRegenEnabled() && !referenceLocked) {
     try {
       emitLog(
         onLog,
@@ -6443,11 +6813,17 @@ export async function buildMultipageSite({
       promptRemixOverlay = "";
     }
   }
+  const brandPromptOverlay = brandKit?.promptOverlay
+    ? sanitizePromptOverlayText(
+        `БРЕНД КЛИЕНТА (настройки admin):\n${brandKit.promptOverlay}`
+      )
+    : "";
   const finalPromptOverlay = [
     sanitizePromptOverlayText(promptProfileOverlay),
     sanitizePromptOverlayText(referenceSiteOverlay),
     sanitizePromptOverlayText(referenceStructureOverlay),
     sanitizePromptOverlayText(promptRemixOverlay),
+    brandPromptOverlay,
     ...(referenceLocked
       ? []
       : [
@@ -6633,11 +7009,13 @@ export async function buildMultipageSite({
       }
     }
   }
-  const brandName = normalizeLakiBrandName(
-    themeNorm,
-    publicBrandLabelFromBrandKey(brandKeyNorm) ||
-      String(plan?.brandName != null ? plan.brandName : "").trim()
-  );
+  const brandName = resolveBuildBrandName({
+    themeBrandHint: themeBrandHintEarly,
+    architectSuggested:
+      publicBrandLabelFromBrandKey(brandKeyNorm) ||
+      String(plan?.brandName != null ? plan.brandName : "").trim(),
+    theme: themeNorm,
+  });
   if (plan && typeof plan === "object") {
     plan.brandName = brandName;
   }
@@ -6645,7 +7023,9 @@ export async function buildMultipageSite({
     onLog,
     `План сайта получен. Бренд: «${String(brandName || "—").slice(0, 80)}»`
   );
-  const sitePalette = { ...FIXED_SITE_PALETTE };
+  const sitePalette = brandKit?.palette
+    ? { ...FIXED_SITE_PALETTE, ...brandKit.palette }
+    : { ...FIXED_SITE_PALETTE };
   const chromeVariant = pickBrandChromeVariant(
     `${safeName}|${themeNorm}|${buildNonce}|${wid}|${structureSalt}`
   );
@@ -6699,12 +7079,13 @@ export async function buildMultipageSite({
   const chromeLayoutSkins = pickChromeLayoutSkins(structureSeed);
   const chromeContentOptions =
     pickChromeHeaderFooterOptions(structureSeed);
+  const templateChromeEnabled = usesTemplateChrome();
   emitLog(
     onLog,
-    `Chrome: шапка/подвал — бренд (логотип ${logoSrcForBuild}, скины h${chromeLayoutSkins.headerSkin}/f${chromeLayoutSkins.footerSkin}); <header>=${chromeShell.includeHeader ? "да" : "нет"}, <footer>=${chromeShell.includeFooter ? "да" : "нет"}; gateway-кнопки в шапке=${chromeContentOptions.headerShowGatewayCtas ? "да" : "нет"}, лого в футере=${chromeContentOptions.footerShowLogo ? "да" : "нет"}`
+    `Chrome: ${templateChromeEnabled ? "lw-шаблон" : "уникальный AI chrome"} (логотип ${logoSrcForBuild}${templateChromeEnabled ? `, скины h${chromeLayoutSkins.headerSkin}/f${chromeLayoutSkins.footerSkin}` : ""}); <header>=${chromeShell.includeHeader ? "да" : "нет"}, <footer>=${chromeShell.includeFooter ? "да" : "нет"}; gateway в шапке=${chromeContentOptions.headerShowGatewayCtas ? "да" : "нет"}`
   );
   const chromeCss = getBrandChromeCss(chromeVariant, sitePalette, {
-    chromeMode: "full",
+    chromeMode: templateChromeEnabled ? "full" : "palette-only",
     layoutSkins: chromeLayoutSkins,
     cssDiversifyKey: `${structureSeed}|${buildNonce}|${safeName}`,
   });
@@ -6777,6 +7158,7 @@ export async function buildMultipageSite({
     referenceStructureSignals,
     referenceBlendMode: referenceLocked,
     referenceTemplateMode: referenceTemplateModeEnabled,
+    useTemplateChrome: templateChromeEnabled,
   };
 
   const results = [];
@@ -6784,18 +7166,31 @@ export async function buildMultipageSite({
   const previousDomSignatures = [];
   const previousClassRhythmSignatures = [];
   const previousDepthHistSignatures = [];
-  const crossBuildHistory = await loadCrossBuildSignatureMemory();
+  const crossBuildHistory = isCrossBuildMemoryEnabled()
+    ? await loadCrossBuildSignatureMemory()
+    : [];
   const crossBuildFresh = [];
-  emitLog(
-    onLog,
-    `Анти-дубликат: загружено сигнатур прошлых страниц ${crossBuildHistory.length}`
-  );
+  if (isCrossBuildMemoryEnabled()) {
+    emitLog(
+      onLog,
+      `Анти-дубликат (между сайтами): загружено сигнатур ${crossBuildHistory.length}`
+    );
+  } else if (isFreeGenerationMode()) {
+    emitLog(
+      onLog,
+      "Свободная генерация: без quality-regen, памяти прошлых сайтов и LLM remix/rewrite промптов; уникальность — seed/manifest/палитра этого билда."
+    );
+  } else {
+    emitLog(onLog, "Память каркасов прошлых сайтов: выключена (SOFTGEN_CROSS_BUILD_MEMORY_ENABLED=0)");
+  }
   await writeBuildProgress(outputDir, pages.length, 0);
   for (let i = 0; i < pages.length; i++) {
     ensureNotStopped();
     const pageMeta = pages[i];
     ctx.minPageWords = minWordsTargetForPageFile(pageMeta.file);
-    ctx.avoidPhrases = buildAvoidPhrases(previousMainTexts);
+    ctx.avoidPhrases = isQualityRegenEnabled()
+      ? buildAvoidPhrases(previousMainTexts)
+      : [];
     ctx.similarityRetryCount = 0;
     ctx.wordCountRetryCount = 0;
     ctx.wordCountOverMaxRetryCount = 0;
@@ -6806,7 +7201,8 @@ export async function buildMultipageSite({
       i + 1,
       onLog
     );
-    for (let retry = 0; retry < TEXT_REGEN_STAGES; retry++) {
+    const textRegenStages = getTextRegenStages();
+    for (let retry = 0; retry < textRegenStages; retry++) {
         ensureNotStopped();
         const maxSim = previousMainTexts.length
           ? Math.max(
@@ -6920,7 +7316,7 @@ export async function buildMultipageSite({
         if (tooLong) ctx.wordCountOverMaxRetryCount = retry + 1;
         emitLog(
           onLog,
-          `Страница «${pageMeta.file}»: ${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${TEXT_REGEN_STAGES}…`
+          `Страница «${pageMeta.file}»: ${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${textRegenStages}…`
         );
         const mergedAvoid = buildAvoidPhrases([
           ...previousMainTexts,
@@ -6939,13 +7335,21 @@ export async function buildMultipageSite({
           "надежный",
           "простой",
         ].slice(0, 40);
-        bundle = await generatePageBundle(
-          claudeKey,
-          ctx,
-          pageMeta,
-          i + 1,
-          onLog
-        );
+        try {
+          bundle = await generatePageBundle(
+            claudeKey,
+            ctx,
+            pageMeta,
+            i + 1,
+            onLog
+          );
+        } catch (regenErr) {
+          emitLog(
+            onLog,
+            `Предупреждение: «${pageMeta.file}» — перегенерация ${retry + 1}/${textRegenStages} не удалась (${String(regenErr?.message || regenErr).slice(0, 220)}); сохраняем последнюю успешную версию страницы`
+          );
+          break;
+        }
       }
 
     bundle = await tryClampPageHtmlMainToMaxWordCount({
@@ -7047,7 +7451,9 @@ export async function buildMultipageSite({
     JSON.stringify(manifest, null, 2),
     "utf8"
   );
-  await saveCrossBuildSignatureMemory([...crossBuildHistory, ...crossBuildFresh]);
+  if (isCrossBuildMemoryEnabled()) {
+    await saveCrossBuildSignatureMemory([...crossBuildHistory, ...crossBuildFresh]);
+  }
   await fs.rm(path.join(outputDir, AURORA_BUILD_PROGRESS), { force: true });
 
   emitLog(onLog, `Готово. Страницы: ${results.join(", ")}`);

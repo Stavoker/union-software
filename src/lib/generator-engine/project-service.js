@@ -212,6 +212,7 @@ export async function buildProject(opts) {
       shouldStop: opts.shouldStop,
       pageCount: opts.pageCount,
       brandKey: opts.brandKey,
+      brandKit: opts.brandKit || null,
       referenceTemplateMode: Boolean(opts.referenceTemplateMode),
     });
     // buildMultipageSite очищает outputDir в начале — meta из /jobs/start удаляется.

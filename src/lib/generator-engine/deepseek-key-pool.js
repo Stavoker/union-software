@@ -3,6 +3,24 @@
  * Назва файла збережена для зворотної сумісності імпортів.
  */
 
+import { getAnthropicBaseUrl, isAcceptableClaudeApiKey } from "@/lib/generator-llm-endpoint";
+
+function maskKeyHint(key) {
+  const s = String(key || "").trim();
+  if (!s) return "(пусто)";
+  if (s.length <= 12) return `${s.slice(0, 4)}…`;
+  return `${s.slice(0, 10)}…${s.slice(-4)}`;
+}
+
+/** Скинути кеш після оновлення Settings / process.env. */
+export function resetPairedLlmPool() {
+  delete globalThis.__auroraPairedLlmPoolState;
+  const lease = globalThis.__auroraPairedLlmLeaseState;
+  if (lease && typeof lease === "object") {
+    lease.active = 0;
+  }
+}
+
 function parsePairedKeysFromEnv() {
   const claudeRows = Object.entries(process.env)
     .filter(([k]) =>
@@ -25,9 +43,14 @@ function parsePairedKeysFromEnv() {
 
   const pairs = [];
   for (const row of claudeRows) {
-    if (!String(row.key).startsWith("sk-ant-")) {
+    if (!isAcceptableClaudeApiKey(row.key)) {
+      const base = getAnthropicBaseUrl();
       throw new Error(
-        `${row.envKey} должен начинаться с sk-ant- (Anthropic API key).`
+        `${row.envKey}: недопустимый ключ (${maskKeyHint(row.key)}). ` +
+          (base.includes("api.anthropic.com")
+            ? `Для прямого Anthropic нужен sk-ant-api03-… (console.anthropic.com). ` +
+              `Для локального прокси (sk-3ea6a6b4…) задайте ANTHROPIC_BASE_URL=http://localhost:3001 в Settings → Генератор.`
+            : `Проверьте ключ прокси и ANTHROPIC_BASE_URL=${base}.`)
       );
     }
     pairs.push({

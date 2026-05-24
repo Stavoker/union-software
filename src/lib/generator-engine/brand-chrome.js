@@ -21,12 +21,15 @@ export const DEFAULT_GATEWAY_URL =
 /** @deprecated Використовуйте `resolveGatewayUrlForBuild` у збірці multipage; константа = DEFAULT. */
 export const GATEWAY_URL = DEFAULT_GATEWAY_URL;
 
-/** Фіксований логотип Laki у `img/` (хедер/футер шаблону або AI-верстці). */
-export const LAKI_LOGO_IMG_SRC = "./img/laki_world_golden_logo_08-17-2024.webp";
+/** Fallback, якщо в `img/` немає жодного файлу (legacy imgGen). */
+export const LAKI_LOGO_IMG_SRC = "./img/logo.png";
 
 /** Кандидати логотипу в порядку пріоритету (перший наявний у `img/` проєкту). */
 export const BRAND_LOGO_FILENAME_CANDIDATES = [
-  "laki_world_golden_logo_08-17-2024.webp",
+  "logo.png",
+  "logo.webp",
+  "logo.jpg",
+  "Logo.png",
 ];
 
 /**
@@ -66,12 +69,25 @@ export function pickLogoSrcForBuild(imageFiles, seedStr) {
       .replace(/^\.\/img\//, "")
       .trim()
   );
-  const available = BRAND_LOGO_FILENAME_CANDIDATES.filter((n) =>
-    n ? normalized.includes(n) : false
+  if (!normalized.length) return LAKI_LOGO_IMG_SRC;
+
+  const isLakiAsset = (name) => /laki/i.test(String(name || ""));
+
+  for (const candidate of BRAND_LOGO_FILENAME_CANDIDATES) {
+    if (candidate && normalized.includes(candidate)) {
+      return `./img/${candidate}`;
+    }
+  }
+
+  const logoLike = normalized.find(
+    (n) => /logo/i.test(n) && !isLakiAsset(n)
   );
-  if (!available.length) return LAKI_LOGO_IMG_SRC;
-  const idx = hashString(String(seedStr || "logo")) % available.length;
-  return `./img/${available[idx]}`;
+  if (logoLike) return `./img/${logoLike}`;
+
+  const safe = normalized.filter((n) => n && !isLakiAsset(n));
+  const pool = safe.length ? safe : normalized;
+  const idx = hashString(String(seedStr || "logo")) % pool.length;
+  return `./img/${pool[idx]}`;
 }
 
 /**
@@ -249,6 +265,9 @@ export function buildBrandHeaderHtml(
     String(opts?.gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const logoSrc =
     String(opts?.logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC;
+  const logoAlt = escapeHtml(
+    String(opts?.brandAlt || opts?.brandName || "Логотип").trim() || "Логотип"
+  );
   const navItems = buildOrderedNavEntries(variant, navLinks).map(
     (e) =>
       `<a href="${e.href}" class="lw-nav-link">${escapeHtml(e.label)}</a>`
@@ -264,7 +283,7 @@ export function buildBrandHeaderHtml(
   return `<header class="lw-header lw-header--sk${sk}">
   <div class="lw-header-inner lw-header-inner--${cfg.id} lw-header-inner--sk${sk}${innerExtra}">
     <a href="index.php" class="lw-logo" aria-label="Главная">
-      <img src="${escapeHtml(logoSrc)}" alt="ЛАКИ ВОРЛД" class="lw-logo-img">
+      <img src="${escapeHtml(logoSrc)}" alt="${logoAlt}" class="lw-logo-img">
     </a>
     <nav class="lw-nav lw-nav--${cfg.navStyle}" aria-label="Основное меню">${navItems.join("")}</nav>
     ${actionsHtml}
@@ -301,7 +320,7 @@ export function buildBrandFooterHtml({
     .join("\n      ");
   const logoBlock = showFooterLogo
     ? `<div class="lw-footer-brand" aria-hidden="true">
-      <img src="${escapeHtml(logoImg)}" alt="ЛАКИ ВОРЛД" class="lw-footer-logo">
+      <img src="${escapeHtml(logoImg)}" alt="${brand}" class="lw-footer-logo">
     </div>`
     : "";
   const footerMod = showFooterLogo ? "" : " lw-footer--no-logo";
@@ -466,6 +485,137 @@ function buildChromeLayoutSkinCss(headerSkin, footerSkin) {
 }
 
 /**
+ * Базові стилі контенту: на всю ширину, оформлені таблиці, легкі анімації.
+ * @param {{ fixedHeader?: boolean, mainPadExtra?: number }} [opts]
+ */
+export function buildSiteEnhancementCss(opts = {}) {
+  const fixedHeader = Boolean(opts.fixedHeader);
+  const mainPadExtra = Number(opts.mainPadExtra) || 0;
+  const headerPad = fixedHeader
+    ? `padding-top: calc(var(--lw-header-h, 72px) + 18px + ${mainPadExtra}px);`
+    : "padding-top: clamp(20px, 3vw, 36px);";
+
+  return `
+/* site enhancement: full-width layout, tables, motion */
+main {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  ${headerPad}
+  padding-left: clamp(16px, 3.5vw, 48px);
+  padding-right: clamp(16px, 3.5vw, 48px);
+  padding-bottom: clamp(40px, 6vw, 72px);
+}
+
+main p,
+main li,
+main blockquote,
+main .lead,
+main [class*="lead"] {
+  line-height: 1.68;
+  margin: 0 0 1rem;
+  max-width: none;
+}
+
+main h1,
+main h2,
+main h3,
+main h4 {
+  line-height: 1.22;
+  margin: 0 0 0.75rem;
+}
+
+main img {
+  max-width: 100%;
+  height: auto;
+}
+
+main section,
+main article {
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+main table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1.25rem 0 1.75rem;
+  font-size: clamp(0.82rem, 1.6vw, 0.95rem);
+  background: color-mix(in srgb, var(--lw-block, #232d1b) 58%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38);
+}
+
+main table thead th,
+main table tr:first-child th {
+  background: color-mix(in srgb, var(--lw-accent, #ffe14a) 20%, var(--lw-block, #232d1b));
+  color: var(--lw-text, #fff);
+  font-weight: 700;
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 2px solid color-mix(in srgb, var(--lw-accent, #ffe14a) 42%, transparent);
+}
+
+main table td,
+main table th {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  vertical-align: top;
+}
+
+main table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+main table tbody tr:hover td {
+  background: color-mix(in srgb, var(--lw-accent, #ffe14a) 10%, transparent);
+  transition: background 0.22s ease;
+}
+
+main table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 720px) {
+  main table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@keyframes site-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+main > section,
+main > article {
+  animation: site-fade-up 0.55s ease both;
+}
+
+main a:not(.lw-btn):not([class*="btn"]) {
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main > section,
+  main > article {
+    animation: none;
+  }
+}
+`;
+}
+
+/**
  * @param {object|null} opts
  * @param {{ headerSkin?: number, footerSkin?: number }|null} [opts.layoutSkins] — лише для chromeMode "full"
  * @param {"full"|"palette-only"} [opts.chromeMode] — "palette-only": без жорстких .lw-header/.lw-footer (шапка/підвал від LLM)
@@ -549,6 +699,7 @@ img.lw-footer-logo {
   width: auto;
   object-fit: contain;
 }
+${buildSiteEnhancementCss()}
 `;
   }
 
@@ -743,10 +894,7 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 6px 18px rgba(0,0,0,0.25);
 }
 
-/* отступ под фиксированный header (+ extra для «високих» скінів) */
-main {
-  padding-top: calc(var(--lw-header-h) + 18px + var(--lw-main-pad-extra, 0px));
-}
+${buildSiteEnhancementCss({ fixedHeader: true, mainPadExtra })}
 
 .lw-footer {
   background: var(--lw-bg);

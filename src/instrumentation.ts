@@ -13,4 +13,19 @@ export async function register() {
   if (typeof process.env.SOFTGEN_REFERENCE_TEMPLATE_MODE === "undefined") {
     process.env.SOFTGEN_REFERENCE_TEMPLATE_MODE = "0";
   }
+  if (typeof process.env.SOFTGEN_QUALITY_REGEN_ENABLED === "undefined") {
+    process.env.SOFTGEN_QUALITY_REGEN_ENABLED = "0";
+  }
+  if (typeof process.env.SOFTGEN_CROSS_BUILD_MEMORY_ENABLED === "undefined") {
+    process.env.SOFTGEN_CROSS_BUILD_MEMORY_ENABLED = "0";
+  }
+  if (typeof process.env.SOFTGEN_PROMPT_REGEN_ENABLED === "undefined") {
+    process.env.SOFTGEN_PROMPT_REGEN_ENABLED = "0";
+  }
+  if (typeof process.env.SOFTGEN_PROMPT_REWRITE_ENABLED === "undefined") {
+    process.env.SOFTGEN_PROMPT_REWRITE_ENABLED = "0";
+  }
+  if (typeof process.env.SOFTGEN_TEMPLATE_CHROME === "undefined") {
+    process.env.SOFTGEN_TEMPLATE_CHROME = "0";
+  }
 }

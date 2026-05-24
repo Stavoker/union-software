@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getAppRoot } from "@/src/lib/app-paths";
+import { isCrossBuildMemoryEnabled } from "@/lib/generator-engine/softgen-flags";
 
 const ARCHETYPES = [
   "editorial_asymmetric",
@@ -250,7 +251,21 @@ async function saveMemory(rows) {
   await fs.writeFile(file, JSON.stringify(sliced, null, 2), "utf8");
 }
 
-function buildManifestPromptBlock(manifest, thresholds) {
+function buildManifestPromptBlock(manifest, thresholds, opts = {}) {
+  const crossBuildHints = opts.crossBuildMemory
+    ? `
+MANDATORY SIMILARITY CONSTRAINTS:
+- DOM similarity <= ${thresholds.dom}
+- sitemap similarity <= ${thresholds.sitemap}
+- section overlap <= ${thresholds.sections}
+- if above threshold: regenerate structure before final HTML.
+`
+    : `
+UNIQUENESS (this build only):
+- Follow this manifest and site seed; do not copy DOM from other projects.
+- Pages within this site may share chrome but should differ in section flow and copy.
+`;
+
   return `
 STAGE 1 — SITE STRATEGY (manifest):
 ${JSON.stringify(manifest, null, 2)}
@@ -270,13 +285,7 @@ STAGE 4 — PAGE BLUEPRINTS:
 - Use different DOM hierarchy and section composition per page type.
 - Global section grammar seed: ${(manifest.section_rules?.global_sequence || []).join(" -> ")}
 - Forbidden repeated sequence: hero -> features -> testimonials -> faq.
-
-MANDATORY SIMILARITY CONSTRAINTS:
-- DOM similarity <= ${thresholds.dom}
-- sitemap similarity <= ${thresholds.sitemap}
-- section overlap <= ${thresholds.sections}
-- if above threshold: regenerate structure before final HTML.
-`;
+${crossBuildHints}`;
 }
 
 export async function buildSiteManifestPlan({
@@ -286,9 +295,10 @@ export async function buildSiteManifestPlan({
   expectedFiles,
   onLog,
 }) {
-  const history = await loadMemory();
+  const crossBuildMemory = isCrossBuildMemoryEnabled();
+  const history = crossBuildMemory ? await loadMemory() : [];
   const thresholds = { dom: 0.34, sitemap: 0.28, sections: 0.38 };
-  const MAX_MANIFEST_VARIANTS = 72;
+  const MAX_MANIFEST_VARIANTS = crossBuildMemory ? 72 : 1;
   let best = null;
   let strictRejectedCandidates = 0;
   for (let variant = 0; variant < MAX_MANIFEST_VARIANTS; variant++) {
@@ -313,7 +323,8 @@ export async function buildSiteManifestPlan({
       : 0;
     const penalizedSimilarity =
       maxSimilarity + (repeatedFingerprint ? 0.4 : 0) + (repeatedSectionStart ? 0.2 : 0);
-    const strictRepeatDetected = repeatedFingerprint || repeatedSectionStart;
+    const strictRepeatDetected =
+      crossBuildMemory && (repeatedFingerprint || repeatedSectionStart);
     if (strictRepeatDetected) {
       strictRejectedCandidates += 1;
       if (typeof onLog === "function") {
@@ -368,7 +379,9 @@ export async function buildSiteManifestPlan({
     strictRejectedCandidates,
     forcedAcceptDueToVariantLimit: Boolean(best.strictRejected),
   };
-  await saveMemory([...history, entry]);
+  if (crossBuildMemory) {
+    await saveMemory([...history, entry]);
+  }
   if (typeof onLog === "function") {
     if (entry.forcedAcceptDueToVariantLimit) {
       onLog(
@@ -381,7 +394,9 @@ export async function buildSiteManifestPlan({
   }
   return {
     manifest: best.manifest,
-    promptBlock: buildManifestPromptBlock(best.manifest, thresholds),
+    promptBlock: buildManifestPromptBlock(best.manifest, thresholds, {
+      crossBuildMemory,
+    }),
     similarity: entry.maxSimilarity,
   };
 }

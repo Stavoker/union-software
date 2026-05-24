@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadIntegrationSettingsForUser, withUserIntegrationEnv } from "@/lib/account-integration-settings";
+import { loadGeneratorBrandForUser } from "@/lib/generator-brand-kit";
 import { getSessionUser } from "@/shared/lib/auth/get-session-user";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
 
   return withUserIntegrationEnv(userEnv, async () => {
   let getDeepseekPoolSize: () => number;
+  let resetPairedLlmPool: () => void;
   let createBuildJob: (payload: Record<string, unknown>) => Promise<string>;
   let runBuildJob: (
     id: string,
@@ -62,7 +64,10 @@ export async function POST(req: Request) {
   let buildProject: (opts: Record<string, unknown>) => Promise<unknown>;
 
   try {
-    ({ getDeepseekPoolSize } = await import("@/src/lib/deepseek-key-pool.js"));
+    ({ getDeepseekPoolSize, resetPairedLlmPool } = await import(
+      "@/src/lib/deepseek-key-pool.js"
+    ));
+    resetPairedLlmPool();
     ({ createBuildJob, runBuildJob } = await import("@/src/lib/build-jobs.js"));
     ({ buildProject } = await import("@/src/lib/project-service.js"));
   } catch (e) {
@@ -81,6 +86,31 @@ export async function POST(req: Request) {
     body = (await req.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const brandKit = await loadGeneratorBrandForUser(supabase, user.id);
+  if (!brandKit?.userId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Бренд для вашого акаунта ще не налаштовано. Зверніться до адміністратора Union.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const themeInput = String(body.theme || "").trim();
+  const theme =
+    themeInput || String(brandKit.defaultThemeText || "").trim();
+  if (!theme) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Вкажіть тему сайту або попросіть адміністратора задати тему за замовчуванням у бренді.",
+      },
+      { status: 400 }
+    );
   }
 
   const pageCount = clampMultipagePageCountTotal(body.pageCount);
@@ -103,14 +133,26 @@ export async function POST(req: Request) {
   const overrideCk = String(body.claudeApiKey || "").trim();
   const usePooledKeys = !overrideCk.startsWith("sk-ant-");
 
-  let dryRun = false;
   let poolSize = 0;
   if (usePooledKeys) {
     try {
       poolSize = getDeepseekPoolSize();
-    } catch {
-      dryRun = true;
-      poolSize = 0;
+      if (poolSize < 1) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Claude API keys are not configured. Add CLAUDE_API_KEY_01 in Dashboard → Settings.",
+          },
+          { status: 400 }
+        );
+      }
+    } catch (e) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : "Claude API keys are not configured. Add CLAUDE_API_KEY_01 in Dashboard → Settings.";
+      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
     }
   }
 
@@ -131,14 +173,14 @@ export async function POST(req: Request) {
       userId: user.id,
       projectName,
       windowId,
-      theme: body.theme,
+      theme,
+      brandKit,
       templateKey: body.templateKey,
       html: body.html,
       clusterTheme: body.clusterTheme,
       maxDepth: body.maxDepth,
       claudeApiKey: usePooledKeys ? "" : overrideCk,
-      pairedFromPool: !dryRun && usePooledKeys,
-      dryRun,
+      pairedFromPool: usePooledKeys,
       siteUrl: siteUrlForBuild,
       parentSiteUrl: body.parentSiteUrl,
       pageCount,
@@ -168,31 +210,21 @@ export async function POST(req: Request) {
     jobId: jobsOut[0]?.jobId ?? null,
     siteCount: projectNames.length,
     pagesPlanned: pageCount ?? null,
-    uiDryRun: dryRun,
-    keys: dryRun
+    keys: usePooledKeys
       ? {
           slot: null,
           slotSuffix: null,
-          poolSize: 0,
+          poolSize,
+          pairedFromEnv: true,
+          leasePending: true,
+        }
+      : {
+          slot: Number(body.keySlotOverride) || 0,
+          slotSuffix: null,
+          poolSize,
           pairedFromEnv: false,
           leasePending: false,
-          uiDryRun: true,
-        }
-      : usePooledKeys
-        ? {
-            slot: null,
-            slotSuffix: null,
-            poolSize,
-            pairedFromEnv: true,
-            leasePending: true,
-          }
-        : {
-            slot: Number(body.keySlotOverride) || 0,
-            slotSuffix: null,
-            poolSize,
-            pairedFromEnv: false,
-            leasePending: false,
-          },
+        },
   });
   });
 }

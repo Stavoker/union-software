@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { getJobsDir, getProjectsDir } from "@/src/lib/app-paths";
+import { getJobsDir } from "@/src/lib/app-paths";
 import {
   acquirePairedLlmLease,
   releasePairedLlmLease,
@@ -187,6 +187,90 @@ export async function getBuildJob(id) {
   return job;
 }
 
+const TRACKED_TERMINAL_MS = 4 * 60 * 60 * 1000;
+
+export function getBuildJobUserId(job) {
+  return String(job?.payload?.userId || "").trim();
+}
+
+export function isBuildJobOwnedByUser(job, userId) {
+  const uid = String(userId || "").trim();
+  if (!uid || !job) return false;
+  return getBuildJobUserId(job) === uid;
+}
+
+function shouldTrackJobForUser(job) {
+  if (!job?.id) return false;
+  const st = String(job.status || "");
+  if (st === "queued" || st === "running") return true;
+  if (st === "done" || st === "error" || st === "cancelled") {
+    const ts = Date.parse(job.updatedAt || 0) || 0;
+    return Date.now() - ts < TRACKED_TERMINAL_MS;
+  }
+  return false;
+}
+
+function collectJobIdsFromDisk() {
+  ensureJobsDir();
+  try {
+    return fs
+      .readdirSync(getJobsDir())
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.replace(/\.json$/i, ""));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Активні та недавно завершені jobs користувача (памʼять + disk).
+ * @param {string} userId
+ * @param {{ limit?: number }} [opts]
+ */
+export async function listBuildJobsForUser(userId, opts = {}) {
+  const uid = String(userId || "").trim();
+  if (!uid) return [];
+  const limit = Math.min(20, Math.max(1, Number(opts.limit) || 10));
+  const byId = new Map();
+
+  const ingest = (job) => {
+    if (!job?.id || !isBuildJobOwnedByUser(job, uid) || !shouldTrackJobForUser(job)) {
+      return;
+    }
+    const prev = byId.get(job.id);
+    if (!prev) {
+      byId.set(job.id, job);
+      return;
+    }
+    const prevTs = Date.parse(prev.updatedAt || 0) || 0;
+    const nextTs = Date.parse(job.updatedAt || 0) || 0;
+    if (nextTs >= prevTs) byId.set(job.id, job);
+  };
+
+  for (const job of getJobsMap().values()) {
+    ingest(job);
+  }
+
+  for (const id of collectJobIdsFromDisk()) {
+    const local = getBuildJobLocal(id);
+    if (local) ingest(local);
+    else {
+      const fromRedis = await loadJobRedis(id);
+      if (fromRedis) {
+        getJobsMap().set(id, fromRedis);
+        ingest(fromRedis);
+      }
+    }
+  }
+
+  return Array.from(byId.values())
+    .sort(
+      (a, b) =>
+        (Date.parse(b.updatedAt || 0) || 0) - (Date.parse(a.updatedAt || 0) || 0)
+    )
+    .slice(0, limit);
+}
+
 export async function createBuildJob(payload) {
   gcJobs();
   const id = randomUUID();
@@ -295,78 +379,6 @@ export async function cancelBuildJob(id) {
   return true;
 }
 
-function sleepMs(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function sanitizeProjectDirName(name) {
-  const value = String(name || "").trim();
-  if (!value) return "";
-  return value.replace(/[^a-zA-Z0-9._-]/g, "-") || "";
-}
-
-/**
- * Simulates multipage progress for UI when Claude keys are missing (no LLM, no real site).
- * Writes `.aurora_build_progress.json` so GET /jobs/:id progress matches the real contract.
- */
-async function runUiDryRunSimulation(jobId, payload) {
-  const safe = sanitizeProjectDirName(payload.projectName);
-  if (!safe) {
-    throw new Error("Invalid project name.");
-  }
-  const outDir = path.join(getProjectsDir(), safe);
-  try {
-    fs.mkdirSync(outDir, { recursive: true });
-  } catch {
-    /* ignore */
-  }
-
-  let pagesTotal = Math.trunc(Number(payload.pageCount));
-  if (!Number.isFinite(pagesTotal) || pagesTotal < 3) pagesTotal = 4;
-  if (pagesTotal > 4) pagesTotal = 4;
-
-  const progressPath = path.join(outDir, ".aurora_build_progress.json");
-  const writeProgress = (pagesDone) => {
-    const body = {
-      pagesTotal,
-      pagesDone,
-      status:
-        pagesTotal > 0 && pagesDone >= pagesTotal ? "complete" : "building",
-      dryRun: true,
-    };
-    try {
-      fs.writeFileSync(progressPath, `${JSON.stringify(body, null, 2)}\n`, "utf8");
-    } catch {
-      /* ignore */
-    }
-  };
-
-  appendBuildJobLog(
-    jobId,
-    "[UI test] Claude API keys are not configured — dry run only (no LLM, no production output)."
-  );
-  writeProgress(0);
-
-  for (let done = 0; done <= pagesTotal; done += 1) {
-    if (isBuildJobCancelled(jobId)) {
-      throw new Error("Генерация остановлена пользователем.");
-    }
-    await sleepMs(420);
-    writeProgress(done);
-    appendBuildJobLog(
-      jobId,
-      `[UI test] simulated stage ${done}/${pagesTotal} (progress file updated)`
-    );
-  }
-
-  appendBuildJobLog(
-    jobId,
-    "[UI test] dry run complete. ZIP may be empty or missing — configure CLAUDE_API_KEY_01 for real builds."
-  );
-}
-
 function isBuildJobCancelled(id) {
   const job = getBuildJobLocal(id);
   return Boolean(job?.cancelRequested || job?.status === "cancelled");
@@ -375,25 +387,6 @@ function isBuildJobCancelled(id) {
 export async function runBuildJob(id, runner) {
   const job = getBuildJobLocal(id);
   if (!job) return;
-
-  if (job.payload?.dryRun) {
-    try {
-      await markBuildJobRunning(id);
-      await runUiDryRunSimulation(id, job.payload);
-      if (isBuildJobCancelled(id)) {
-        await markBuildJobCancelled(id);
-        return;
-      }
-      await markBuildJobDone(id, { dryRun: true });
-    } catch (e) {
-      if (isBuildJobCancelled(id)) {
-        await markBuildJobCancelled(id);
-        return;
-      }
-      await markBuildJobError(id, e?.message || e);
-    }
-    return;
-  }
 
   let poolLeaseHeld = false;
   try {

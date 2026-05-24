@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState, useTransition } from "react";
 import { setProfileFrozenState } from "./actions";
@@ -284,26 +284,34 @@ export function UsersAdminTable({
                         {formatDateForUi(row.created_at, locale)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        {canToggle ? (
-                          <button
-                            type="button"
-                            disabled={pending}
-                            onClick={() =>
-                              void onToggle(row.id, !row.is_frozen)
-                            }
-                            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                              row.is_frozen
-                                ? "border border-union-accent/40 bg-union-accent/15 text-union-accent hover:bg-union-accent/25"
-                                : "border border-union-border bg-white/[0.06] text-union-muted hover:text-union-text"
-                            }`}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/dashboard/users/${row.id}/brand`}
+                            className="whitespace-nowrap rounded-full border border-[#d1fe17]/35 bg-[#d1fe17]/10 px-3 py-1.5 text-xs font-medium text-[#d1fe17] transition-colors hover:bg-[#d1fe17]/20"
                           >
-                            {row.is_frozen ? t("actionUnfreeze") : t("actionFreeze")}
-                          </button>
-                        ) : (
-                          <span className="whitespace-nowrap text-xs text-union-muted">
-                            —
-                          </span>
-                        )}
+                            {t("actionBrand")}
+                          </Link>
+                          {canToggle ? (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() =>
+                                void onToggle(row.id, !row.is_frozen)
+                              }
+                              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                                row.is_frozen
+                                  ? "border border-union-accent/40 bg-union-accent/15 text-union-accent hover:bg-union-accent/25"
+                                  : "border border-union-border bg-white/[0.06] text-union-muted hover:text-union-text"
+                              }`}
+                            >
+                              {row.is_frozen ? t("actionUnfreeze") : t("actionFreeze")}
+                            </button>
+                          ) : (
+                            <span className="whitespace-nowrap text-xs text-union-muted">
+                              —
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-3 font-mono text-xs text-union-muted">
                         {row.id}

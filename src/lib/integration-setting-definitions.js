@@ -35,6 +35,9 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
   ...claudeKeySlots(10),
 
   def("ANTHROPIC_MODEL", "generator", { hint: "Модель Claude (напр. claude-sonnet-4-6)" }),
+  def("ANTHROPIC_BASE_URL", "generator", {
+    hint: "Базовий URL LLM API. Порожньо = api.anthropic.com. Для локального проксі: http://localhost:3001",
+  }),
   def("AURORA_GENERATION_TEMPERATURE", "generator", { hint: "Температура генерації (0–1)" }),
   def("ANTHROPIC_MAX_TOKENS_PAGE", "generator", { hint: "Max output tokens на сторінку" }),
   def("ANTHROPIC_MAX_TOKENS_ARCHITECT", "generator", { hint: "Max tokens архітектора" }),
@@ -52,9 +55,27 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
 
   bool("SOFTGEN_REQUIRE_REFERENCE_STRUCTURE", "generator", "Вимагати структуру референсу (1/0)"),
   bool("SOFTGEN_REFERENCE_TEMPLATE_MODE", "generator", "Режим шаблону з референсу (1/0)"),
-  bool("SOFTGEN_PROMPT_REGEN_ENABLED", "generator", "Регенерація промптів (1/0)"),
+  bool(
+    "SOFTGEN_QUALITY_REGEN_ENABLED",
+    "generator",
+    "Перегенерація сторінок (dom-sim, бренд, обсяг). 0 = як відповіла модель"
+  ),
+  bool(
+    "SOFTGEN_CROSS_BUILD_MEMORY_ENABLED",
+    "generator",
+    "Памʼять каркасів минулих сайтів. 0 = кожен сайт з нуля"
+  ),
+  bool(
+    "SOFTGEN_PROMPT_REGEN_ENABLED",
+    "generator",
+    "LLM remix overlay перед архітектором. 0 = вимкнено (рекомендовано)"
+  ),
   def("SOFTGEN_PROMPT_REGEN_MAX_TOKENS", "generator", { hint: "Max tokens регенерації промпту" }),
-  bool("SOFTGEN_PROMPT_REWRITE_ENABLED", "generator", "Перепис промптів (1/0)"),
+  bool(
+    "SOFTGEN_PROMPT_REWRITE_ENABLED",
+    "generator",
+    "LLM rewrite промптів сторінок. 0 = вимкнено (рекомендовано)"
+  ),
   bool("SOFTGEN_PROMPT_REWRITE_PAGE_ON_RETRY", "generator", "Rewrite сторінки при retry (1/0)"),
   def("SOFTGEN_PROMPT_REWRITE_MAX_TOKENS", "generator", { hint: "Max tokens rewrite" }),
   def("SOFTGEN_REFERENCE_SIMILARITY_THRESHOLD", "generator", { hint: "Поріг схожості референсу (0–1)" }),

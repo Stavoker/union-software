@@ -1,6 +1,6 @@
 "use client";
 
-import { Rocket } from "lucide-react";
+import { Rocket, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
@@ -8,10 +8,43 @@ import { seoBtnPrimary } from "@/shared/components/seo/seo-ui";
 import { GeneratorOrb } from "./generator-orb";
 
 const POLL_MS = 1500;
+const JOBS_SESSION_KEY = "union_gen_tracked_jobs_v1";
+const DISMISSED_JOBS_SESSION_KEY = "union_gen_dismissed_jobs_v1";
+
+function readDismissedJobIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(DISMISSED_JOBS_SESSION_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(
+      Array.isArray(parsed) ? parsed.map((id) => String(id || "")).filter(Boolean) : []
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissedJobIds(ids: Set<string>) {
+  try {
+    sessionStorage.setItem(DISMISSED_JOBS_SESSION_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeTrackedJobs(jobs: JobRow[]) {
+  try {
+    sessionStorage.setItem(
+      JOBS_SESSION_KEY,
+      JSON.stringify(jobs.map((j) => ({ jobId: j.jobId, projectName: j.projectName })))
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 const TERMINAL = new Set(["done", "error", "cancelled"]);
 
-const THEME_PRESETS = [
+const FALLBACK_THEME_PRESETS = [
   "казино онлайн",
   "бонусы и фриспины",
   "live casino",
@@ -19,6 +52,11 @@ const THEME_PRESETS = [
   "vip программа казино",
   "мобильное казино",
 ];
+
+export type GeneratorThemePreset = {
+  value: string;
+  pageCount?: 3 | 4;
+};
 
 /** `u-` + English word + exactly 3 digits (folder-safe, matches random slug button). */
 const SLUG_WORDS = [
@@ -74,29 +112,6 @@ function sanitizeProjectBase(name: string) {
   return safe || "";
 }
 
-function makeVisualPreviewJobs(projectNameRaw: string, siteCount: number): JobRow[] {
-  const safe = sanitizeProjectBase(projectNameRaw);
-  if (!safe) return [];
-  const names =
-    siteCount <= 1
-      ? [safe]
-      : Array.from({ length: siteCount }, (_, i) => `${safe}-s${i + 1}`);
-  const stamp = Date.now();
-  return names.map((projectName, i) => ({
-    jobId: `__preview__${stamp}_${i}`,
-    projectName,
-    status: "running",
-    cursor: 0,
-    logTail: [],
-    error: "",
-    progressPercent: Math.min(28, 6 + i * 5),
-  }));
-}
-
-function isPreviewJobId(jobId: string) {
-  return jobId.startsWith("__preview__");
-}
-
 type JobRow = {
   jobId: string;
   projectName: string;
@@ -107,17 +122,38 @@ type JobRow = {
   progressPercent: number;
 };
 
-export function GeneratorWorkbench() {
+type GeneratorWorkbenchProps = {
+  themePresets?: GeneratorThemePreset[];
+  defaultTheme?: string;
+};
+
+export function GeneratorWorkbench({
+  themePresets = [],
+  defaultTheme = "",
+}: GeneratorWorkbenchProps) {
   const t = useTranslations("generatorWorkbench");
 
+  const resolvedPresets: GeneratorThemePreset[] =
+    themePresets.length > 0
+      ? themePresets
+      : FALLBACK_THEME_PRESETS.map((value) => ({ value }));
+
+  const initialTheme =
+    defaultTheme.trim() ||
+    resolvedPresets[0]?.value ||
+    FALLBACK_THEME_PRESETS[0] ||
+    "";
+
   const [projectName, setProjectName] = useState(() => randomProjectSlug());
-  const [theme, setTheme] = useState(THEME_PRESETS[0] ?? "казино онлайн");
+  const [theme, setTheme] = useState(initialTheme);
   const [pageCount, setPageCount] = useState<3 | 4>(4);
   const [siteCount, setSiteCount] = useState(1);
   const [siteUrl, setSiteUrl] = useState("");
 
   const [starting, setStarting] = useState(false);
+  const [resuming, setResuming] = useState(true);
   const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [dismissedJobIds, setDismissedJobIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
 
   const jobsRef = useRef<JobRow[]>([]);
@@ -126,8 +162,57 @@ export function GeneratorWorkbench() {
     jobsRef.current = jobs;
   }, [jobs]);
 
+  useEffect(() => {
+    setDismissedJobIds(readDismissedJobIds());
+  }, []);
+
+  useEffect(() => {
+    if (!jobs.length) return;
+    writeTrackedJobs(jobs);
+  }, [jobs]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/generator/build/jobs", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          jobs?: JobRow[];
+        };
+        if (!mounted || !res.ok || !data.ok || !Array.isArray(data.jobs)) return;
+        const dismissed = readDismissedJobIds();
+        const visible = data.jobs.filter((j) => j?.jobId && !dismissed.has(j.jobId));
+        if (visible.length) {
+          setDismissedJobIds(dismissed);
+          setJobs(
+            visible.map((j) => ({
+              jobId: j.jobId,
+              projectName: j.projectName,
+              status: j.status || "queued",
+              cursor: typeof j.cursor === "number" ? j.cursor : 0,
+              logTail: Array.isArray(j.logTail) ? j.logTail : [],
+              error: j.error || "",
+              progressPercent:
+                typeof j.progressPercent === "number" ? j.progressPercent : 0,
+            }))
+          );
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (mounted) setResuming(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const pollOne = useCallback(async (row: JobRow) => {
-    if (isPreviewJobId(row.jobId)) return;
     try {
       const url = `/api/generator/build/jobs/${encodeURIComponent(row.jobId)}?cursor=${row.cursor}`;
       const res = await fetch(url, { credentials: "include" });
@@ -169,33 +254,15 @@ export function GeneratorWorkbench() {
     }
   }, []);
 
-  const hasPreviewJobs = jobs.some((j) => isPreviewJobId(j.jobId));
-
-  useEffect(() => {
-    if (!hasPreviewJobs) return;
-    const id = setInterval(() => {
-      setJobs((prev) =>
-        prev.map((j) => {
-          if (!isPreviewJobId(j.jobId)) return j;
-          if (j.progressPercent >= 42) return j;
-          return { ...j, progressPercent: Math.min(42, j.progressPercent + 4) };
-        })
-      );
-    }, 420);
-    return () => clearInterval(id);
-  }, [hasPreviewJobs]);
-
   const hasActiveJob = jobs.some((j) => !TERMINAL.has(j.status));
-  const showForm = !starting && !hasActiveJob;
-  const showOrb = starting || (jobs.length > 0 && hasActiveJob);
+  const showForm = !starting && !hasActiveJob && !resuming;
+  const showOrb = starting || resuming || hasActiveJob;
   const showCards = jobs.length > 0;
 
   useEffect(() => {
     if (!hasActiveJob) return;
     const tick = () => {
-      const list = jobsRef.current.filter(
-        (j) => !TERMINAL.has(j.status) && !isPreviewJobId(j.jobId)
-      );
+      const list = jobsRef.current.filter((j) => !TERMINAL.has(j.status));
       void Promise.all(list.map((j) => pollOne(j)));
     };
     tick();
@@ -206,8 +273,7 @@ export function GeneratorWorkbench() {
   async function startBuild() {
     setError("");
     setStarting(true);
-    const previews = makeVisualPreviewJobs(projectName, siteCount);
-    setJobs(previews);
+    setJobs([]);
     try {
       const res = await fetch("/api/generator/build/jobs/start", {
         method: "POST",
@@ -249,7 +315,6 @@ export function GeneratorWorkbench() {
   }
 
   async function cancelJob(jobId: string) {
-    if (isPreviewJobId(jobId)) return;
     try {
       await fetch(`/api/generator/build/jobs/${encodeURIComponent(jobId)}/cancel`, {
         method: "POST",
@@ -260,8 +325,26 @@ export function GeneratorWorkbench() {
     }
   }
 
+  function dismissJob(jobId: string) {
+    setJobs((prev) => {
+      const next = prev.filter((j) => j.jobId !== jobId);
+      writeTrackedJobs(next);
+      return next;
+    });
+    setDismissedJobIds((prev) => {
+      const next = new Set(prev);
+      next.add(jobId);
+      writeDismissedJobIds(next);
+      return next;
+    });
+  }
+
   return (
     <div className="w-full space-y-0">
+      {resuming && !jobs.length ? (
+        <p className="pb-6 pt-2 text-sm text-union-muted">{t("resuming")}</p>
+      ) : null}
+
       {showForm ? (
         <div className="space-y-6 pb-10 pt-2">
           <div>
@@ -301,12 +384,17 @@ export function GeneratorWorkbench() {
               <input
                 list="generator-theme-presets"
                 value={theme}
-                onChange={(e) => setTheme(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTheme(next);
+                  const match = resolvedPresets.find((p) => p.value === next);
+                  if (match?.pageCount) setPageCount(match.pageCount);
+                }}
                 className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
               />
               <datalist id="generator-theme-presets">
-                {THEME_PRESETS.map((x) => (
-                  <option key={x} value={x} />
+                {resolvedPresets.map((p) => (
+                  <option key={p.value} value={p.value} />
                 ))}
               </datalist>
             </label>
@@ -383,25 +471,30 @@ export function GeneratorWorkbench() {
               const downloadZip = done
                 ? `/api/generator/download?projectName=${encodeURIComponent(job.projectName)}`
                 : null;
-              const canStop = !TERMINAL.has(job.status) && !isPreviewJobId(job.jobId);
+              const canStop = !TERMINAL.has(job.status);
+              const canDismiss = TERMINAL.has(job.status);
 
               return (
                 <div
                   key={job.jobId}
-                  className="rounded-2xl border border-union-border bg-union-surface/50 p-4 backdrop-blur-md md:p-5"
+                  className="relative rounded-2xl border border-union-border bg-union-surface/50 p-4 backdrop-blur-md md:p-5"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  {canDismiss ? (
+                    <button
+                      type="button"
+                      onClick={() => dismissJob(job.jobId)}
+                      className="absolute right-3 top-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-union-border/80 bg-black/30 text-union-muted transition-colors hover:border-white/25 hover:bg-black/50 hover:text-union-text"
+                      aria-label={t("dismissJob")}
+                      title={t("dismissJob")}
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </button>
+                  ) : null}
+                  <div className="flex flex-wrap items-start justify-between gap-2 pr-9">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-medium uppercase tracking-wide text-union-muted">
-                          {t("jobProject")}
-                        </p>
-                        {isPreviewJobId(job.jobId) ? (
-                          <span className="rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-100/90">
-                            {t("visualPreviewBadge")}
-                          </span>
-                        ) : null}
-                      </div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-union-muted">
+                        {t("jobProject")}
+                      </p>
                       <p className="truncate font-mono text-sm text-union-text">{job.projectName}</p>
                       <p className="mt-1 text-xs text-union-muted">
                         {t("status")}: <span className="text-union-text">{job.status}</span>

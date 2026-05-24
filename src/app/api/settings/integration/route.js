@@ -97,7 +97,25 @@ export async function PUT(request) {
       throw new Error(loadError.message);
     }
 
-    const merged = mergeIntegrationSettings(existing, patch);
+    let merged;
+    try {
+      merged = mergeIntegrationSettings(existing, patch);
+    } catch (e) {
+      if (e?.code === "INVALID_CLAUDE_KEY") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "invalid_claude_key",
+            envKey: e.envKey,
+            details:
+              `${e.envKey}: sk-ant-… (Anthropic) or sk-… with ANTHROPIC_BASE_URL (e.g. http://localhost:3001). ` +
+              `Do not paste the masked preview from the form.`,
+          },
+          { status: 400 }
+        );
+      }
+      throw e;
+    }
     const payload = envMapToDbRow(user.id, merged);
 
     const { error: saveError } = await supabase
