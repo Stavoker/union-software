@@ -531,20 +531,36 @@ main img {
   height: auto;
 }
 
-main section,
-main article {
-  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
-  padding: clamp(18px, 3vw, 32px);
-  background: color-mix(in srgb, var(--lw-block, #232d1b) 42%, transparent);
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+main > section:not(#lw-games) img {
+  max-height: min(42vh, 360px);
+  width: auto;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+  margin: 0.75rem 0;
+}
+
+main > section,
+main > article {
+  margin-bottom: clamp(1.25rem, 2.5vw, 2rem);
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
   box-sizing: border-box;
 }
 
-main section:hover,
-main article:hover {
-  border-color: color-mix(in srgb, var(--lw-accent, #ffe14a) 22%, transparent);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+main > section > div[class*="container"],
+main > section > div[class*="wrapper"],
+main > section > div[class*="inner"],
+main > section > div[class*="content"] {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 main table {
@@ -608,9 +624,21 @@ main table tbody tr:last-child td {
   }
 }
 
-main > section,
-main > article {
-  animation: site-fade-up 0.55s ease both;
+main > section.reveal-on-scroll,
+main > article.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+main > section.reveal-on-scroll.is-visible,
+main > article.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+main > section:not(.reveal-on-scroll) {
+  animation: site-fade-up 0.45s ease both;
 }
 
 main a:not(.lw-btn):not([class*="btn"]) {
@@ -626,6 +654,170 @@ main a:not(.lw-btn):not([class*="btn"]) {
 `;
 }
 
+/** Сітка слотів, таби, hover — база для #lw-games (не копія референс-сайту). */
+export function buildGamesBlockBaselineCss() {
+  return `
+/* lw-games baseline */
+main > section#lw-games {
+  padding: clamp(20px, 3vw, 32px);
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  background: color-mix(in srgb, var(--lw-block, #232d1b) 55%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-sizing: border-box;
+}
+
+#lw-games h2,
+#lw-games [class*="games_heading"],
+#lw-games [class*="games-title"] {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.65rem);
+}
+
+#lw-games [class*="games_intro"],
+#lw-games > p {
+  margin: 0 0 1rem;
+  opacity: 0.92;
+}
+
+#lw-games [class*="games_tabs"],
+#lw-games [role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0 0 14px;
+}
+
+#lw-games button[data-tab],
+#lw-games [class*="tab"] {
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--lw-text, #fff);
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+#lw-games button[data-tab].is-active,
+#lw-games button[data-tab][aria-pressed="true"] {
+  background: var(--lw-accent, #ffe14a);
+  color: var(--lw-bg, #101710);
+  border-color: var(--lw-accent, #ffe14a);
+}
+
+#lw-games [class*="games_grid"],
+#lw-games [class*="games_masonry"],
+#lw-games [class*="masonry"],
+#lw-games [role="list"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px 14px;
+  align-items: stretch;
+}
+
+#lw-games a[class*="game"],
+#lw-games a.lw-cta-solid {
+  display: block;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--lw-card, #111316);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+#lw-games a[class*="game"]:hover,
+#lw-games a[class*="game"].is-hover,
+#lw-games a.lw-cta-solid:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45);
+  border-color: color-mix(in srgb, var(--lw-accent, #ffe14a) 45%, transparent);
+}
+
+#lw-games img {
+  width: 100%;
+  max-height: 148px;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+
+#lw-games a[class*="large"],
+#lw-games a[class*="featured"] {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+
+#lw-games a[class*="large"] img,
+#lw-games a[class*="featured"] img {
+  max-height: 200px;
+  aspect-ratio: 16 / 10;
+}
+
+@media (max-width: 720px) {
+  #lw-games [class*="games_grid"],
+  #lw-games [class*="games_masonry"],
+  #lw-games [class*="masonry"],
+  #lw-games [role="list"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #lw-games a[class*="large"],
+  #lw-games a[class*="featured"] {
+    grid-column: span 2;
+  }
+}
+`;
+}
+
+/** FAQ, CTA, hero — без зайвих «коробок». */
+export function buildMainInteractBaselineCss() {
+  return `
+main details {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 0;
+}
+
+main details summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  padding: 6px 0;
+  transition: color 0.2s ease;
+}
+
+main details summary::-webkit-details-marker {
+  display: none;
+}
+
+main details summary::after {
+  content: " ▾";
+  opacity: 0.7;
+}
+
+main details[open] summary::after {
+  content: " ▴";
+}
+
+main details[open] summary {
+  color: var(--lw-accent, #ffe14a);
+}
+
+main a[class*="cta"],
+main a[class*="btn"],
+main button[class*="cta"] {
+  transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+main a[class*="cta"]:hover,
+main a[class*="btn"]:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+`;
+}
+
 /** Базові стилі AI header/footer (body > header/footer), якщо модель не дописала pageCss. */
 export function buildAiChromeBaselineCss() {
   return `
@@ -637,29 +829,75 @@ body > header {
   background: color-mix(in srgb, var(--lw-block, #232d1b) 94%, #000);
   border-bottom: 2px solid color-mix(in srgb, var(--lw-accent, #ffe14a) 38%, transparent);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
-  padding: 12px clamp(16px, 3vw, 40px);
+  padding: 0 clamp(16px, 3vw, 40px);
   box-sizing: border-box;
 }
 
 body > header > div,
 body > header [class*="header"] {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px 20px;
+  gap: 12px 28px;
   width: 100%;
   max-width: none;
+  min-height: 68px;
   margin: 0 auto;
   box-sizing: border-box;
 }
 
+body > header a[class*="logo"],
+body > header [class*="brand"] {
+  grid-column: 1;
+  justify-self: start;
+  flex-shrink: 0;
+}
+
 body > header nav,
 body > header [class*="nav"] {
+  grid-column: 2;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 8px 16px;
+  justify-content: center;
+  gap: 10px 18px;
+  overflow-x: auto;
+}
+
+body > header [class*="actions"],
+body > header [class*="header_actions"] {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  body > header > div,
+  body > header [class*="header"] {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    min-height: 0;
+    padding: 10px 0;
+  }
+  body > header nav,
+  body > header [class*="nav"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+  body > header [class*="actions"],
+  body > header [class*="header_actions"] {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  body > header a[class*="logo"],
+  body > header [class*="brand"] {
+    grid-row: 1;
+    grid-column: 1;
+  }
 }
 
 body > header a {

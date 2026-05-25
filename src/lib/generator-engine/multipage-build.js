@@ -45,6 +45,14 @@ import {
   uniqueSitePalettePromptBlock,
   uniqueSiteStructurePromptBlock,
   buildAiChromeBaselineCss,
+  buildGamesBlockBaselineCss,
+  buildMainInteractBaselineCss,
+  buildPremiumLayoutPromptBlock,
+  buildPremiumIgamingPromptIntro,
+  buildPageTypographyBaselineCss,
+  buildSiteChromeAuthoringBlock,
+  buildSiteChromeReuseBlock,
+  extractChromePairFromHtml,
 } from "@/src/lib/brand-chrome";
 import {
   buildAnthropicRequestHeaders,
@@ -60,6 +68,7 @@ import {
   isPromptRewriteEnabled,
   isQualityRegenEnabled,
   usesTemplateChrome,
+  usesPremiumIgamingLayout,
 } from "@/lib/generator-engine/softgen-flags";
 
 const PROJECTS_DIR = getProjectsDir();
@@ -119,6 +128,127 @@ function ensureMainClosedBeforeChrome(mainHtml) {
   if (!lo.includes("<main")) return out;
   if (lo.includes("</main>")) return out;
   return `${out}\n</main>`;
+}
+
+const WRAPPER_DIV_CLASS_RE = /\b(container|wrapper|inner|content)\b/i;
+
+function divAttrsHaveWrapperClass(attrs) {
+  const m = String(attrs || "").match(/\bclass\s*=\s*["']([^"']*)["']/i);
+  return Boolean(m && WRAPPER_DIV_CLASS_RE.test(m[1]));
+}
+
+function isProseOnlyMarkup(fragment) {
+  const stripped = String(fragment || "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
+  if (!stripped) return false;
+  const tags = stripped.match(/<\/?([a-z0-9]+)\b/gi) || [];
+  const allowed = new Set([
+    "p",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "br",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "span",
+    "a",
+  ]);
+  for (const raw of tags) {
+    const tag = raw.replace(/<\/?/i, "").toLowerCase();
+    if (!allowed.has(tag)) return false;
+  }
+  return /<(p|h[1-6]|ul|ol)\b/i.test(stripped);
+}
+
+function flattenSectionInner(sectionInner) {
+  let body = String(sectionInner || "");
+  const singleDiv = body.trim().match(/^<div\b([^>]*)>([\s\S]*)<\/div\s*>$/i);
+  if (singleDiv && divAttrsHaveWrapperClass(singleDiv[1])) {
+    body = singleDiv[2];
+  }
+  body = body.replace(
+    /<div\b[^>]*>\s*<div\b[^>]*>([\s\S]*?)<\/div\s*>\s*<\/div\s*>/gi,
+    (full, innerContent) => (isProseOnlyMarkup(innerContent) ? innerContent : full)
+  );
+  return body;
+}
+
+/** Розгортання зайвих обгорток container/wrapper та div>div навколо prose. */
+function flattenShallowWrapperDivsInMain(mainHtml) {
+  let out = String(mainHtml || "");
+  if (!/<main\b/i.test(out)) return out;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = out;
+    out = out.replace(
+      /(<section\b[^>]*>)([\s\S]*?)(<\/section\s*>)/gi,
+      (_, open, inner, close) => `${open}${flattenSectionInner(inner)}${close}`
+    );
+    if (out === before) break;
+  }
+  return out;
+}
+
+function buildMinimalLwGamesSectionHtml(classPrefix, gameSlotPaths, gatewayUrl) {
+  const prefix = String(classPrefix || "");
+  const gw =
+    String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
+  const paths = (Array.isArray(gameSlotPaths) ? gameSlotPaths : [])
+    .filter(Boolean)
+    .slice(0, 12);
+  const cards = paths
+    .map((p, i) => {
+      const src = String(p || "").trim();
+      if (!src) return "";
+      return `<a class="${prefix}game-card" href="${escapeHtmlLite(gw)}" target="_blank" rel="noopener noreferrer nofollow"><img src="${escapeHtmlLite(src)}" alt="Слот ${i + 1}" loading="lazy"></a>`;
+    })
+    .filter(Boolean)
+    .join("\n");
+  return `<section id="lw-games" class="${prefix}games-wrap">
+<h2 class="${prefix}games_heading">Игровые автоматы</h2>
+<div class="${prefix}games_grid" role="list">
+${cards}
+</div>
+</section>`;
+}
+
+function ensureLwGamesSectionOnIndex(mainHtml, opts = {}) {
+  const html = String(mainHtml || "");
+  const isIndex =
+    opts.isIndex === true || isIndexPageFile(opts.pageFile || opts.file);
+  if (!isIndex) return html;
+  const paths = Array.isArray(opts.gameSlotPaths)
+    ? opts.gameSlotPaths.filter(Boolean)
+    : [];
+  if (!paths.length) return html;
+  if (/\bid\s*=\s*["']lw-games["']/i.test(html)) return html;
+  const section = buildMinimalLwGamesSectionHtml(
+    opts.classPrefix || "",
+    paths,
+    opts.gatewayUrl || DEFAULT_GATEWAY_URL
+  );
+  const mainRe = /(<main\b[^>]*>)([\s\S]*?)(<\/main\s*>)/i;
+  const m = html.match(mainRe);
+  if (!m) return html;
+  const [, mainOpen, mainInner, mainClose] = m;
+  const closeIdx = mainInner.search(/<\/section\s*>/i);
+  let newInner;
+  if (closeIdx >= 0) {
+    const closeTag = mainInner.match(/<\/section\s*>/i)[0];
+    const insertAt = closeIdx + closeTag.length;
+    newInner = `${mainInner.slice(0, insertAt)}\n${section}${mainInner.slice(insertAt)}`;
+  } else {
+    newInner = `\n${section}${mainInner}`;
+  }
+  return html.replace(mainRe, `${mainOpen}${newInner}${mainClose}`);
 }
 
 /** Обрізаний pageCss ламає весь файл — відсікаємо незакриті правила перед guard-блоком. */
@@ -3037,6 +3167,9 @@ function buildPagePrompt({
   gatewayUrl = DEFAULT_GATEWAY_URL,
   logoSrcForPrompt = LAKI_LOGO_IMG_SRC,
   useTemplateChrome: useTemplateChromeIn = usesTemplateChrome(),
+  siteCanonicalChrome = null,
+  isFirstSitePage = false,
+  catalogSeedKey = "",
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const logoPrompt =
@@ -3097,6 +3230,15 @@ UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, офо�
 СТИЛИ И АНИМАЦИЯ: в **pageCss** обязательно оформи **headerHtml и footerHtml** (flex, фон, hover, CTA) с префиксом «${classPrefix}»; плюс карточки, promo и **все <table>**. Базовые стили header/footer/секций уже в chrome.css — **дополни** их в pageCss под палитру. Контент на всю ширину; сетки на clamp/grid.
 ТАБЛИЦЫ: если есть сравнение форматов/бонусов — полноценная <table> с <thead>/<tbody>, классы с префиксом «${classPrefix}»; базовые стили таблиц уже в chrome.css, **дополни** их в pageCss под палитру билда.
 `;
+  const premiumCatalogBlock =
+    usesPremiumIgamingLayout() && !refTpl
+      ? `\n${buildPremiumIgamingPromptIntro()}\n${buildPremiumLayoutPromptBlock(
+          pageMeta.file,
+          gtw,
+          catalogSeedKey ||
+            `${structureFingerprint}|${buildNonce}|${pageMeta.file}`
+        )}\n${buildSiteChromeAuthoringBlock({ isFirstPage: isFirstSitePage })}\n${buildSiteChromeReuseBlock(siteCanonicalChrome || {})}\n`
+      : "";
   const igamingContentBlock = `
 КОНТЕНТ iGAMING (обязательно в <main>, русский язык):
 - Пиши про **бонусы** (приветственный пакет, reload, кэшбэк, фриспины), **промоакции** и турниры, **слоты** и **live-казино**, лимиты ставок, вейджер, RTP/волатильность — конкретно, с цифрами-ориентирами (диапазоны допустимы).
@@ -3186,14 +3328,16 @@ ${tabListsBlock}
 Дополнительный пул: ${gameImages.join(", ")}.
 `
         : `
-ОПЦИОНАЛЬНО: если хочешь блок игр, используй <section id="lw-games" class="${classPrefix}games-wrap">.
+ОБЯЗАТЕЛЬНО на главной: <section id="lw-games" class="${classPrefix}games-wrap"> — **без этого id страница невалидна**. Сетка **12–24** превью слотов (ссылки с <img>, пути только из списка слотов ниже); допустимы вкладки <button type="button" data-tab="КЛЮЧ"> с панелями data-panel или id games-* / lw-games-*.
 ${gamesAntiTemplateBlock}
 ${gamesModeExtra}
-Количество карточек превью: ровно ${gameSlotPaths.length} (не меньше). ${
+Количество карточек превью: **12–24**, не меньше ${Math.min(gameSlotPaths.length, 12)} из списка (можно использовать все ${gameSlotPaths.length}). ${
             refBlend
               ? "Внешний вид сетки/ленты — **как у референса**; мелкие отличия в колонках, отступах и размерах карточек — **только внутри** того же паттерна."
               : "Внешний вид сетки/ленты **не фиксирован**: варьируй число колонок, отступы, размеры карточек, наличие крупного «ведущего» превью; на мобильном допустим 1–2 столбца или горизонтальный скролл. Каждая карточка — одно превью слота: внутри ссылки одна <img>. Скругление и тень — на твой вкус, но не клонируй один и тот же «пластиковый» блок от билда к билду."
           }
+ДОМ внутри секций: **максимум одна** обёрточная <div> (container/wrapper/inner/content) на <section>; основной текст — в <p>, <h2>, <h3>, **не** во вложенных «коробках» div>div>div. Контентные <img> вне hero/banner/slots: **не** на всю высоту viewport (ориентир max-height ~360px / 42vh).
+ВИЗУАЛЬНЫЙ ОРИЕНТИР: lakiworld44 — **только** для сетки игр и выравнивания шапки; **не** копируй брендинг Laki и DOM 1:1.
 КРИТИЧНО: в <img src="..."> только пути из списка слотов ниже — превью игр (webp/png), без SVG и баннеров. Только внутри #lw-games у карточки слота: ссылка на ${gtw}: <a href="${gtw}" target="_blank" rel="noopener noreferrer nofollow"> с <img …>. Вне #lw-games в <main> НЕ используй ${gtw} в href — только относительные ./страница.php.
 СЛОТЫ (порядок фиксирован): по одному <img> на карточку:
 ${slotLines}
@@ -3203,7 +3347,8 @@ ${tabListsBlock}
 `
       : isIndexPageFile(pageMeta.file) && gameImages.length > 0
         ? `
-ОПЦИОНАЛЬНО: если добавляешь #lw-games, можешь сделать сетку/ленту в любом стиле; для превью можно брать файлы из: ${gameImages.join(", ")}.
+ОБЯЗАТЕЛЬНО на главной: <section id="lw-games" class="${classPrefix}games-wrap"> с сеткой 12–24 превью; для <img> можно брать файлы из: ${gameImages.join(", ")}.
+ДОМ: максимум одна обёрточная <div> внутри каждой <section>; текст в <p>/<h2>/<h3>, не во вложенных div-коробках. Контентные картинки — не на всю высоту экрана.
 ВАЖНО: превью игры в карточке должно заполнять медиа-область без полей: родитель с overflow:hidden и скруглением, у img width:100%, object-fit: cover (не contain); aspect-ratio варьируй, не фиксируй один на всех карточках.
 `
         : "";
@@ -3240,6 +3385,8 @@ ${tabListsBlock}
 `
         : `
 ГЛАВНАЯ: **порядок крупных секций** в <main> — по полю **sectionOrder** в блоке «ПЛАН АРХИТЕКТОРА» ниже (включая позиции **games** → #lw-games и **vip** → #lw-vip относительно hero/FAQ/CTA и др.). Внутри каждой секции — свобода композиции и DOM.
+**#lw-games обязателен** на index: <section id="lw-games"> с сеткой 12–24 превью слотов (пути из списка слотов); вкладки data-tab — по желанию. В каждой <section> — **не больше одной** обёрточной <div>; текст в <p>/<h2>/<h3>, не в nested div-boxes. Контентные изображения — не full-viewport height.
+lakiworld44 — только визуальный ориентир для **сетки игр** и **выравнивания шапки**; не копируй брендинг Laki и DOM 1:1.
 Не повторяй визуальный шаблон предыдущих билдов: меняй DOM-ритм, ширины колонок (где-то полноширинно, где-то асимметричный split, не канонический 50/50 в каждой секции).
 ЗАПРЕТ на «типовой лендинг» подряд: (1) hero как ровный 50/50 «текст|картинка» + сразу под ним (2) полоса из 3–4 одинаковых ячеек «число + подпись». Если блок trust/метрики в плане — отодвинь его, смени форму или встрой факты в текст.
 Без KPI 2×2 и без журнального сайдбара; ориентир объёма ~${MAIN_WORD_VOLUME_GUIDE} слов, минимум ${minPageWords}, максимум ${MAX_PAGE_WORDS}.
@@ -3282,11 +3429,13 @@ HERO НА ГЛАВНОЙ (палитра и img/bg — по правилам б�
 `
       : "";
   const zerkaloPageHint =
-    /zerkalo\.php$/i.test(lowFile) || /mirror\.php$/i.test(lowFile)
-      ? `
+    usesPremiumIgamingLayout() && !refTpl
+      ? ""
+      : /zerkalo\.php$/i.test(lowFile) || /mirror\.php$/i.test(lowFile)
+        ? `
 СТРАНИЦА-ЗЕРКАЛО (${pageMeta.file}): только про официальное зеркало и доступ для бренда «${String(themeBrandHint || "").trim() || "из плана"}»: рабочие адреса, блокировки провайдера, безопасный вход, фишинг. Минимум ${minPageWords} слов в <main>.
 `
-      : "";
+        : "";
   const archForPrompt =
     Array.isArray(pageMeta.structuralArchetypeIdsOrdered) &&
     pageMeta.structuralArchetypeIdsOrdered.length
@@ -3651,6 +3800,7 @@ Meta description: ${pageMeta.description}
 SEO ключевые направления: ${keywordHint}
 ${antiClicheRuBlock}
 ${igamingContentBlock}
+${premiumCatalogBlock}
 ${uiPolishRuBlock}
 ${pagePolicy}
 ${refBlend ? buildAiCreativeReferenceBlendBlock(`${buildNonce}|${pageMeta.file}|${structureFingerprint}`) : buildAiCreativeMaxVarietyBlock(`${buildNonce}|${pageMeta.file}|${structureFingerprint}`)}
@@ -3659,7 +3809,11 @@ ${aiChromeBlock}
 ${uniqueSitePalettePromptBlock(sitePaletteIn)}
 ${uniqueSiteStructurePromptBlock(pageMeta.file)}
 ${innerPageLayoutAntiBlock}
-${games}${vip}${sectionImages}${heroExtras}${homeFlowBlock}${pickIndexHeroOpeningModeBlock(structureFingerprint, buildNonce, pageMeta.file, refBlend || refTpl)}${indexHeroVisualRule}
+${games}${vip}${sectionImages}${heroExtras}${homeFlowBlock}${
+    usesPremiumIgamingLayout() && !refTpl
+      ? ""
+      : pickIndexHeroOpeningModeBlock(structureFingerprint, buildNonce, pageMeta.file, refBlend || refTpl)
+  }${indexHeroVisualRule}
 ${registrationPageHint}${zerkaloPageHint}
 ${brandAssetRules}
 ${buildHeadingFormatPromptBlock(pageMeta, brandTerms)}
@@ -4474,22 +4628,146 @@ function buildInteractionRuntime(gatewayUrl = DEFAULT_GATEWAY_URL) {
     });
   })();
 
+  // FAQ <details>: only one open at a time per section
+  (function bindFaqDetailsExclusive() {
+    const mainEl = document.querySelector("main");
+    if (!mainEl) return;
+    const bySection = new Map();
+    $$("details", mainEl).forEach((d) => {
+      if (d.closest("#lw-games")) return;
+      const sec = d.closest("section") || mainEl;
+      if (!bySection.has(sec)) bySection.set(sec, []);
+      bySection.get(sec).push(d);
+    });
+    bySection.forEach((detailsList) => {
+      detailsList.forEach((d) => {
+        d.addEventListener("toggle", () => {
+          if (!d.open) return;
+          detailsList.forEach((other) => {
+            if (other !== d) other.open = false;
+          });
+        });
+      });
+    });
+  })();
+
+  // #lw-games card hover: class is-hover for CSS baseline
+  (function bindLwGamesCardHover() {
+    const root = document.getElementById("lw-games");
+    if (!root) return;
+    $$("a", root).forEach((card) => {
+      const on = () => card.classList.add("is-hover");
+      const off = () => card.classList.remove("is-hover");
+      card.addEventListener("mouseenter", on);
+      card.addEventListener("mouseleave", off);
+      card.addEventListener("focus", on);
+      card.addEventListener("blur", off);
+    });
+  })();
+
+  // Reveal-on-scroll for main > section
+  (function bindRevealOnScroll() {
+    const sections = $$("main > section");
+    if (!sections.length) return;
+    if (!("IntersectionObserver" in window)) {
+      sections.forEach((s) => s.classList.add("is-visible"));
+      return;
+    }
+    sections.forEach((s) => s.classList.add("reveal-on-scroll"));
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { root: null, rootMargin: "0px 0px -8% 0px", threshold: 0.08 }
+    );
+    sections.forEach((s) => io.observe(s));
+  })();
+
+  // Scroll-to-top if footer exposes a control
+  (function bindScrollToTop() {
+    const btn =
+      document.getElementById("lw-scroll-top") ||
+      document.querySelector(".lw-quick-up") ||
+      document.querySelector("footer .lw-quick-up") ||
+      document.querySelector("footer button[title*='Вверх' i]") ||
+      document.querySelector("footer a[title*='Вверх' i]") ||
+      document.querySelector(
+        "footer [class*='scroll-top'], footer [class*='back-to-top'], footer [data-scroll-top]"
+      );
+    if (!btn || btn.dataset.scrollTopBound) return;
+    btn.dataset.scrollTopBound = "1";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  })();
+
   // Generic carousel: container [data-carousel], slides [data-slide], controls [data-carousel-prev/next]
   $$("[data-carousel]").forEach((carousel) => {
     const slides = $$("[data-slide]", carousel);
     if (slides.length <= 1) return;
-    let idx = 0;
-    const draw = () => {
-      slides.forEach((s, i) => {
-        s.style.display = i === idx ? "" : "none";
-        s.setAttribute("aria-hidden", i === idx ? "false" : "true");
+    const usesActiveClass = slides.some((s) => s.classList && s.classList.contains("is-active"));
+    const dots = $$("[data-carousel-dot], [data-slide-to]", carousel).filter(
+      (el) => el.matches("[data-slide-to], [data-carousel-dot]")
+    );
+    let idx = usesActiveClass
+      ? Math.max(0, slides.findIndex((s) => s.classList.contains("is-active")))
+      : 0;
+    let timer = null;
+    const show = (i) => {
+      idx = ((i % slides.length) + slides.length) % slides.length;
+      slides.forEach((s, n) => {
+        const on = n === idx;
+        if (usesActiveClass) {
+          s.classList.toggle("is-active", on);
+          if (on) {
+            s.removeAttribute("hidden");
+            s.setAttribute("aria-hidden", "false");
+          } else {
+            s.setAttribute("hidden", "");
+            s.setAttribute("aria-hidden", "true");
+          }
+        } else {
+          s.style.display = on ? "" : "none";
+          s.setAttribute("aria-hidden", on ? "false" : "true");
+        }
+      });
+      dots.forEach((d, n) => {
+        const on = n === idx;
+        d.classList.toggle("is-active", on);
+        d.setAttribute("aria-selected", on ? "true" : "false");
       });
     };
-    const next = () => { idx = (idx + 1) % slides.length; draw(); };
-    const prev = () => { idx = (idx - 1 + slides.length) % slides.length; draw(); };
-    draw();
-    $$("[data-carousel-next]", carousel).forEach((b) => b.addEventListener("click", next));
-    $$("[data-carousel-prev]", carousel).forEach((b) => b.addEventListener("click", prev));
+    const next = () => show(idx + 1);
+    const prev = () => show(idx - 1);
+    const restart = () => {
+      if (timer) clearInterval(timer);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        timer = setInterval(next, 5500);
+      }
+    };
+    show(idx);
+    $$("[data-carousel-next]", carousel).forEach((b) =>
+      b.addEventListener("click", () => { next(); restart(); })
+    );
+    $$("[data-carousel-prev]", carousel).forEach((b) =>
+      b.addEventListener("click", () => { prev(); restart(); })
+    );
+    dots.forEach((d) => {
+      d.addEventListener("click", () => {
+        const to = Number(d.getAttribute("data-slide-to"));
+        if (!Number.isNaN(to)) show(to);
+        restart();
+      });
+    });
+    restart();
+    carousel.addEventListener("mouseenter", () => { if (timer) clearInterval(timer); });
+    carousel.addEventListener("mouseleave", restart);
   });
 
   // If there are obvious next/prev buttons without attributes, attempt fallback by text
@@ -4527,6 +4805,17 @@ function buildInteractionRuntime(gatewayUrl = DEFAULT_GATEWAY_URL) {
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer nofollow");
     }
+  });
+
+  document.querySelectorAll("[data-chip-row]").forEach((row) => {
+    row.querySelectorAll("[data-chip], button, [role='tab']").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        row.querySelectorAll("[data-chip], button, [role='tab']").forEach((c) =>
+          c.classList.remove("is-active")
+        );
+        chip.classList.add("is-active");
+      });
+    });
   });
 
   // Ensure frequently used click handlers from LLM are defined.
@@ -5767,6 +6056,9 @@ async function generatePageBundle(
     gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
     logoSrcForPrompt: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
     useTemplateChrome: ctx.useTemplateChrome,
+    siteCanonicalChrome: ctx.siteCanonicalChrome || null,
+    isFirstSitePage: Boolean(ctx.isFirstSitePage),
+    catalogSeedKey: `${ctx.structureFingerprint || ""}|${ctx.buildNonce || ""}`,
   });
 
   let user = userBase;
@@ -6431,6 +6723,26 @@ async function generatePageBundle(
       ctx.logoSrc || LAKI_LOGO_IMG_SRC
     );
   }
+  const siteChrome = ctx.siteCanonicalChrome || null;
+  if (
+    usesPremiumIgamingLayout() &&
+    !useTemplateChrome &&
+    !useRefChromeAssembly &&
+    siteChrome
+  ) {
+    if (shell.includeHeader && siteChrome.headerHtml) {
+      headerBlock = enforceCanonicalLogoInChromeHtml(
+        siteChrome.headerHtml,
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    }
+    if (shell.includeFooter && siteChrome.footerHtml) {
+      footerBlock = enforceCanonicalLogoInChromeHtml(
+        siteChrome.footerHtml,
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    }
+  }
   const gwNormOpts = {
     gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
     brandName:
@@ -6481,6 +6793,20 @@ async function generatePageBundle(
   );
   mainRaw = patchMainCtaContrast(mainRaw, ctx.sitePalette);
   mainRaw = repairBareActionControls(mainRaw);
+  mainRaw = flattenShallowWrapperDivsInMain(mainRaw);
+  mainRaw = ensureLwGamesSectionOnIndex(mainRaw, {
+    pageFile: pageMeta.file,
+    isIndex: isIndexPageFile(pageMeta.file),
+    gameSlotPaths: ctx.gameSlotPaths || [],
+    classPrefix,
+    gatewayUrl: gwNormOpts.gatewayUrl,
+  });
+  if (isIndexPageFile(pageMeta.file) && (ctx.gameSlotPaths || []).length) {
+    mainRaw = sanitizeLwGamesSectionImages(mainRaw, ctx.gameSlotPaths);
+    if (ctx.homeGamesMode === "tabs" && (ctx.gameTabSlotBatches || []).length) {
+      mainRaw = enforceLwGamesTabSlotImages(mainRaw, ctx.gameTabSlotBatches);
+    }
+  }
   let mainOnly = enforceHeadlineLength(mainRaw);
   if (slugScrubRep && String(ctx.projectSlug || "").trim()) {
     mainOnly = scrubTechnicalProjectSlugFromHtml(
@@ -6514,10 +6840,16 @@ ${footerBlock}
   const mainText = htmlToPlainText(mainOnly);
   const pageCssRaw = repairUnbalancedPageCss(String(data.pageCss || ""));
   const truncatedMain = isMainHtmlLikelyTruncated(mainOnly);
+  const premiumPageCss =
+    usesPremiumIgamingLayout() && !useTemplateChrome
+      ? `\n\n${buildPageTypographyBaselineCss()}`
+      : "";
   return {
     html: finalHtml,
     css: `${enforceMainVisualRules(pageCssRaw, ctx.sitePalette)}${
-      useTemplateChrome ? "" : `\n\n${buildAiChromeBaselineCss()}`
+      useTemplateChrome
+        ? premiumPageCss
+        : `\n\n${buildGamesBlockBaselineCss()}\n\n${buildMainInteractBaselineCss()}\n\n${buildAiChromeBaselineCss()}${premiumPageCss}`
     }`,
     js: `${buildInteractionRuntime(
       ctx.gatewayUrl || DEFAULT_GATEWAY_URL
@@ -7378,7 +7710,7 @@ export async function buildMultipageSite({
   const homeGamesMode = resolveHomeGamesMode(structureSeed);
   emitLog(
     onLog,
-    `Каркас: structureSalt=${structureSalt.slice(0, 12)}…; главная — режим игр «${homeGamesMode}»; отпечаток ${structureFingerprint}.`
+    `Каркас: structureSalt=${structureSalt.slice(0, 12)}…; главная — режим игр «${homeGamesMode}»; отпечаток ${structureFingerprint}; igaming-block-catalog=${usesPremiumIgamingLayout() ? "on" : "off"}.`
   );
   const ctx = {
     theme: themeNorm,
@@ -7419,6 +7751,7 @@ export async function buildMultipageSite({
     referenceBlendMode: referenceLocked,
     referenceTemplateMode: referenceTemplateModeEnabled,
     useTemplateChrome: templateChromeEnabled,
+    siteCanonicalChrome: null,
   };
 
   const results = [];
@@ -7454,6 +7787,7 @@ export async function buildMultipageSite({
     ctx.similarityRetryCount = 0;
     ctx.wordCountRetryCount = 0;
     ctx.wordCountOverMaxRetryCount = 0;
+    ctx.isFirstSitePage = i === 0;
     let bundle = await generatePageBundle(
       claudeKey,
       ctx,
@@ -7707,6 +8041,32 @@ export async function buildMultipageSite({
       classRhythmSig: finalClassRhythmSig,
       depthHistSig: finalDepthHistSig,
     });
+    if (
+      usesPremiumIgamingLayout() &&
+      !templateChromeEnabled &&
+      !referenceLocked &&
+      !ctx.siteCanonicalChrome
+    ) {
+      const pair = extractChromePairFromHtml(bundle.html || "");
+      const hdrOk =
+        pair.headerHtml &&
+        isWellFormedChromeFragment(pair.headerHtml, "header") &&
+        pair.headerHtml.length >= 48;
+      const ftrOk =
+        pair.footerHtml &&
+        isWellFormedChromeFragment(pair.footerHtml, "footer") &&
+        pair.footerHtml.length >= 48;
+      if (hdrOk || ftrOk) {
+        ctx.siteCanonicalChrome = {
+          headerHtml: hdrOk ? pair.headerHtml : "",
+          footerHtml: ftrOk ? pair.footerHtml : "",
+        };
+        emitLog(
+          onLog,
+          `Site chrome: зафиксированы ${hdrOk ? "header" : ""}${hdrOk && ftrOk ? " + " : ""}${ftrOk ? "footer" : ""} с «${pageMeta.file}» для остальных страниц.`
+        );
+      }
+    }
     results.push(pageMeta.file);
     await writeBuildProgress(outputDir, pages.length, results.length);
   }

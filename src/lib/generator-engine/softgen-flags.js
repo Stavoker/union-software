@@ -33,3 +33,8 @@ export function isFreeGenerationMode() {
 export function usesTemplateChrome() {
   return envOn("SOFTGEN_TEMPLATE_CHROME", "0");
 }
+
+/** Каталог блоків iGaming: підказки hero/секцій без замороженого css/igaming.css (1 за замовчуванням). */
+export function usesPremiumIgamingLayout() {
+  return envOn("SOFTGEN_PREMIUM_IGAMING_LAYOUT", "1");
+}
