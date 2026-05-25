@@ -1876,3 +1876,14 @@ export function uniqueSiteStructurePromptBlock(pageFile) {
 - Не делай на каждой странице одинаковый набор «hero → три карточки → длинный текст»; следуй полям layoutVariant и sectionOrder из user.
 ${isHome ? `- Главная: секции #lw-games и #lw-vip обязательны по смыслу, но **внешний вид #lw-games** каждый раз другой (см. user-промпт: анти-шаблон); hero с визуалом, **не** клонируя типовой split 50/50 и не цепляя под hero «ленту из четырёх равных метрик».` : `- Внутренняя страница: структура и порядок секций не должны совпадать с главной и с другими URL этого сайта; избегай повторяемого между **разными сайтами** каркаса «длинный текст + правый сайдбар из трёх одинаковых карточек»; варьируй оглавление и колонки.`}`;
 }
+
+export {
+  buildPremiumIgamingPromptIntro,
+  buildPremiumLayoutPromptBlock,
+  buildPageTypographyBaselineCss,
+  buildIgamingBlockCatalogIntro,
+  buildIgamingBlockSuggestionsForPage,
+  buildSiteChromeAuthoringBlock,
+  buildSiteChromeReuseBlock,
+  extractChromePairFromHtml,
+} from "./igaming-premium.js";
