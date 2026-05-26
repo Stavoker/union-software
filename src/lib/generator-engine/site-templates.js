@@ -9,7 +9,7 @@ import {
 import {
   resolveSiteTemplateBundle,
   invalidateSiteTemplateCache,
-} from "@/src/lib/generator-engine/generation-site-templates";
+} from "@/src/lib/generation-site-templates";
 
 const ENGINE_DIR = path.dirname(fileURLToPath(import.meta.url));
 

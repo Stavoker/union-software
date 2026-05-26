@@ -46,14 +46,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
       );
     }
 
-    let bundle;
+    let bundle: Map<string, { content: string; kind: string }>;
     if (source === "filesystem") {
-      const fsMap = loadSiteTemplateBundleFromFilesystem(slug);
-      bundle = fsMap;
+      bundle = loadSiteTemplateBundleFromFilesystem(slug);
     } else {
       bundle = await fetchSiteTemplateBundleFromSupabase(slug);
       if (bundle.size === 0) {
-        bundle = await getSiteTemplateBundle(slug);
+        bundle = (await getSiteTemplateBundle(slug)) ?? new Map();
       }
     }
 
