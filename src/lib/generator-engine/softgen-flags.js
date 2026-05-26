@@ -38,3 +38,8 @@ export function usesTemplateChrome() {
 export function usesPremiumIgamingLayout() {
   return envOn("SOFTGEN_PREMIUM_IGAMING_LAYOUT", "1");
 }
+
+/** Два локальних эталона u-bet162 / u-spot064 з ротацією шаблона по страницам (1 за замовчуванням). */
+export function usesDualSiteTemplates() {
+  return envOn("SOFTGEN_DUAL_SITE_TEMPLATES", "1");
+}

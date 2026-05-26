@@ -729,7 +729,13 @@ export function detectLayoutFeaturesForSimilarity(cleanHtml) {
  * @param {string} [_pageFile] — залишено для сумісності викликів, ігнорується
  * @returns {string}
  */
-export function resolveMainHtmlTemplateForPage(signals, _pageFile) {
+export function resolveMainHtmlTemplateForPage(signals, pageFile) {
+  const file = String(pageFile || "").trim();
+  const byFile = signals?.mainHtmlTemplatesByFile;
+  if (byFile && file) {
+    const perPage = String(byFile[file] || byFile[file.toLowerCase()] || "").trim();
+    if (perPage) return perPage;
+  }
   return String(signals?.mainHtmlTemplate || "").trim();
 }
 

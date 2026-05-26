@@ -69,7 +69,21 @@ import {
   isQualityRegenEnabled,
   usesTemplateChrome,
   usesPremiumIgamingLayout,
+  usesDualSiteTemplates,
 } from "@/lib/generator-engine/softgen-flags";
+import {
+  buildSiteClassNamespace,
+  buildSiteTemplatePagePromptBlock,
+  formatTemplatePlanLog,
+  loadDualEtalonReferencePack,
+  pickPageTemplatePlan,
+  readBundledIgamingCss,
+  readBundledSiteShellCss,
+  resolvePageSiteTemplate,
+  siteNeedsIgamingCss,
+  siteNeedsSiteShellCss,
+  SITE_TEMPLATE_SPOT064,
+} from "@/lib/generator-engine/site-templates";
 
 const PROJECTS_DIR = getProjectsDir();
 
@@ -522,23 +536,12 @@ function rewriteImgUrlsForExternalPageCss(cssText) {
 /** Візуальна мова білду: палітра та `./img/` лише з контексту поточної генерації (без копіювання верстки сторонніх сайтів як зразка). */
 const ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
-const GENERATION_TEMPERATURE = Math.max(
-  0.9,
-  Math.min(1, Number(process.env.AURORA_GENERATION_TEMPERATURE) || 0.95)
-);
-/** Ліміти виводу Claude; фактичний cap на запит обмежується бюджетом на весь сайт. */
-const PAGE_MAX_TOKENS = Math.max(
-  1,
-  Number(process.env.ANTHROPIC_MAX_TOKENS_PAGE) || 28672
-);
-const ARCHITECT_MAX_TOKENS = Math.max(
-  1,
-  Number(process.env.ANTHROPIC_MAX_TOKENS_ARCHITECT) || 12288
-);
-const JS_FIX_MAX_TOKENS = Math.max(
-  1,
-  Number(process.env.ANTHROPIC_MAX_TOKENS_JSFIX) || PAGE_MAX_TOKENS
-);
+/** Оновлюється в syncGeneratorLimitsFromEnv() після withUserIntegrationEnv. */
+let GENERATION_TEMPERATURE = 0.88;
+/** Ліміти виводу Claude; оновлюються в syncGeneratorLimitsFromEnv() перед збіркою. */
+let PAGE_MAX_TOKENS = 28672;
+let ARCHITECT_MAX_TOKENS = 12288;
+let JS_FIX_MAX_TOKENS = PAGE_MAX_TOKENS;
 const PROMPT_REGEN_MAX_TOKENS = Math.max(
   512,
   Math.min(4096, Number(process.env.SOFTGEN_PROMPT_REGEN_MAX_TOKENS) || 1200)
@@ -597,12 +600,43 @@ function readPositiveIntEnv(name, defaultValue, min, max) {
  * Сумарний орієнтир **output**-токенів Claude на один сайт.
  * Env: `AURORA_CLAUDE_SITE_OUTPUT_BUDGET` (ціле, 4096…500000, за замовчуванням 400000).
  */
-const SITE_CLAUDE_OUTPUT_BUDGET = readPositiveIntEnv(
-  "AURORA_CLAUDE_SITE_OUTPUT_BUDGET",
-  400000,
-  4096,
-  500000
-);
+let SITE_CLAUDE_OUTPUT_BUDGET = 400000;
+
+/** Читає ліміти з process.env (після withUserIntegrationEnv — з Settings користувача). */
+function syncGeneratorLimitsFromEnv() {
+  PAGE_MAX_TOKENS = Math.max(
+    1,
+    Number(process.env.ANTHROPIC_MAX_TOKENS_PAGE) || 28672
+  );
+  ARCHITECT_MAX_TOKENS = Math.max(
+    1,
+    Number(process.env.ANTHROPIC_MAX_TOKENS_ARCHITECT) || 12288
+  );
+  JS_FIX_MAX_TOKENS = Math.max(
+    1,
+    Number(process.env.ANTHROPIC_MAX_TOKENS_JSFIX) || PAGE_MAX_TOKENS
+  );
+  SITE_CLAUDE_OUTPUT_BUDGET = readPositiveIntEnv(
+    "AURORA_CLAUDE_SITE_OUTPUT_BUDGET",
+    400000,
+    4096,
+    500000
+  );
+  MIN_PAGE_WORDS = readPositiveIntEnv("SOFTGEN_MIN_PAGE_WORDS", 950, 200, 5000);
+  MIN_INDEX_PAGE_WORDS = readPositiveIntEnv(
+    "SOFTGEN_MIN_INDEX_PAGE_WORDS",
+    MIN_PAGE_WORDS,
+    200,
+    5000
+  );
+  MAX_PAGE_WORDS = readPositiveIntEnv("SOFTGEN_MAX_PAGE_WORDS", 2000, 500, 8000);
+  MAIN_WORD_VOLUME_GUIDE = `${MIN_PAGE_WORDS}–${MAX_PAGE_WORDS}`;
+  const tempRaw = Number(process.env.AURORA_GENERATION_TEMPERATURE);
+  GENERATION_TEMPERATURE = Math.max(
+    0.75,
+    Math.min(1, Number.isFinite(tempRaw) ? tempRaw : 0.88)
+  );
+}
 
 function emitLog(onLog, message) {
   if (typeof onLog !== "function") return;
@@ -1803,14 +1837,11 @@ const MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD = 0.17;
 const DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD = 0.34;
 const CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD = 0.48;
 const DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD = 0.58;
-/** Мінімум слів у plain text <main> для внутрішніх сторінок (після перевірки; промпти й Claude fill). */
-const MIN_PAGE_WORDS = 950;
-/** Головна (index.php / index.html): той самий мінімум, що й інші URL (короткі сторінки не проходять gate). */
-const MIN_INDEX_PAGE_WORDS = 950;
-/** Верхня межа <main>; вище — перегенерація; піднято, щоб не різати довгі сторінки під час відтворення об’ємного референса. */
-const MAX_PAGE_WORDS = 2000;
-/** Коридор цільового обсягу <main> у промптах (орієнтир; верх збігається з MAX_PAGE_WORDS). */
-const MAIN_WORD_VOLUME_GUIDE = `950–${MAX_PAGE_WORDS}`;
+/** Мінімум/максимум слів у <main>; оновлюється в syncGeneratorLimitsFromEnv(). */
+let MIN_PAGE_WORDS = 950;
+let MIN_INDEX_PAGE_WORDS = 950;
+let MAX_PAGE_WORDS = 2000;
+let MAIN_WORD_VOLUME_GUIDE = "950–2000";
 /** Мінімум маркерів @@PHn@@ у <main> на кожній сторінці (legacy fallback для text-fill). */
 const PH_MAIN_PLACEHOLDERS_MIN = 50;
 /** Верх орієнтиру кількості маркерів у <main> (у промптах). */
@@ -1844,6 +1875,27 @@ const MIN_BRAND_MENTIONS_IN_PARAGRAPHS = 3;
 /** После сборки обрезаем слишком длинные заголовки; лимиты под SEO-шаблон «официальный сайт … — …». */
 const HEADLINE_H1_MAX_WORDS = 14;
 const HEADLINE_H23_MAX_WORDS = 10;
+
+/** Пріоритет якості та SEO над швидкістю відповіді (промпти архітектора / сторінки / system). */
+function buildQualityAndSeoPriorityBlock(kind = "page") {
+  const shared = `
+ПРИОРИТЕТ КАЧЕСТВА (не спеши с ответом):
+- Скорость не важна: лучше полный, выверенный результат, чем урезанный JSON «на скорую руку».
+- Текст для людей и поиска: информативные абзацы <p>, естественные ключевые фразы из блока SEO, без воды и без «заглушек».
+- SEO: осмысленные <title> и meta description (как в плане), один логичный <h1>, иерархия h2/h3, внутренние ссылки, alt у изображений, canonical в head.
+- Вёрстка: аккуратный семантический HTML, читаемый CSS (сетки, отступы, hover), доступные подписи у CTA; не ломай каркас ради краткости.
+`.trim();
+  if (kind === "architect") {
+    return `${shared}
+- В плане: title/description — готовые для выдачи (не черновик); contentAngle и role раскрывают поисковый интент страницы.`;
+  }
+  if (kind === "system") {
+    return `${shared}
+- Не сокращай mainHtml и тексты только чтобы уложиться в лимит токенов; при нехватке места — уплотни CSS/JS, а не выкидывай SEO-абзацы.`;
+  }
+  return `${shared}
+- Заполняй объём в <main> полноценным копирайтом (${MIN_PAGE_WORDS}–${MAX_PAGE_WORDS} слов), а не списком однострочников.`;
+}
 
 function minWordsTargetForPageFile(file) {
   return isIndexPageFile(canonicalMultipageFile(file))
@@ -2307,7 +2359,7 @@ function formatDiversityPackForPrompt(
     `Запреты (для всего сайта): ${pack.bans.join("; ")}.`,
     `Требования к отличиям: ${pack.must.join("; ")}.`,
     `Шапка и подвал задаются генератором. Контент внутри <main> на каждой из ${n} страниц должен быть максимально разным по структуре, DOM, блокам и ритму — как ${n} разных макетов, а не копии одного шаблона; **главная (index.php)** — не короче ${MIN_INDEX_PAGE_WORDS} слов в итоговом <main>; остальные страницы пакета — не короче ${MIN_PAGE_WORDS} слов (после заполнения плейсхолдеров).`,
-    "Вариативность важнее «красоты»: допустимы неровные сетки и нестандартные секции, если они уникальны между страницами и между разными билдами (анти-fingerprint).",
+    "Сначала качество текста и SEO, затем вариативность: уникальные макеты допустимы, но не ценой пустых секций, битой вёрстки или шаблонных заголовков.",
     "Каждый новый билд — другой порядок секций и другой каркас главной; не воспроизводи типовую цепочку блоков с прошлых генераций.",
     `Каждая новая генерация получает уникальный структурный отпечаток — порядок блоков и DOM не должен повторять предыдущие сайты.`,
     "КРИТИЧНО: не используй в копирайте латинские имена папок сборки (например my-project-08), служебную метку билда и build id — только человекочитаемое имя бренда.",
@@ -2985,6 +3037,8 @@ function buildArchitectPrompt({
         .join(" ");
   return `Ты формируешь краткий план сайта. Верни ТОЛЬКО валидный JSON без markdown.
 
+${buildQualityAndSeoPriorityBlock("architect")}
+
 Тема: ${theme}
 Бренд из темы: «${brandFromTheme}».
 Служебная метка: ${internalTag} (не выводить в тексты сайта).
@@ -3168,8 +3222,12 @@ function buildPagePrompt({
   logoSrcForPrompt = LAKI_LOGO_IMG_SRC,
   useTemplateChrome: useTemplateChromeIn = usesTemplateChrome(),
   siteCanonicalChrome = null,
+  siteCanonicalChromeForTemplate = null,
   isFirstSitePage = false,
+  isFirstPageForTemplate = false,
   catalogSeedKey = "",
+  pageSiteTemplate = "",
+  siteClassNamespace = null,
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const logoPrompt =
@@ -3193,11 +3251,13 @@ function buildPagePrompt({
     refFooterTpl.length > REF_CHROME_PROMPT_SNIP
       ? `${refFooterTpl.slice(0, REF_CHROME_PROMPT_SNIP)}\n<!-- … truncated … -->`
       : refFooterTpl;
-  const classPrefix = buildSemanticClassPrefix(
-    themeBrandHint || (brandTerms && brandTerms[0]) || "",
-    pageMeta.file,
-    pageIndex
-  );
+  const classNs =
+    siteClassNamespace ||
+    buildSiteClassNamespace(
+      themeBrandHint || (brandTerms && brandTerms[0]) || "",
+      catalogSeedKey || `${structureFingerprint}|${buildNonce}`
+    );
+  const classPrefix = classNs.bemPrefix;
   const allowedImgList = (Array.isArray(imageFiles) ? imageFiles : [])
     .map((f) => String(f || "").replace(/^\.\/img\//, ""))
     .filter(Boolean)
@@ -3208,7 +3268,7 @@ function buildPagePrompt({
 - Логотип в chrome: ${logoPrompt}. В <main> не подставляй ./img/laki* и файлы, которых нет в проекте.
 - Допустимые файлы в ./img/ (только они): ${allowedImgList || "logo.png, favicon.png и ассеты бренда"}.
 - alt у изображений — на русском, с названием бренда где уместно.
-- CSS-классы в <main>: префикс «${classPrefix}» + осмысленные суффиксы (hero_title, faq_item, promo_card), НЕ хеши вида p1_e5b60fe2b1_.
+- CSS-классы в <main>: BEM с префиксом «${classPrefix}» (${classNs.promptExamples}); НЕ union_index_*, НЕ хеши p1_e5b60fe2, НЕ slug страницы в имени класса.
 - pageJs: осмысленные имена (gamesTabs, faqAccordion); ЗАПРЕТ function-1223131, var p_e5b60f, однобуквенных обработчиков.
 - Контейнеры: max-width и ровные боковые отступы; текст в <p> с нормальным line-height; img { max-width:100%; height:auto }.
 `;
@@ -3230,6 +3290,16 @@ UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, офо�
 СТИЛИ И АНИМАЦИЯ: в **pageCss** обязательно оформи **headerHtml и footerHtml** (flex, фон, hover, CTA) с префиксом «${classPrefix}»; плюс карточки, promo и **все <table>**. Базовые стили header/footer/секций уже в chrome.css — **дополни** их в pageCss под палитру. Контент на всю ширину; сетки на clamp/grid.
 ТАБЛИЦЫ: если есть сравнение форматов/бонусов — полноценная <table> с <thead>/<tbody>, классы с префиксом «${classPrefix}»; базовые стили таблиц уже в chrome.css, **дополни** их в pageCss под палитру билда.
 `;
+  const dualTplBlock =
+    pageSiteTemplate && usesDualSiteTemplates()
+      ? buildSiteTemplatePagePromptBlock({
+          pageFile: pageMeta.file,
+          templateId: pageSiteTemplate,
+          classNamespace: classNs,
+          isFirstPage: isFirstPageForTemplate,
+          canonicalChromeForTemplate: siteCanonicalChromeForTemplate,
+        })
+      : "";
   const premiumCatalogBlock =
     usesPremiumIgamingLayout() && !refTpl
       ? `\n${buildPremiumIgamingPromptIntro()}\n${buildPremiumLayoutPromptBlock(
@@ -3237,14 +3307,19 @@ UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, офо�
           gtw,
           catalogSeedKey ||
             `${structureFingerprint}|${buildNonce}|${pageMeta.file}`
-        )}\n${buildSiteChromeAuthoringBlock({ isFirstPage: isFirstSitePage })}\n${buildSiteChromeReuseBlock(siteCanonicalChrome || {})}\n`
-      : "";
+        )}\n${dualTplBlock || ""}${buildSiteChromeAuthoringBlock({ isFirstPage: isFirstSitePage && !pageSiteTemplate })}\n${buildSiteChromeReuseBlock(
+          siteCanonicalChromeForTemplate || siteCanonicalChrome || {}
+        )}\n`
+      : dualTplBlock
+        ? `\n${dualTplBlock}\n`
+        : "";
   const igamingContentBlock = `
 КОНТЕНТ iGAMING (обязательно в <main>, русский язык):
 - Пиши про **бонусы** (приветственный пакет, reload, кэшбэк, фриспины), **промоакции** и турниры, **слоты** и **live-казино**, лимиты ставок, вейджер, RTP/волатильность — конкретно, с цифрами-ориентирами (диапазоны допустимы).
 - На главной: hero с оффером, блок преимуществ, сравнение форматов игр или бонусов (таблица или карточки), FAQ по выплатам/верификации, CTA на регистрацию.
 - На внутренних страницах — свой угол (платежи, отзывы, правила бонуса, VIP и т.д.), без «сухой хроники бренда» без игрового контекста.
 - Тон: уверенный маркетинг площадки, но без юридических гарантий выигрыша; не копируй один и тот же абзац на все URL.
+- SEO: раскрой интент страницы (${keywordHint}) в первых абзацах и подзаголовках; не жертвуй глубиной ради «быстрого» короткого ответа.
 `;
   const preferredHero = [
     "./img/banner-1-mob.webp",
@@ -3779,6 +3854,8 @@ ${incF ? `  "footerHtml": "<footer class=\\"${classPrefix}ref-f\\">...</footer>"
 ${incF ? `  "footerHtml": "<footer class=\\"${classPrefix}site-footer\\">...</footer>",` : `  "footerHtml": "",`}`;
 
   return `Ты senior фронтенд-разработчик. Сгенерируй контент ОДНОЙ страницы для статического сайта.
+
+${buildQualityAndSeoPriorityBlock("page")}
 
 ${referenceTemplateBlock}
 ${diversityPackText}
@@ -4321,7 +4398,8 @@ function ensureMultipageHeadPipeline(
   pageIndex,
   palette = null,
   logoSrc = LAKI_LOGO_IMG_SRC,
-  headDiversifyKey = ""
+  headDiversifyKey = "",
+  headStyleExtras = {}
 ) {
   const h0 = String(headHtml || "");
   if (!/<\/head>/i.test(h0)) return h0;
@@ -4336,6 +4414,12 @@ function ensureMultipageHeadPipeline(
   const inject = [];
   if (!/chrome\.css/i.test(h0)) {
     inject.push('<link rel="stylesheet" href="css/chrome.css">');
+  }
+  if (headStyleExtras.includeIgamingCss && !/igaming\.css/i.test(h0)) {
+    inject.push('<link rel="stylesheet" href="css/igaming.css">');
+  }
+  if (headStyleExtras.includeSiteShellCss && !/site-shell\.css/i.test(h0)) {
+    inject.push('<link rel="stylesheet" href="css/site-shell.css">');
   }
   const pageCssRe = new RegExp(`page-${pageIndex}\\.css`, "i");
   if (!pageCssRe.test(h0)) {
@@ -4892,15 +4976,9 @@ function slugifyBrandForPrefix(brandName) {
   return (slug || "site").slice(0, 14);
 }
 
-/** Семантичний префікс класів (не хеш білда). */
-function buildSemanticClassPrefix(brandName, pageFile, pageIndex) {
-  const brand = slugifyBrandForPrefix(brandName);
-  const page = String(pageFile || "page")
-    .replace(/\.php$/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .slice(0, 18);
-  return `${brand}_${page || `p${pageIndex}`}_`;
+/** @deprecated — один BEM-префікс на сайт через buildSiteClassNamespace. */
+function buildSemanticClassPrefix(brandName, _pageFile, _pageIndex, seedKey = "") {
+  return buildSiteClassNamespace(brandName, seedKey).bemPrefix;
 }
 
 /**
@@ -6002,8 +6080,16 @@ async function generatePageBundle(
     ctx.referenceStructureSignals || {},
     pageMeta.file
   );
+  const pageSiteTemplate = resolvePageSiteTemplate(
+    ctx.referenceStructureSignals || {},
+    pageMeta.file
+  );
   const pageReferenceTemplateMode = Boolean(
     ctx.referenceTemplateMode && String(pageRefMainHtml || "").trim().length > 0
+  );
+  const tplFirstSeen = ctx.siteCanonicalChromeByTemplate || {};
+  const isFirstPageForTemplate = Boolean(
+    pageSiteTemplate && !tplFirstSeen[pageSiteTemplate]
   );
   const userBase = buildPagePrompt({
     theme: ctx.theme,
@@ -6057,7 +6143,11 @@ async function generatePageBundle(
     logoSrcForPrompt: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
     useTemplateChrome: ctx.useTemplateChrome,
     siteCanonicalChrome: ctx.siteCanonicalChrome || null,
+    siteCanonicalChromeForTemplate: tplFirstSeen[pageSiteTemplate] || null,
     isFirstSitePage: Boolean(ctx.isFirstSitePage),
+    isFirstPageForTemplate,
+    pageSiteTemplate: usesDualSiteTemplates() ? pageSiteTemplate : "",
+    siteClassNamespace: ctx.siteClassNamespace || null,
     catalogSeedKey: `${ctx.structureFingerprint || ""}|${ctx.buildNonce || ""}`,
   });
 
@@ -6111,6 +6201,8 @@ async function generatePageBundle(
   const minWordsDs =
     Number(ctx.minPageWords) || minWordsTargetForPageFile(pageMeta.file);
   const systemDeepseekPage =
+    buildQualityAndSeoPriorityBlock("system") +
+    " " +
     "Ты генерируешь только один JSON-объект (без markdown и текста до/после). " +
     "HTML/CSS/JS внутри строк JSON: экранируй двойные кавычки как \\\", переносы как \\n, обратный слэш как \\\\. " +
     "Сразу пиши финальный русский текст для людей (без плейсхолдеров @@PHn@@). " +
@@ -6412,14 +6504,23 @@ async function generatePageBundle(
     pageIndex,
     ctx.sitePalette,
     ctx.logoSrc || LAKI_LOGO_IMG_SRC,
-    `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}|${ctx.projectSlug || ""}`
+    `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}|${ctx.projectSlug || ""}`,
+    {
+      includeIgamingCss: Boolean(ctx.needsIgamingCss),
+      includeSiteShellCss: Boolean(ctx.needsSiteShellCss),
+    }
   );
 
   const shell = ctx.chromeShell || { includeHeader: true, includeFooter: true };
-  const classPrefix = buildSemanticClassPrefix(
-    ctx.publicBrandName || ctx.themeBrandHint || "site",
-    pageMeta.file,
-    pageIndex
+  const classPrefix =
+    ctx.siteClassNamespace?.bemPrefix ||
+    buildSiteClassNamespace(
+      ctx.publicBrandName || ctx.themeBrandHint || "site",
+      `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}`
+    ).bemPrefix;
+  const pageSiteTemplateAsm = resolvePageSiteTemplate(
+    ctx.referenceStructureSignals || {},
+    pageMeta.file
   );
   const brandSanitizeOpts = {
     brandName:
@@ -6433,11 +6534,16 @@ async function generatePageBundle(
     ctx.chromeLayoutSkins ||
     pickChromeLayoutSkins(ctx.structureSeed || ctx.siteSeed || "0");
   const refAsmSig = ctx.referenceStructureSignals || {};
+  const tplChrome = refAsmSig.chromeByTemplate?.[pageSiteTemplateAsm] || null;
   const refAsmHdrTpl = String(
-    refAsmSig.referenceHeaderTemplate || ""
+    pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+      ? tplChrome?.headerHtml || refAsmSig.referenceRailTemplate || ""
+      : tplChrome?.headerHtml || refAsmSig.referenceHeaderTemplate || ""
   ).trim();
   const refAsmFtrTpl = String(
-    refAsmSig.referenceFooterTemplate || ""
+    pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+      ? tplChrome?.footerHtml || refAsmSig.referenceRichFooterTemplate || ""
+      : tplChrome?.footerHtml || refAsmSig.referenceFooterTemplate || ""
   ).trim();
   const refChromeTplPresent =
     refAsmHdrTpl.length > 0 || refAsmFtrTpl.length > 0;
@@ -6679,7 +6785,12 @@ async function generatePageBundle(
       slugScrubRep
     );
   }
-  if (shell.includeHeader && headerBlock && !/<header\b/i.test(headerBlock)) {
+  if (
+    shell.includeHeader &&
+    headerBlock &&
+    !/<header\b/i.test(headerBlock) &&
+    !/<aside\b/i.test(headerBlock)
+  ) {
     emitLog(
       onLog,
       `Предупреждение: «${pageMeta.file}» — headerHtml без тега <header>; оборачиваем.`
@@ -6693,7 +6804,11 @@ async function generatePageBundle(
     );
     footerBlock = `<footer class="${classPrefix}ai-footer" id="footer">${footerBlock}</footer>`;
   }
-  if (shell.includeHeader && (!headerBlock || !isWellFormedChromeFragment(headerBlock, "header"))) {
+  const headerChromeOk =
+    headerBlock &&
+    (isWellFormedChromeFragment(headerBlock, "header") ||
+      (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 && /<aside\b/i.test(headerBlock)));
+  if (shell.includeHeader && !headerChromeOk) {
     emitLog(
       onLog,
       `«${pageMeta.file}» — гарантированная AI-шапка (модель не дала валидный header).`
@@ -6723,7 +6838,11 @@ async function generatePageBundle(
       ctx.logoSrc || LAKI_LOGO_IMG_SRC
     );
   }
-  const siteChrome = ctx.siteCanonicalChrome || null;
+  const siteChromeTpl =
+    (usesDualSiteTemplates() &&
+      ctx.siteCanonicalChromeByTemplate?.[pageSiteTemplateAsm]) ||
+    null;
+  const siteChrome = siteChromeTpl || ctx.siteCanonicalChrome || null;
   if (
     usesPremiumIgamingLayout() &&
     !useTemplateChrome &&
@@ -6824,13 +6943,23 @@ async function generatePageBundle(
   footerBlock = sanitizeBrandLeaksInHtml(footerBlock, brandSanitizeOpts);
   mainOnly = sanitizeBrandLeaksInHtml(mainOnly, brandSanitizeOpts);
 
+  const bodyInner =
+    pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+      ? `${headerBlock}
+<div class="lw-site-col">
+${mainOnly}
+${footerBlock}
+</div>`
+      : `${headerBlock}
+${mainOnly}
+${footerBlock}`;
+  const bodyClass =
+    pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 ? ' class="has-lw-rail"' : "";
   const withChrome = `<!DOCTYPE html>
 <html lang="ru-RU">
 ${headBlock}
-<body>
-${headerBlock}
-${mainOnly}
-${footerBlock}
+<body${bodyClass}>
+${bodyInner}
 </body>
 </html>`;
 
@@ -6866,6 +6995,7 @@ export async function buildPromptPreview({
   pageCount = 4,
   brandKey = "",
 }) {
+  syncGeneratorLimitsFromEnv();
   const safeName = sanitizeProjectName(projectName || "preview-project");
   const themeNorm = String(theme || "").trim();
   if (!themeNorm) {
@@ -7130,6 +7260,7 @@ export async function buildMultipageSite({
   brandKit: brandKitInput = null,
   referenceTemplateMode: referenceTemplateModeInput = false,
 }) {
+  syncGeneratorLimitsFromEnv();
   const ensureNotStopped = () => {
     if (typeof shouldStop === "function" && shouldStop()) {
       throw new Error("Генерация остановлена пользователем.");
@@ -7284,12 +7415,45 @@ export async function buildMultipageSite({
       `Supabase generation_prompt_profiles: ${String(e?.message || e).slice(0, 240)} — без профиля`
     );
   }
+  let pageTemplatePlan = {};
+  let templateCssFromEtalon = null;
+  if (usesDualSiteTemplates()) {
+    try {
+      pageTemplatePlan = pickPageTemplatePlan(structureSeed, expectedFiles);
+      const dualPack = await loadDualEtalonReferencePack({
+        pickSeed: structureSeed,
+        plan: pageTemplatePlan,
+        pageFiles: expectedFiles,
+        onLog: (m) => emitLog(onLog, m),
+      });
+      templateCssFromEtalon = dualPack.templateCss || null;
+      referenceSiteOverlay = dualPack.siteOverlay;
+      referenceStructureOverlay = dualPack.overlay;
+      referenceStructureSignals = dualPack.signals;
+      emitLog(
+        onLog,
+        `Двойной эталон: шаблоны по страницам ${formatTemplatePlanLog(pageTemplatePlan)}.`
+      );
+    } catch (dualErr) {
+      emitLog(
+        onLog,
+        `Двойной эталон: ${String(dualErr?.message || dualErr).slice(0, 220)} — fallback на Supabase-референс.`
+      );
+      pageTemplatePlan = {};
+    }
+  }
   try {
-    const refSite = await selectReferenceSiteForBuild({
-      pickSeed: `${buildNonce}|${safeName}|ref`,
-      incrementCounter: true,
-      onLog: (m) => emitLog(onLog, m),
-    });
+    if (referenceStructureSignals?.dualSiteTemplates) {
+      emitLog(onLog, "Референс Supabase: пропуск — активны локальные эталоны u-bet162/u-spot064.");
+    }
+    const refSite =
+      referenceStructureSignals?.dualSiteTemplates
+        ? null
+        : await selectReferenceSiteForBuild({
+            pickSeed: `${buildNonce}|${safeName}|ref`,
+            incrementCounter: true,
+            onLog: (m) => emitLog(onLog, m),
+          });
     if (refSite) {
       referenceSiteOverlay = formatReferenceSitePromptBlock(refSite);
       emitLog(
@@ -7343,13 +7507,20 @@ export async function buildMultipageSite({
   }
   const referenceLocked = Boolean(String(referenceStructureOverlay || "").trim());
   const mainTpl = String(referenceStructureSignals?.mainHtmlTemplate || "").trim();
+  const perPageTplCount = Object.keys(
+    referenceStructureSignals?.mainHtmlTemplatesByFile || {}
+  ).length;
   const referenceTemplateModeEnabled = Boolean(
-    referenceLocked && referenceTemplateModeWanted && mainTpl.length > 0
+    referenceLocked &&
+      referenceTemplateModeWanted &&
+      (perPageTplCount > 0 || mainTpl.length > 0)
   );
   if (referenceTemplateModeEnabled) {
     emitLog(
       onLog,
-      `Режим шаблона: один эталонный inner <main> с reference_url (${Number(referenceStructureSignals?.mainHtmlTemplateChars) || mainTpl.length} симв.) — для всех страниц пакета; ref-structure gate отключён при непустом шаблоне.`
+      referenceStructureSignals?.dualSiteTemplates
+        ? `Режим шаблона: эталоны u-bet162/u-spot064, inner <main> по страницам (${perPageTplCount} шт., план ${formatTemplatePlanLog(pageTemplatePlan)}).`
+        : `Режим шаблона: один эталонный inner <main> с reference_url (${Number(referenceStructureSignals?.mainHtmlTemplateChars) || mainTpl.length} симв.) — для всех страниц пакета; ref-structure gate отключён при непустом шаблоне.`
     );
   } else if (referenceTemplateModeWanted && referenceLocked) {
     emitLog(
@@ -7511,6 +7682,8 @@ export async function buildMultipageSite({
   );
   emitLog(onLog, "ЭТАП: архитектор JSON (Claude) — план страниц и brandName");
   const architectSystemJsonRules =
+    buildQualityAndSeoPriorityBlock("architect") +
+    " " +
     "Отвечай только валидным JSON без обёрток и markdown. Корневой объект — только brandName и pages; не добавляй jsonLd, schema и другие ключи верхнего уровня. Не включай переводы строк внутри строк без экранирования. Во всех строковых значениях экранируй символ двойной кавычки как \\\" (иначе JSON ломается). Запрещены «умные» кавычки «» внутри JSON — только обычные \\\". Во всех полях JSON, которые попадут на сайт (title, description в pages, brandName): только русский язык для читабельных текстов. " +
     "Никогда не подставляй в brandName и человекочитаемые поля техническое имя папки сборки (латиница вида my-project-08) и служебные метки билда — только осмысленное имя бренда из темы или плана. ";
   const architectSystemPlanTail = referenceLocked
@@ -7689,6 +7862,29 @@ export async function buildMultipageSite({
     "utf8"
   );
 
+  const needsIgamingCss =
+    usesDualSiteTemplates() && siteNeedsIgamingCss(pageTemplatePlan);
+  const needsSiteShellCss =
+    usesDualSiteTemplates() && siteNeedsSiteShellCss(pageTemplatePlan);
+  if (needsIgamingCss) {
+    const igCss =
+      String(templateCssFromEtalon?.igaming || "").trim() ||
+      (await readBundledIgamingCss({ onLog: (m) => emitLog(onLog, m) }));
+    if (igCss) {
+      emitLog(onLog, "Запись css/igaming.css (эталон bet162, Supabase)…");
+      await fs.writeFile(path.join(cssDir, "igaming.css"), `${igCss}\n`, "utf8");
+    }
+  }
+  if (needsSiteShellCss) {
+    const shellCss =
+      String(templateCssFromEtalon?.siteShell || "").trim() ||
+      (await readBundledSiteShellCss({ onLog: (m) => emitLog(onLog, m) }));
+    if (shellCss) {
+      emitLog(onLog, "Запись css/site-shell.css (rail + rich footer, u-spot064)…");
+      await fs.writeFile(path.join(cssDir, "site-shell.css"), `${shellCss}\n`, "utf8");
+    }
+  }
+
   const gameImages = pickGameImages(imageFiles, {
     seed: siteSeed,
     max: 36,
@@ -7710,7 +7906,11 @@ export async function buildMultipageSite({
   const homeGamesMode = resolveHomeGamesMode(structureSeed);
   emitLog(
     onLog,
-    `Каркас: structureSalt=${structureSalt.slice(0, 12)}…; главная — режим игр «${homeGamesMode}»; отпечаток ${structureFingerprint}; igaming-block-catalog=${usesPremiumIgamingLayout() ? "on" : "off"}.`
+    `Каркас: structureSalt=${structureSalt.slice(0, 12)}…; главная — режим игр «${homeGamesMode}»; отпечаток ${structureFingerprint}; igaming-block-catalog=${usesPremiumIgamingLayout() ? "on" : "off"}; dual-templates=${usesDualSiteTemplates() ? formatTemplatePlanLog(pageTemplatePlan) : "off"}.`
+  );
+  const siteClassNamespace = buildSiteClassNamespace(
+    brandName || themeBrandHintEarly,
+    `${structureSeed}|${buildNonce}`
   );
   const ctx = {
     theme: themeNorm,
@@ -7752,6 +7952,11 @@ export async function buildMultipageSite({
     referenceTemplateMode: referenceTemplateModeEnabled,
     useTemplateChrome: templateChromeEnabled,
     siteCanonicalChrome: null,
+    siteCanonicalChromeByTemplate: {},
+    siteClassNamespace,
+    pageTemplatePlan,
+    needsIgamingCss,
+    needsSiteShellCss,
   };
 
   const results = [];
@@ -8041,29 +8246,44 @@ export async function buildMultipageSite({
       classRhythmSig: finalClassRhythmSig,
       depthHistSig: finalDepthHistSig,
     });
+    const pageTplForChrome = resolvePageSiteTemplate(
+      ctx.referenceStructureSignals || {},
+      pageMeta.file
+    );
+    const chromeAlready = usesDualSiteTemplates()
+      ? ctx.siteCanonicalChromeByTemplate?.[pageTplForChrome]
+      : ctx.siteCanonicalChrome;
     if (
       usesPremiumIgamingLayout() &&
       !templateChromeEnabled &&
-      !referenceLocked &&
-      !ctx.siteCanonicalChrome
+      (!referenceLocked || usesDualSiteTemplates()) &&
+      !chromeAlready
     ) {
       const pair = extractChromePairFromHtml(bundle.html || "");
       const hdrOk =
         pair.headerHtml &&
-        isWellFormedChromeFragment(pair.headerHtml, "header") &&
+        (isWellFormedChromeFragment(pair.headerHtml, "header") ||
+          /<aside\b/i.test(pair.headerHtml)) &&
         pair.headerHtml.length >= 48;
       const ftrOk =
         pair.footerHtml &&
         isWellFormedChromeFragment(pair.footerHtml, "footer") &&
         pair.footerHtml.length >= 48;
       if (hdrOk || ftrOk) {
-        ctx.siteCanonicalChrome = {
+        const chromePair = {
           headerHtml: hdrOk ? pair.headerHtml : "",
           footerHtml: ftrOk ? pair.footerHtml : "",
         };
+        if (usesDualSiteTemplates()) {
+          chromeStore[pageTplForChrome] = chromePair;
+        } else {
+          ctx.siteCanonicalChrome = chromePair;
+        }
         emitLog(
           onLog,
-          `Site chrome: зафиксированы ${hdrOk ? "header" : ""}${hdrOk && ftrOk ? " + " : ""}${ftrOk ? "footer" : ""} с «${pageMeta.file}» для остальных страниц.`
+          usesDualSiteTemplates()
+            ? `Site chrome (шаблон ${pageTplForChrome === SITE_TEMPLATE_SPOT064 ? "2" : "1"}): зафиксированы ${hdrOk ? "rail/header" : ""}${hdrOk && ftrOk ? " + " : ""}${ftrOk ? "footer" : ""} с «${pageMeta.file}».`
+            : `Site chrome: зафиксированы ${hdrOk ? "header" : ""}${hdrOk && ftrOk ? " + " : ""}${ftrOk ? "footer" : ""} с «${pageMeta.file}» для остальных страниц.`
         );
       }
     }

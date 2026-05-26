@@ -32,6 +32,10 @@ const HERO_PATTERNS = [
     hint: "Hero: зверху повноширинний слайдер/банер, під ним центрований блок тексту + stats.",
   },
   {
+    id: "cinema-slider-posters",
+    hint: "Hero games: слайдер 3+ слайдів; на кожному — img + .ig-hero-slide__poster (eyebrow, h2, lead поверх картинки) + .ig-hero-slide__cap з CTA.",
+  },
+  {
     id: "centered-access",
     hint: "Hero: одна центрована колонка (h1, lead, ряд статус-пілюль/чіпів, CTA, компактна сітка stats).",
   },
@@ -42,6 +46,18 @@ const HERO_PATTERNS = [
   {
     id: "stacked-headline-band",
     hint: "Hero: повноширинний h1 + lead, нижче асиметрична сітка (список переваг + абзац + CTA).",
+  },
+  {
+    id: "hero-proof-strip",
+    hint: "Hero: короткий h1, під ним горизонтальна смуга 4–6 trust-метрик (RTP, ліміт, час виплати).",
+  },
+  {
+    id: "hero-dual-cta-columns",
+    hint: "Hero: дві рівні колонки — зліва оффер, справа дві картки CTA (гра / бонус).",
+  },
+  {
+    id: "hero-tabbed-offers",
+    hint: "Hero: таби (Спорт / Слоты / Live) з різним підзаголовком і одним primary CTA.",
   },
 ];
 
@@ -106,6 +122,38 @@ const CONTENT_BLOCKS = [
     id: "prose-split",
     hint: "Довгий текст у двох колонках або intro + 3 підрозділи.",
   },
+  {
+    id: "bonus-steps",
+    hint: "3–4 кроки активації бонусу (номер, заголовок, умова).",
+  },
+  {
+    id: "live-studio-grid",
+    hint: "Сітка live-столів (рулетка, блекджек, баккара) з лімітами ставок.",
+  },
+  {
+    id: "provider-marquee",
+    hint: "Ряд логотипів/назв провайдерів (текст або плейсхолдери).",
+  },
+  {
+    id: "responsible-gaming",
+    hint: "Блок відповідальної гри: ліміти, самовиключення, 18+.",
+  },
+  {
+    id: "stats-dashboard",
+    hint: "Панель KPI: активні гравці, джекпот, середній RTP — з цифрами.",
+  },
+  {
+    id: "testimonials-row",
+    hint: "3 короткі відгуки (ім'я, місто, 1–2 речення) без кліше «миллионы за клик».",
+  },
+  {
+    id: "app-download",
+    hint: "Блок мобільного доступу: PWA / зеркало / push — 2–3 картки.",
+  },
+  {
+    id: "tournament-banner",
+    hint: "Турнір: призовий фонд, дата, CTA «Участвовать».",
+  },
 ];
 
 function pageKind(file) {
@@ -130,7 +178,12 @@ function heroCandidates(kind) {
   }
   if (kind === "games") {
     return HERO_PATTERNS.filter((b) =>
-      ["cinema-slider-first", "split-copy-media", "stacked-headline-band"].includes(b.id)
+      [
+        "cinema-slider-posters",
+        "cinema-slider-first",
+        "split-copy-media",
+        "stacked-headline-band",
+      ].includes(b.id)
     );
   }
   return HERO_PATTERNS;
@@ -233,12 +286,14 @@ export function buildIgamingBlockSuggestionsForPage(
   const kind = pageKind(pageFile);
   const seed = `${seedKey}|${pageFile}|${kind}`;
   const hero = pickN(heroCandidates(kind), 1, `${seed}|hero`)[0];
-  const blocks = pickN(contentCandidates(kind), 3, `${seed}|blocks`);
+  const blockCount = 3 + (catalogHash32(`${seed}|extra`) % 2);
+  const blocks = pickN(contentCandidates(kind), blockCount, `${seed}|blocks`);
   const mustGames =
     kind === "home"
       ? "\n- На головній обов'язково реалізуй блок ігор (#lw-games) з каталогу."
       : kind === "games"
-        ? "\n- На games.php обов'язково #lw-games (сітка слотів + фільтр-чіпи)."
+        ? `\n- На games.php обов'язково #lw-games (сітка слотів + фільтр-чіпи).
+- Hero-слайдер (ig-hero-cinema / [data-carousel]): на **кожному** [data-slide] поверх зображення блок-постер \`.ig-hero-slide__poster\` з eyebrow, заголовком h2 і lead (конкретні RTP/ліміти); знизу залиш \`.ig-hero-slide__cap\` з тегом і CTA «Играть».`
         : "";
   const lines = [
     `СТОРІНКА ${pageFile} (${kind}): обери **один** hero-патерн і **3** контент-блоки (можеш об'єднати або додати власний блок, але не копіюй hero інших URL).`,

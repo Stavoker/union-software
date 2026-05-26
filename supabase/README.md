@@ -21,6 +21,7 @@ SQL-міграції та політики **не виконуються авт�
 У проді вони вже можуть існувати; тут зберігаємо **джерело правди** для відтворення схеми на новому середовищі:
 
 - `generation_reference_sites` — для Union generation **варіант B** не використовується як вхід верстки; залишається в БД для сумісності/статистики.
+- `generation_site_templates` + `generation_site_template_assets` — эталони **u-bet162** (`bet162`) та **u-spot064** (`spot064`): PHP/CSS/JS окремими рядками; генератор і `GET /api/generator/site-templates/[slug]` читають через Supabase. Сид: `node scripts/seed-generation-site-templates.mjs` (після міграції `20260525120000_generation_site_templates.sql`).
 - `source_articles` — корпус текстів для Copy Engine.
 - `hosts`, `seo_*`, `telegram_*` — перенесені з поточних сервісів за потреби.
 

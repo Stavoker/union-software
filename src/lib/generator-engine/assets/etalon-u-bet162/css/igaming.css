@@ -1,0 +1,1609 @@
+/* Union iGaming visual layer — complements chrome.css */
+
+:root {
+  --ig-glow-green: rgba(209, 254, 23, 0.22);
+  --ig-glow-red: rgba(200, 35, 44, 0.28);
+  --ig-panel: rgba(16, 18, 21, 0.92);
+  --ig-border: rgba(255, 255, 255, 0.1);
+  --ig-radius: 14px;
+  --ig-radius-pill: 999px;
+}
+
+/* Dark gradient body with green/red glows */
+html,
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, var(--ig-glow-green), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 95% 5%, var(--ig-glow-red), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 50% 100%, rgba(209, 254, 23, 0.06), transparent 45%),
+    linear-gradient(165deg, #080a0c 0%, #0f1113 38%, #12151a 100%) !important;
+  background-attachment: fixed;
+}
+
+/* Header nav pills */
+header [class*="main_nav"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-pill);
+}
+
+header [class*="main_nav"] a[class*="nav_link"] {
+  padding: 8px 16px;
+  border-radius: var(--ig-radius-pill);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: rgba(237, 240, 245, 0.85) !important;
+  border: 1px solid transparent;
+  transition: background 0.2s ease, box-shadow 0.25s ease, color 0.2s ease;
+}
+
+header [class*="main_nav"] a[class*="nav_link"]:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff !important;
+}
+
+header [class*="nav_active"],
+header [class*="nav_link"][aria-current="page"] {
+  background: color-mix(in srgb, var(--lw-accent) 18%, transparent) !important;
+  border-color: color-mix(in srgb, var(--lw-accent) 50%, transparent) !important;
+  color: var(--lw-accent) !important;
+  box-shadow:
+    0 0 18px var(--ig-glow-green),
+    inset 0 0 12px rgba(209, 254, 23, 0.08);
+}
+
+/* Pulsing registration CTA */
+@keyframes ig-cta-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(200, 35, 44, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(200, 35, 44, 0);
+  }
+}
+
+header [class*="cta_btn"] {
+  animation: ig-cta-pulse 2.2s ease-in-out infinite;
+  border-radius: var(--ig-radius-pill) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  header [class*="cta_btn"] {
+    animation: none;
+  }
+}
+
+/* Hero panel */
+.ig-hero {
+  position: relative;
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+  background: var(--ig-panel);
+  border: 1px solid var(--ig-border);
+  border-radius: calc(var(--ig-radius) + 4px);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.ig-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--lw-reg), var(--lw-accent), var(--lw-reg));
+  opacity: 0.85;
+}
+
+.ig-hero h1 {
+  margin-bottom: 1rem !important;
+}
+
+.ig-hero__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.ig-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #0a0f0a !important;
+  background: linear-gradient(135deg, var(--lw-accent), #b8e014);
+  border-radius: var(--ig-radius-pill);
+  box-shadow: 0 4px 14px var(--ig-glow-green);
+}
+
+.ig-badge--hot {
+  background: linear-gradient(135deg, #ff4d5a, var(--lw-reg));
+  color: #fff !important;
+  box-shadow: 0 4px 14px var(--ig-glow-red);
+}
+
+.ig-badge--vip {
+  background: linear-gradient(135deg, #c9a227, #f0d060);
+  color: #1a1408 !important;
+}
+
+.ig-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.ig-btn-primary,
+a.ig-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 28px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0a0f0a !important;
+  background: linear-gradient(180deg, var(--lw-accent) 0%, #b5e012 100%);
+  border: none;
+  border-radius: var(--ig-radius-pill);
+  box-shadow: 0 8px 24px var(--ig-glow-green);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.ig-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px var(--ig-glow-green);
+  color: #0a0f0a !important;
+}
+
+.ig-btn-ghost,
+a.ig-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 26px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--lw-text) !important;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--lw-accent) 55%, transparent);
+  border-radius: var(--ig-radius-pill);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ig-btn-ghost:hover {
+  background: color-mix(in srgb, var(--lw-accent) 12%, transparent);
+  border-color: var(--lw-accent);
+  color: var(--lw-accent) !important;
+}
+
+.ig-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ig-border);
+  padding-top: 1.25rem;
+}
+
+.ig-stats li {
+  text-align: center;
+  padding: 12px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius);
+}
+
+.ig-stat__val {
+  display: block;
+  font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+  font-weight: 800;
+  color: var(--lw-accent) !important;
+  line-height: 1.2;
+}
+
+.ig-stat__lbl {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  color: var(--lw-text) !important;
+}
+
+/* Promo bonus strip */
+.ig-promo-bar {
+  margin-bottom: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+.ig-promo-bar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: clamp(14px, 2.5vw, 20px) clamp(16px, 3vw, 28px);
+  background: linear-gradient(105deg, rgba(200, 35, 44, 0.25) 0%, rgba(16, 18, 21, 0.95) 35%, rgba(209, 254, 23, 0.12) 100%);
+  border: 1px solid color-mix(in srgb, var(--lw-reg) 45%, var(--lw-accent) 25%);
+  border-radius: var(--ig-radius);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+
+.ig-promo-bar__label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--lw-reg) !important;
+  padding: 4px 10px;
+  background: rgba(200, 35, 44, 0.2);
+  border-radius: var(--ig-radius-pill);
+}
+
+.ig-promo-bar__title {
+  font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+  font-weight: 800;
+  color: var(--lw-accent) !important;
+}
+
+.ig-promo-bar__sub {
+  flex: 1;
+  min-width: 140px;
+  opacity: 0.88;
+  font-size: 0.9rem;
+}
+
+.ig-promo-bar__cta {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .ig-promo-bar__cta {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* Filter chips */
+.ig-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.ig-chip {
+  cursor: pointer;
+  padding: 8px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--lw-text);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--ig-border);
+  border-radius: var(--ig-radius-pill);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.ig-chip:hover {
+  border-color: color-mix(in srgb, var(--lw-accent) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.ig-chip.is-active {
+  background: color-mix(in srgb, var(--lw-accent) 22%, transparent);
+  border-color: var(--lw-accent);
+  color: var(--lw-accent);
+  box-shadow: 0 0 16px var(--ig-glow-green);
+}
+
+/* Games: play overlay + featured card */
+#lw-games a[class*="game"],
+#lw-games a.lw-cta-solid {
+  position: relative;
+}
+
+#lw-games a[class*="game"]::after,
+#lw-games a.lw-cta-solid::after {
+  content: "▶ Играть";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(0.85rem, 2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+#lw-games a[class*="game"]:hover::after,
+#lw-games a[class*="game"].is-hover::after,
+#lw-games a[class*="game"]:focus-visible::after,
+#lw-games a.lw-cta-solid:hover::after,
+#lw-games a.lw-cta-solid.is-hover::after {
+  opacity: 1;
+}
+
+#lw-games .ig-game-featured {
+  grid-column: span 2;
+}
+
+#lw-games .ig-game-featured img {
+  max-height: 200px;
+  aspect-ratio: 16 / 9;
+}
+
+@media (max-width: 720px) {
+  #lw-games .ig-game-featured {
+    grid-column: span 2;
+  }
+}
+
+/* VIP cards */
+.ig-vip-card {
+  position: relative;
+  padding: 1.25rem 1rem 1rem !important;
+  background: var(--ig-panel) !important;
+  border: 1px solid var(--ig-border) !important;
+  border-radius: var(--ig-radius) !important;
+  border-top-width: 4px !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.ig-vip-card::before {
+  display: block;
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+  line-height: 1;
+}
+
+.ig-vip-card--bronze {
+  border-top-color: #cd7f32 !important;
+}
+.ig-vip-card--bronze::before { content: "🥉"; }
+
+.ig-vip-card--silver {
+  border-top-color: #a8b4c4 !important;
+}
+.ig-vip-card--silver::before { content: "🥈"; }
+
+.ig-vip-card--gold {
+  border-top-color: #e8c547 !important;
+}
+.ig-vip-card--gold::before { content: "🥇"; }
+
+.ig-vip-card--platinum {
+  border-top-color: #b8e0ff !important;
+}
+.ig-vip-card--platinum::before { content: "💎"; }
+
+.ig-vip-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Trust cards */
+.ig-trust-card {
+  padding: 1.25rem !important;
+  background: var(--ig-panel) !important;
+  border: 1px solid var(--ig-border) !important;
+  border-radius: var(--ig-radius) !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.ig-trust-card::before {
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.ig-trust-card:nth-child(1)::before { content: "🛡️"; }
+.ig-trust-card:nth-child(2)::before { content: "⚡"; }
+.ig-trust-card:nth-child(3)::before { content: "💬"; }
+.ig-trust-card:nth-child(4)::before { content: "📱"; }
+
+.ig-trust-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
+  border-color: color-mix(in srgb, var(--lw-accent) 30%, transparent) !important;
+}
+
+/* Payment / ledger cards */
+[class*="ledger_card"],
+.ig-pay-card {
+  position: relative;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+[class*="ledger_card"]::before,
+.ig-pay-card::before {
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.union_payments_ledger_card:nth-child(1)::before,
+.ig-pay-card--card::before { content: "💳"; }
+.union_payments_ledger_card:nth-child(2)::before,
+.ig-pay-card--wallet::before { content: "👛"; }
+.union_payments_ledger_card:nth-child(3)::before,
+.ig-pay-card--crypto::before { content: "₿"; }
+.union_payments_ledger_card:nth-child(4)::before,
+.ig-pay-card--bank::before { content: "🏦"; }
+
+[class*="ledger_card"]:hover,
+.ig-pay-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+}
+
+/* Timeline as mini cards */
+[class*="timeline_step"] {
+  padding: 1rem 1.1rem !important;
+  background: var(--ig-panel) !important;
+  border: 1px solid var(--ig-border) !important;
+  border-radius: var(--ig-radius) !important;
+  margin-bottom: 4px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+[class*="timeline_step"]:hover {
+  border-color: color-mix(in srgb, var(--lw-accent) 35%, transparent) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+[class*="timeline_marker"] {
+  box-shadow: 0 0 12px var(--ig-glow-green);
+}
+
+/* Quote glow */
+[class*="quote_block"],
+blockquote[class*="quote"] {
+  padding: clamp(1.25rem, 3vw, 2rem) !important;
+  background: var(--ig-panel) !important;
+  border-left: 4px solid var(--lw-accent) !important;
+  border-radius: var(--ig-radius) !important;
+  box-shadow:
+    0 0 40px var(--ig-glow-green),
+    inset 0 0 60px rgba(209, 254, 23, 0.04);
+}
+
+/* Mirror status pills */
+.ig-mirror-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 1.25rem 0;
+}
+
+.ig-mirror-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--lw-text);
+  background: var(--ig-panel);
+  border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+  border-radius: var(--ig-radius-pill);
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.12);
+}
+
+.ig-mirror-pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: ig-dot-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes ig-dot-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px #22c55e; }
+  50% { opacity: 0.35; box-shadow: none; }
+}
+
+/* Footer gradient */
+footer[class*="site-footer"],
+footer[id="footer"] {
+  background: linear-gradient(180deg, transparent 0%, rgba(8, 10, 12, 0.95) 25%, #080a0c 100%) !important;
+  border-top: 1px solid var(--ig-border);
+  padding-top: clamp(1.5rem, 3vw, 2.5rem) !important;
+}
+
+footer [class*="footer-inner"] {
+  padding-bottom: 1.5rem;
+}
+
+footer [class*="footer-copy"] {
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
+/* Matrix / scenario cards hover lift */
+.union_games_matrix_card,
+[class*="matrix_card"],
+[class*="scenario_column"] {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.union_games_matrix_card:hover,
+[class*="matrix_card"]:hover,
+[class*="scenario_column"]:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+/* ─── Premium typography & layout (index) ─── */
+:root {
+  --ig-premium-gold: #e4d4a8;
+  --ig-premium-muted: rgba(237, 240, 245, 0.72);
+}
+
+main .ig-eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lw-accent) 85%, #fff) !important;
+}
+
+main .ig-eyebrow--gold {
+  color: var(--ig-premium-gold) !important;
+}
+
+main .ig-h1 {
+  margin: 0 0 0.85rem;
+  font-size: clamp(1.85rem, 4.5vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #ffffff !important;
+}
+
+main .ig-h1__accent {
+  color: var(--lw-accent) !important;
+  display: inline;
+}
+
+main .ig-h2 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #ffffff !important;
+}
+
+main .ig-h3 {
+  margin: 0 0 0.4rem;
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  font-weight: 700;
+  color: var(--lw-accent) !important;
+}
+
+main .ig-lead,
+main .ig-section-lead {
+  margin: 0 0 1rem;
+  font-size: clamp(0.95rem, 1.8vw, 1.05rem);
+  line-height: 1.55;
+  color: var(--ig-premium-muted) !important;
+  max-width: 52ch;
+}
+
+main .ig-section-head {
+  margin-bottom: 1.25rem;
+}
+
+main .ig-section-head--center {
+  text-align: center;
+}
+
+main .ig-section-head--center .ig-section-lead {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Premium hero + slider */
+.ig-hero-premium {
+  margin-bottom: clamp(1rem, 2.5vw, 1.75rem);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: linear-gradient(145deg, rgba(18, 20, 24, 0.98) 0%, rgba(10, 12, 14, 0.99) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.5);
+}
+
+.ig-hero-premium::before {
+  display: none;
+}
+
+.ig-hero-premium__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.05fr);
+  gap: clamp(20px, 4vw, 36px);
+  align-items: center;
+}
+
+.ig-hero-premium__copy .ig-hero__badges {
+  margin-bottom: 0.75rem;
+}
+
+.ig-hero-premium__copy .ig-hero__actions {
+  margin: 1rem 0 1.1rem;
+}
+
+.ig-hero-premium__copy .ig-stats--compact {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ig-hero-premium__copy .ig-stats--compact li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  text-align: center;
+}
+
+.ig-hero-premium__copy .ig-stat__val {
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ig-stats--compact {
+  border-top: none;
+  padding-top: 0;
+  gap: 8px;
+}
+
+.ig-stats--compact li {
+  padding: 10px 6px;
+}
+
+.ig-hero-slider {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0a0c0e;
+  min-height: clamp(280px, 36vw, 420px);
+}
+
+.ig-hero-slider__viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(280px, 36vw, 420px);
+  aspect-ratio: 16 / 10;
+}
+
+.ig-hero-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+
+.ig-hero-slide.is-active {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+/* Перебиваємо chrome.css (width: auto / max-height на main img) */
+main .ig-hero-premium .ig-hero-slider img,
+main .ig-hero-slider .ig-hero-slide img,
+.ig-hero-slide img {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100%;
+  min-height: 100%;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center center;
+  display: block;
+  margin: 0 !important;
+  padding: 0;
+  border-radius: 0 !important;
+}
+
+.ig-hero-slide__poster {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 10px;
+  padding: clamp(20px, 5vw, 44px);
+  max-width: min(88%, 520px);
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 0.45) 42%,
+    transparent 72%
+  );
+}
+
+.ig-hero-slide__poster-eyebrow {
+  margin: 0;
+  font-size: clamp(0.65rem, 1.2vw, 0.78rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lw-accent, #d1fe17) !important;
+}
+
+.ig-hero-slide__poster-title {
+  margin: 0;
+  font-size: clamp(1.65rem, 4.2vw, 2.75rem);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #fff !important;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.65);
+}
+
+.ig-hero-slide__poster-lead {
+  margin: 0;
+  font-size: clamp(0.88rem, 1.8vw, 1.05rem);
+  line-height: 1.45;
+  color: rgba(237, 240, 245, 0.92) !important;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+}
+
+.ig-hero-slide__cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 14px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.88) 0%, transparent 100%);
+}
+
+.ig-hero-slide__tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--lw-reg);
+  color: #fff;
+}
+
+.ig-hero-slide__cap strong {
+  flex: 1;
+  font-size: 1.05rem;
+  color: #fff !important;
+}
+
+.ig-hero-slide__play {
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  border-radius: var(--ig-radius-pill);
+  background: var(--lw-accent);
+  color: #0a0f0a !important;
+  font-weight: 800;
+}
+
+.ig-hero-slider__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ig-hero-slider__arrow:hover {
+  background: rgba(209, 254, 23, 0.2);
+  border-color: var(--lw-accent);
+}
+
+.ig-hero-slider__arrow--prev { left: 10px; }
+.ig-hero-slider__arrow--next { right: 10px; }
+
+.ig-hero-slider__dots {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+}
+
+.ig-hero-slider__dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.ig-hero-slider__dot.is-active {
+  background: var(--lw-accent);
+  transform: scale(1.25);
+}
+
+/* CTA banner block */
+.ig-cta-banner {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.9fr) minmax(0, 1.1fr);
+  gap: 0;
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(228, 212, 168, 0.2);
+  background: linear-gradient(105deg, #14181c 0%, #0d0f11 55%, rgba(209, 254, 23, 0.06) 100%);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+}
+
+.ig-cta-banner__visual {
+  position: relative;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+.ig-cta-banner__visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  max-height: none !important;
+  margin: 0 !important;
+  opacity: 0.92;
+}
+
+.ig-cta-banner__visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 30%, #0d0f11 95%);
+}
+
+.ig-cta-banner__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(20px, 3vw, 32px);
+}
+
+.ig-cta-banner__text {
+  margin: 0 0 1.25rem;
+  color: var(--ig-premium-muted) !important;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-width: 40ch;
+}
+
+.ig-cta-banner__btn {
+  align-self: flex-start;
+}
+
+/* Perk cards */
+.ig-perks {
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.ig-perks__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ig-perk-card {
+  padding: 20px 18px;
+  border-radius: 14px;
+  background: var(--ig-panel);
+  border: 1px solid var(--ig-border);
+  transition: transform 0.22s ease, border-color 0.22s ease;
+}
+
+.ig-perk-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--lw-accent) 35%, transparent);
+}
+
+.ig-perk-card__icon {
+  display: block;
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+}
+
+.ig-perk-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+main .ig-section .union_index_vip_tier_name,
+main .ig-trust-card .union_index_trust_item_title,
+main [class*="timeline_step_title"],
+main [class*="zigzag_subtitle"] {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .ig-hero-premium__grid {
+    grid-template-columns: 1fr;
+  }
+  .ig-hero-slider,
+  .ig-hero-slider__viewport {
+    min-height: clamp(220px, 52vw, 320px);
+    aspect-ratio: 16 / 9;
+  }
+  .ig-cta-banner {
+    grid-template-columns: 1fr;
+  }
+  .ig-cta-banner__visual {
+    min-height: 160px;
+    max-height: 200px;
+  }
+  .ig-cta-banner__visual::after {
+    background: linear-gradient(0deg, #0d0f11 0%, transparent 50%);
+  }
+  .ig-perks__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .ig-hero-slider__arrow {
+    width: 34px;
+    height: 34px;
+    font-size: 1.2rem;
+  }
+}
+
+/* —— Page layout variants (різні hero / CTA на кожній сторінці) —— */
+
+/* Games: кінематографічний hero — слайдер зверху на всю ширину */
+.ig-hero-cinema {
+  margin-bottom: clamp(1rem, 2.5vw, 1.75rem);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0a0c0e;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.5);
+}
+
+.ig-hero-cinema__slider .ig-hero-slider {
+  border: none;
+  border-radius: 0;
+  min-height: clamp(240px, 42vw, 400px);
+}
+
+.ig-hero-cinema__slider .ig-hero-slider__viewport {
+  min-height: clamp(240px, 42vw, 400px);
+  max-height: none;
+  aspect-ratio: 21 / 9;
+}
+
+.ig-hero-cinema__copy,
+.ig-hero-access__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.ig-hero-cinema__copy {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.ig-hero-cinema__copy > .ig-eyebrow,
+.ig-hero-access__inner > .ig-eyebrow,
+.ig-hero-cinema__copy > .ig-h1,
+.ig-hero-access__inner > .ig-h1,
+.ig-hero-cinema__copy > .ig-lead,
+.ig-hero-access__inner > .ig-lead {
+  width: 100%;
+  max-width: 52ch;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.ig-hero-cinema__copy > .ig-h1,
+.ig-hero-access__inner > .ig-h1 {
+  max-width: none;
+}
+
+.ig-hero-cinema__copy .ig-hero__badges,
+.ig-hero-access__inner .ig-hero__badges {
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.ig-hero-cinema__copy > .ig-lead,
+.ig-hero-access__inner > .ig-lead {
+  margin-bottom: 1.25rem;
+}
+
+.ig-hero-cinema__copy .ig-hero__actions,
+.ig-hero-access__inner .ig-hero__actions {
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 1.25rem;
+}
+
+.ig-hero-cinema__copy .ig-stats--compact,
+.ig-hero-access__inner .ig-stats--compact {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  border-top: none;
+  padding-top: 0;
+}
+
+.ig-hero-cinema__copy .ig-stats--compact li,
+.ig-hero-access__inner .ig-stats--compact li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.ig-hero-cinema__copy .ig-stat__val,
+.ig-hero-access__inner .ig-stat__val {
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ig-hero-cinema__copy .ig-stat__lbl,
+.ig-hero-access__inner .ig-stat__lbl {
+  margin-top: 6px;
+}
+
+/* Games: горизонтальна смуга промо замість банера */
+.ig-promo-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.ig-promo-strip__item {
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(22, 26, 32, 0.95) 0%, rgba(12, 14, 16, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.ig-promo-strip__item:hover {
+  border-color: color-mix(in srgb, var(--lw-accent) 40%, transparent);
+  transform: translateY(-3px);
+}
+
+.ig-promo-strip__icon {
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+
+.ig-promo-strip__item .ig-h3 {
+  margin: 0 0 6px;
+  font-size: 1rem !important;
+}
+
+.ig-promo-strip__item p {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+.ig-promo-strip__item .ig-btn-primary {
+  width: 100%;
+  justify-content: center;
+  font-size: 0.82rem;
+  padding: 10px 14px;
+}
+
+/* Payments: hero з плитками методів замість слайдера */
+.ig-hero-wallet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+  gap: clamp(20px, 4vw, 32px);
+  align-items: stretch;
+  margin-bottom: clamp(1rem, 2.5vw, 1.75rem);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border-radius: 20px;
+  border: 1px solid rgba(209, 254, 23, 0.12);
+  background: linear-gradient(135deg, rgba(14, 18, 14, 0.98) 0%, rgba(10, 12, 14, 0.99) 60%, rgba(209, 254, 23, 0.04) 100%);
+  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.45);
+}
+
+.ig-hero-wallet__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ig-hero-wallet__copy .ig-hero__badges {
+  justify-content: flex-start;
+}
+
+/* Payments: панель-касса замість сітки 2×2 */
+.ig-pay-console {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px;
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgba(16, 20, 16, 0.98) 0%, rgba(8, 10, 10, 0.99) 100%);
+  border: 1px solid rgba(209, 254, 23, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4) inset,
+    0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+.ig-pay-console__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ig-pay-console__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ig-pay-console__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.85);
+  animation: ig-pulse-dot 2s ease infinite;
+}
+
+.ig-pay-console__meta {
+  font-size: 0.72rem;
+  color: var(--ig-premium-muted) !important;
+  letter-spacing: 0.04em;
+}
+
+.ig-pay-flow {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ig-pay-flow__step {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ig-pay-flow__step:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ig-pay-flow__icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(209, 254, 23, 0.12);
+  border: 1px solid rgba(209, 254, 23, 0.25);
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--lw-accent) !important;
+  font-style: normal;
+}
+
+.ig-pay-flow__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ig-pay-flow__body strong {
+  font-size: 0.92rem;
+  color: #fff !important;
+}
+
+.ig-pay-flow__body span {
+  font-size: 0.75rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+.ig-pay-flow__time {
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-style: normal;
+  color: var(--lw-accent) !important;
+  white-space: nowrap;
+}
+
+.ig-pay-console__methods-label {
+  margin: 0 0 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ig-premium-muted) !important;
+}
+
+.ig-pay-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ig-pay-chip {
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #edf0f5 !important;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--ig-radius-pill);
+}
+
+.ig-pay-console__cta {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Payments: компактний CTA в один ряд */
+.ig-cta-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+  padding: clamp(18px, 3vw, 28px) clamp(20px, 4vw, 32px);
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(209, 254, 23, 0.14) 0%, rgba(209, 254, 23, 0.04) 50%, transparent 100%);
+  border: 1px solid rgba(209, 254, 23, 0.25);
+}
+
+.ig-cta-inline__text {
+  flex: 1;
+  min-width: 200px;
+}
+
+.ig-cta-inline__text .ig-h2 {
+  margin: 0 0 6px;
+}
+
+.ig-cta-inline__text p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ig-premium-muted) !important;
+  max-width: 48ch;
+}
+
+.ig-cta-inline__btn {
+  flex-shrink: 0;
+}
+
+/* Zerkalo: центрований hub без слайдера */
+.ig-hero-access {
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  text-align: center;
+  border-radius: 20px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59, 130, 246, 0.12) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(16, 18, 22, 0.98) 0%, rgba(8, 10, 12, 0.99) 100%);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.5);
+}
+
+.ig-hero-access__inner {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.ig-hero-access .ig-mirror-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 1.25rem;
+  padding: 0;
+}
+
+.ig-access-status {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0 auto 1.25rem;
+  padding: 14px 28px;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.ig-access-status__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ig-access-status__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+  animation: ig-pulse-dot 2s ease infinite;
+}
+
+@keyframes ig-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+
+.ig-access-status strong {
+  font-size: 1.05rem;
+  color: #fff !important;
+}
+
+.ig-access-status p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+/* Zerkalo: три картки доступу */
+.ig-access-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+.ig-access-card {
+  padding: 22px 18px;
+  border-radius: 14px;
+  background: var(--ig-panel);
+  border: 1px solid var(--ig-border);
+  text-align: center;
+  transition: transform 0.22s ease, border-color 0.22s ease;
+}
+
+.ig-access-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.ig-access-card__icon {
+  font-size: 1.75rem;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.ig-access-card .ig-h3 {
+  margin: 0 0 8px;
+}
+
+.ig-access-card p {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+.ig-access-card .ig-btn-primary,
+.ig-access-card .ig-btn-ghost {
+  width: 100%;
+  justify-content: center;
+  font-size: 0.82rem;
+}
+
+/* Bento-сітка для категорій (games) */
+.ig-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 1rem 0;
+}
+
+.ig-bento-card {
+  grid-column: span 2;
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: var(--ig-panel);
+  border: 1px solid var(--ig-border);
+  transition: border-color 0.2s ease;
+}
+
+.ig-bento-card:nth-child(1),
+.ig-bento-card:nth-child(4) {
+  grid-column: span 3;
+}
+
+.ig-bento-card:hover {
+  border-color: color-mix(in srgb, var(--lw-accent) 30%, transparent);
+}
+
+.ig-bento-card .ig-h3 {
+  margin: 0 0 8px;
+}
+
+.ig-bento-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ig-premium-muted) !important;
+}
+
+/* Payments: ledger як картки з модифікаторами */
+.union_payments_ledger_grid.ig-ledger-bento {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.union_payments_ledger_grid.ig-ledger-bento .ig-pay-card {
+  padding: 20px 18px 20px 52px;
+  border-radius: 14px;
+  background: var(--ig-panel);
+  border: 1px solid var(--ig-border);
+}
+
+/* Zerkalo: двоколонкові prose-блоки */
+.ig-prose-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+
+.ig-prose-split > p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .ig-promo-strip {
+    grid-template-columns: 1fr;
+  }
+  .ig-hero-wallet {
+    grid-template-columns: 1fr;
+  }
+  .ig-access-cards {
+    grid-template-columns: 1fr;
+  }
+  .ig-bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .ig-bento-card,
+  .ig-bento-card:nth-child(1),
+  .ig-bento-card:nth-child(4) {
+    grid-column: span 1;
+  }
+  .union_payments_ledger_grid.ig-ledger-bento {
+    grid-template-columns: 1fr;
+  }
+  .ig-prose-split {
+    grid-template-columns: 1fr;
+  }
+  .ig-cta-inline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .ig-hero-cinema__slider .ig-hero-slider__viewport {
+    aspect-ratio: 16 / 9;
+  }
+  .ig-hero-cinema__copy .ig-stats--compact,
+  .ig-hero-access__inner .ig-stats--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+  }
+  .ig-hero-access .ig-mirror-pills {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ig-hero-access .ig-mirror-pill {
+    justify-content: center;
+  }
+}

@@ -42,6 +42,15 @@ async function readJsonSafe(response) {
   }
 }
 
+/** Опис поля з next-intl; fallback — лише якщо ключ ще не додано в messages. */
+function translateFieldHint(def, t) {
+  const key = `fields.${def.key}`;
+  if (typeof t.has === "function" && t.has(key)) {
+    return t(key);
+  }
+  return def.hint || def.key;
+}
+
 function hydrateFromPayload(payload) {
   return {
     storedPreview:
@@ -391,7 +400,7 @@ export function IntegrationSettingsForm() {
                             {def.key}
                           </span>
                           <span className="block text-xs font-normal text-union-muted">
-                            {def.hint || t(`fields.${def.key}`)}
+                            {translateFieldHint(def, t)}
                           </span>
                         </label>
                         <IntegrationFieldInput
