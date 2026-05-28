@@ -7,7 +7,7 @@ const BOT = {
     awaitCode:
       "🔐 Увійдіть у Union → Налаштування → Telegram.\nСкопіюйте код і надішліть його сюди (6 символів).",
     linked: (email) =>
-      `✅ Акаунт підключено${email ? `\n📧 ${email}` : ""}\n\nТепер ви отримуватимете сповіщення про генерацію, SSL і деплой.`,
+      `Акаунт підключено${email ? `\n📧 ${email}` : ""}\n\nТепер ви отримуватимете сповіщення про генерацію, SSL і деплой.`,
     badCode: "❌ Код недійсний або прострочений. Отримайте новий у Налаштуваннях Union.",
     stopped: "🔕 Сповіщення вимкнено. /start — знову увімкнути.",
     alreadyLinked: "ℹ️ Акаунт уже підключено. /stop — вимкнути сповіщення.",
@@ -19,7 +19,7 @@ const BOT = {
     awaitCode:
       "🔐 Open Union → Settings → Telegram.\nCopy the code and send it here (6 characters).",
     linked: (email) =>
-      `✅ Account linked${email ? `\n📧 ${email}` : ""}\n\nYou'll get alerts for generation, SSL, and deploy.`,
+      `Account linked${email ? `\n📧 ${email}` : ""}\n\nYou'll get alerts for generation, SSL, and deploy.`,
     badCode: "❌ Invalid or expired code. Generate a new one in Union Settings.",
     stopped: "🔕 Notifications off. /start to enable again.",
     alreadyLinked: "ℹ️ Already linked. /stop to disable.",
@@ -31,7 +31,7 @@ const BOT = {
     awaitCode:
       "🔐 Откройте Union → Настройки → Telegram.\nСкопируйте код и отправьте сюда (6 символов).",
     linked: (email) =>
-      `✅ Аккаунт подключён${email ? `\n📧 ${email}` : ""}\n\nВы будете получать уведомления о генерации, SSL и деплое.`,
+      `Аккаунт подключён${email ? `\n📧 ${email}` : ""}\n\nВы будете получать уведомления о генерации, SSL и деплое.`,
     badCode: "❌ Код недействителен или истёк. Получите новый в Настройках Union.",
     stopped: "🔕 Уведомления выключены. /start — включить снова.",
     alreadyLinked: "ℹ️ Уже подключено. /stop — отключить.",

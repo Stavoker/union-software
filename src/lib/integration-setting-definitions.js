@@ -87,17 +87,6 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
 
   def("YANDEX_XML_STOCK_BASE_URL", "seo"),
 
-  def("TELEGRAM_BOT_TOKEN", "telegram", { secret: true }),
-  def("TELEGRAM_CHAT_ID", "telegram"),
-  def("TELEGRAM_WEBHOOK_SECRET", "telegram", { secret: true }),
-  def("TELEGRAM_BOT_USERNAME", "telegram"),
-  def("TELEGRAM_BOT_MESSAGES_MAX_AGE_HOURS", "telegram"),
-  def("TELEGRAM_BOT_MESSAGES_CLEANUP_BATCH", "telegram"),
-  def("TELEGRAM_DELETE_COMMAND_MAX_MESSAGES", "telegram"),
-  bool("TELEGRAM_DELETE_TRY_BULK_IN_GROUPS", "telegram"),
-  def("CRON_SECRET", "telegram", { secret: true }),
-  def("TELEGRAM_BOT_CLEANUP_CRON_SECRET", "telegram", { secret: true }),
-
   def("AUTOSCRIPT_WEBHOOK_URL", "autoscript"),
   def("AUTOSCRIPT_WEBHOOK_SECRET", "autoscript", { secret: true }),
 ];

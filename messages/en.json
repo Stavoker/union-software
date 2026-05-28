@@ -123,14 +123,13 @@
       "ssl": "SSL (Let's Encrypt)",
       "host": "Host / deploy (SSH, nginx)",
       "seo": "SEO (Yandex)",
-      "telegram": "Telegram bot",
       "autoscript": "auto-script-v2 (webhook)"
     },
     "telegram": {
       "title": "Telegram notifications",
       "hint": "Short alerts for site generation, SSL, and deploy. Only for your account.",
       "loading": "Loading…",
-      "linked": "✅ Telegram linked — notifications are on.",
+      "linked": "Telegram linked — notifications are on.",
       "notLinked": "Telegram is not linked yet.",
       "step1": "Open the bot in Telegram and tap /start",
       "step2": "Choose language: UA, Eng, or Ru",
@@ -227,16 +226,6 @@
       "SUBDOMAIN_HOST_NGINX_RELOAD_CMD": "nginx reload command",
       "SUBDOMAIN_HOST_PHP_FPM_SOCKET": "PHP-FPM socket (fastcgi_pass)",
       "YANDEX_XML_STOCK_BASE_URL": "Yandex XML base URL (search positions)",
-      "TELEGRAM_BOT_TOKEN": "Telegram bot token",
-      "TELEGRAM_CHAT_ID": "Chat ID for reports",
-      "TELEGRAM_WEBHOOK_SECRET": "Webhook secret",
-      "TELEGRAM_BOT_USERNAME": "Bot username (@…)",
-      "TELEGRAM_BOT_MESSAGES_MAX_AGE_HOURS": "Message age for cleanup (hours)",
-      "TELEGRAM_BOT_MESSAGES_CLEANUP_BATCH": "Cleanup batch size",
-      "TELEGRAM_DELETE_COMMAND_MAX_MESSAGES": "Max messages for /delete",
-      "TELEGRAM_DELETE_TRY_BULK_IN_GROUPS": "Bulk delete in groups (1/0)",
-      "CRON_SECRET": "Secret for cron cleanup API",
-      "TELEGRAM_BOT_CLEANUP_CRON_SECRET": "Alternative to CRON_SECRET",
       "AUTOSCRIPT_WEBHOOK_URL": "auto-script-v2 webhook after site generation",
       "AUTOSCRIPT_WEBHOOK_SECRET": "auto-script webhook secret"
     }
