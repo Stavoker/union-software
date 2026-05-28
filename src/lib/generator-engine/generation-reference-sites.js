@@ -723,21 +723,7 @@ export function detectLayoutFeaturesForSimilarity(cleanHtml) {
   };
 }
 
-/**
- * Один inner `<main>` з HTML сторінки за `reference_url` — той самий фрагмент для всього пакета сторінок (режим шаблону).
- * @param {Record<string, unknown> | null | undefined} signals
- * @param {string} [_pageFile] — залишено для сумісності викликів, ігнорується
- * @returns {string}
- */
-export function resolveMainHtmlTemplateForPage(signals, pageFile) {
-  const file = String(pageFile || "").trim();
-  const byFile = signals?.mainHtmlTemplatesByFile;
-  if (byFile && file) {
-    const perPage = String(byFile[file] || byFile[file.toLowerCase()] || "").trim();
-    if (perPage) return perPage;
-  }
-  return String(signals?.mainHtmlTemplate || "").trim();
-}
+export { resolveMainHtmlTemplateForPage } from "./site-templates.js";
 
 async function fetchReferenceSiteHtml(referenceUrl) {
   const url = String(referenceUrl || "").trim();

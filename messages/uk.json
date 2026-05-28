@@ -91,7 +91,7 @@
     "usageTitle": "Токени та використання AI",
     "usageLead": "Метадані Claude API: середній розхід на генерацію, тиждень, місяць.",
     "settingsTitle": "Налаштування",
-    "settingsLead": "Ключі та параметри Union (генератор, домени, SEO, Telegram) — окремо для вашого акаунта. NEXT_PUBLIC_* задаються на сервері деплою."
+    "settingsLead": "Ключі та параметри Union (генератор, домени, SEO, Telegram) — окремо для вашого акаунта."
   },
   "integrationSettings": {
     "title": "Змінні середовища (Union)",
@@ -125,6 +125,46 @@
       "seo": "SEO (Yandex)",
       "telegram": "Telegram-бот",
       "autoscript": "auto-script-v2 (webhook)"
+    },
+    "telegram": {
+      "title": "Telegram-сповіщення",
+      "hint": "Короткі повідомлення про генерацію сайтів, SSL і деплой. Лише для вашого акаунта.",
+      "loading": "Завантаження…",
+      "linked": "✅ Telegram підключено — сповіщення активні.",
+      "notLinked": "Telegram ще не підключено.",
+      "step1": "Відкрийте бота в Telegram і натисніть /start",
+      "step2": "Оберіть мову: UA, Eng або Ru",
+      "step3": "Натисніть «Отримати код» тут і надішліть код боту",
+      "getCode": "Отримати код",
+      "generating": "Генерація…",
+      "yourCode": "Код привʼязки",
+      "expires": "Дійсний {min} хв",
+      "codeReady": "Новий код згенеровано.",
+      "codeFailed": "Не вдалося створити код",
+      "toastDismiss": "Закрити"
+    },
+    "hosts": {
+      "title": "SSH-сервери для деплою",
+      "hint": "Можна додати кілька серверів. Кожен акаунт бачить лише свої хости. На сторінці купівлі домену оберіть потрібний у списку.",
+      "loading": "Завантаження серверів…",
+      "empty": "Ще немає серверів — додайте один або кілька у формі нижче.",
+      "addTitle": "Додати сервер",
+      "name": "Назва",
+      "namePlaceholder": "VPS Frankfurt",
+      "ip": "IP",
+      "user": "SSH користувач",
+      "password": "SSH пароль",
+      "port": "Порт",
+      "save": "Додати сервер",
+      "addAnother": "Додати ще сервер",
+      "saving": "Збереження…",
+      "saved": "Сервер збережено.",
+      "deleted": "Сервер видалено.",
+      "delete": "Видалити",
+      "loadFailed": "Не вдалося завантажити список серверів",
+      "saveFailed": "Не вдалося зберегти сервер",
+      "deleteFailed": "Не вдалося видалити сервер",
+      "toastDismiss": "Закрити"
     },
     "fields": {
       "CLAUDE_API_KEY_01": "Ключ Anthropic API (sk-ant-…), слот 01 для паралельних збірок",
@@ -278,7 +318,8 @@
       "unknown": "Невідома помилка",
       "automationFailed": "Запит автоматизації не вдався",
       "failedDomains": "Не вдалося: {list}",
-      "withMessage": "Помилка: {message}"
+      "withMessage": "Помилка: {message}",
+      "hostLoadFailed": "Не вдалося завантажити список хостів"
     },
     "status": {
       "unfinishedRun": "Увага: виявлено незавершений запуск від {when}. Процес міг продовжитись на сервері.",
@@ -298,7 +339,9 @@
       "delete": "Видалити",
       "addDomain": "Додати ще домен",
       "host": "Хост для деплою (SSH/SFTP)",
-      "hostFallback": "З .env (fallback)",
+      "hostFallback": "З налаштувань Host (fallback, без збереженого сервера)",
+      "hostSettingsHint": "Додати або видалити сервер — у",
+      "hostSettingsLink": "Налаштуваннях",
       "nameservers": "NS-сервери",
       "nameserversPlaceholder": "ns1.example.com, ns2.example.com",
       "dnsRecordName": "Ім'я DNS-запису",

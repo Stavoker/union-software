@@ -5,6 +5,8 @@ import { Rocket, Trash2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 
+import { Link } from "@/i18n/navigation";
+
 import {
   seoBtnGhost,
   seoBtnLimeOutline,
@@ -169,22 +171,34 @@ export function DomainAutomationPanel() {
     });
   }
 
+  async function loadHosts(preferredId = "") {
+    const response = await fetch("/api/domain/hosts");
+    const payload = await readJsonSafe(response);
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.details || payload?.error || t("errors.hostLoadFailed"));
+    }
+    const list = Array.isArray(payload?.hosts) ? payload.hosts : [];
+    setHosts(list);
+    const pickId = String(preferredId || selectedHostId || "").trim();
+    if (pickId && list.some((h) => String(h.id) === pickId)) {
+      setSelectedHostId(pickId);
+    } else if (list.length) {
+      setSelectedHostId(String(list[0].id || ""));
+    } else {
+      setSelectedHostId("");
+    }
+    return list;
+  }
+
   useEffect(() => {
     let mounted = true;
-    fetch("/api/domain/hosts")
-      .then((r) => r.json())
-      .then((payload) => {
-        if (!mounted || !payload?.ok) return;
-        const list = Array.isArray(payload?.hosts) ? payload.hosts : [];
-        setHosts(list);
-        if (list.length && !selectedHostId) {
-          setSelectedHostId(String(list[0].id || ""));
-        }
-      })
-      .catch(() => {});
+    loadHosts().catch(() => {
+      if (mounted) setHosts([]);
+    });
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
 
   useEffect(() => {
@@ -454,6 +468,12 @@ export function DomainAutomationPanel() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1.5 text-xs text-union-muted">
+                {t("form.hostSettingsHint")}{" "}
+                <Link href="/dashboard/settings" className="text-[#d1fe17] underline-offset-2 hover:underline">
+                  {t("form.hostSettingsLink")}
+                </Link>
+              </p>
             </div>
             <div>
               <label htmlFor="nameservers">{t("form.nameservers")}</label>

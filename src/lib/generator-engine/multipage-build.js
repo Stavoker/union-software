@@ -40,6 +40,9 @@ import {
   buildOrderedNavEntries,
   buildBrandHeaderHtml,
   buildBrandFooterHtml,
+  buildSharedTemplateHeaderHtml,
+  buildSharedTemplateFooterHtml,
+  buildSharedTemplateSiteRailHtml,
   pickChromeLayoutSkins,
   pickChromeHeaderFooterOptions,
   uniqueSitePalettePromptBlock,
@@ -488,6 +491,42 @@ function enforceCanonicalLogoInChromeHtml(html, logoSrc = LAKI_LOGO_IMG_SRC) {
   );
 }
 
+function applyChromeAliasClasses(html, opts = {}) {
+  const src = String(html || "").trim();
+  if (!src) return "";
+  const seed = String(opts.seed || "chrome");
+  const kind = String(opts.kind || "h");
+  const variantNo = Math.max(1, Math.min(5, Number(opts.variantNo) || 1));
+  const suffix = siteHash32(`${seed}|${kind}|v${variantNo}`)
+    .toString(36)
+    .slice(0, 5);
+  const rootMarker = `ch-${kind}v${variantNo}-${suffix}`;
+  let classAttrIdx = 0;
+  let out = src.replace(
+    /\bclass=(["'])([^"']+)\1/gi,
+    (_full, quote, clsRaw) => {
+      const base = String(clsRaw || "")
+        .split(/\s+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (!base.length) return _full;
+      classAttrIdx += 1;
+      const alias = [];
+      for (const token of base) {
+        if (!/^[a-z0-9_-]+$/i.test(token)) continue;
+        alias.push(`${token}-${suffix}`);
+      }
+      if (classAttrIdx === 1) alias.push(rootMarker);
+      const merged = [...new Set([...base, ...alias])];
+      return `class=${quote}${merged.join(" ")}${quote}`;
+    }
+  );
+  if (!/\bclass\s*=/i.test(out)) {
+    out = out.replace(/<(header|footer|aside)\b/i, `<$1 class="${rootMarker}"`);
+  }
+  return out;
+}
+
 const AURORA_BUILD_PROGRESS = ".aurora_build_progress.json";
 
 async function writeBuildProgress(outputDir, pagesTotal, pagesDone) {
@@ -524,6 +563,128 @@ function isIndexPageFile(file) {
 /** Multipage PHP: без редіректу на gateway — повний HTML для усіх відвідувачів (у т.ч. з реферальних посилань). */
 function wrapMultipagePhpDocument(html) {
   return String(html || "");
+}
+
+function spot064ActiveNavKey(pageFile) {
+  const f = String(pageFile || "").trim().toLowerCase();
+  if (f === "index.php" || f === "index.html") return "index";
+  return f.replace(/\.php$/i, "").replace(/[^a-z0-9_-]/gi, "") || "index";
+}
+
+function phpSingleQuoted(str) {
+  return `'${String(str || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")}'`;
+}
+
+/** partials/site-rail.php — як у u-spot064, навігація з фактичного плану сторінок. */
+async function writeSpot064RailPartial(outputDir, opts = {}) {
+  const entries = buildOrderedNavEntries(opts.chromeVariant, opts.navLinks || []);
+  const navLines = entries
+    .map((e) => {
+      const hrefRaw = String(e.href || "").trim();
+      const href =
+        hrefRaw === "/" ? "./index.php" : hrefRaw.startsWith("./") ? hrefRaw : `./${hrefRaw.replace(/^\.\//, "")}`;
+      const key = spot064ActiveNavKey(href.replace(/^\.\//, ""));
+      return `  ${phpSingleQuoted(key)} => ['href' => ${phpSingleQuoted(href)}, 'label' => ${phpSingleQuoted(e.label)}],`;
+    })
+    .join("\n");
+  const gateway = phpSingleQuoted(opts.gatewayUrl || DEFAULT_GATEWAY_URL);
+  const content = `<?php
+$lwActiveNav = $lwActiveNav ?? 'index';
+$lwGateway = ${gateway};
+$lwNav = [
+${navLines}
+];
+?>
+<aside class="lw-site-rail" id="site-rail" aria-label="Навигация сайта">
+  <a class="lw-site-rail__logo" href="./index.php" aria-label="${String(opts.brandAlt || "Главная").replace(/"/g, "&quot;")}">
+    <img src="./img/logo.png" alt="${String(opts.brandAlt || "Логотип").replace(/"/g, "&quot;")}" class="lw-logo-img lw-site-rail__logo-img">
+  </a>
+  <nav class="lw-site-rail__nav" aria-label="Основное меню">
+    <?php foreach ($lwNav as $key => $item): ?>
+      <?php
+      $active = $lwActiveNav === $key;
+      $cls = 'lw-site-rail__link' . ($active ? ' is-active' : '');
+      ?>
+      <a
+        href="<?php echo htmlspecialchars($item['href'], ENT_QUOTES, 'UTF-8'); ?>"
+        class="<?php echo $cls; ?>"
+        <?php echo $active ? ' aria-current="page"' : ''; ?>
+      >
+        <span class="lw-site-rail__link-label"><?php echo htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8'); ?></span>
+      </a>
+    <?php endforeach; ?>
+  </nav>
+  <div class="lw-site-rail__bottom">
+    <a
+      class="lw-site-rail__cta"
+      href="<?php echo htmlspecialchars($lwGateway, ENT_QUOTES, 'UTF-8'); ?>"
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+    >Регистрация</a>
+    <a class="lw-site-rail__secondary" href="./index.php">Касса</a>
+  </div>
+</aside>
+`;
+  const partialDir = path.join(outputDir, "partials");
+  await fs.mkdir(partialDir, { recursive: true });
+  await fs.writeFile(path.join(partialDir, "site-rail.php"), content, "utf8");
+}
+
+function buildSpot064RailInclude(pageFile) {
+  const key = spot064ActiveNavKey(pageFile);
+  return `<?php $lwActiveNav = ${phpSingleQuoted(key)}; include __DIR__ . '/partials/site-rail.php'; ?>`;
+}
+
+function isSpot064RailBlock(html) {
+  const s = String(html || "");
+  return /<aside\b/i.test(s) || /partials\/site-rail\.php/i.test(s);
+}
+
+function spot064OrCompactHeaderFallback(
+  pageSiteTemplateAsm,
+  ctx,
+  pageMeta,
+  headerChromeOpts,
+  classPrefix,
+  presetId = 1
+) {
+  if (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064) {
+    return resolveSpot064RailHtml(ctx, pageMeta, headerChromeOpts, presetId);
+  }
+  return buildFallbackAiChromeHeader(
+    classPrefix,
+    ctx.chromeVariant,
+    ctx.navLinks || [],
+    headerChromeOpts
+  );
+}
+
+function resolveSpot064RailHtml(ctx, pageMeta, headerChromeOpts, presetId) {
+  if (ctx.spot064RailPartialReady) {
+    return buildSpot064RailInclude(pageMeta.file);
+  }
+  return applyChromeAliasClasses(
+    enforceCanonicalLogoInChromeHtml(
+      buildSharedTemplateSiteRailHtml({
+        presetId,
+        variant: ctx.chromeVariant,
+        navLinks: ctx.navLinks || [],
+        gatewayUrl: headerChromeOpts.gatewayUrl,
+        logoSrc: headerChromeOpts.logoSrc,
+        brandAlt: headerChromeOpts.brandAlt,
+        ctaPrimary: ctx.chromeVariant?.ctaPrimary,
+        activeNavKey: spot064ActiveNavKey(pageMeta.file),
+      }),
+      ctx.logoSrc || LAKI_LOGO_IMG_SRC
+    ),
+    {
+      seed: `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}|spot064`,
+      kind: "h",
+      variantNo: Number(presetId) || 1,
+    }
+  );
 }
 
 /** У зовнішніх css/page-N.css шлях url(./img/...) має бути ../img/ (база — папка css/). */
@@ -5438,6 +5599,15 @@ function getCrossBuildSignatureMemoryPath() {
   );
 }
 
+function getChromePresetHistoryPath() {
+  return path.join(
+    getAppRoot(),
+    "storage",
+    "generation-memory",
+    "chrome-presets-history.json"
+  );
+}
+
 async function loadCrossBuildSignatureMemory() {
   try {
     const raw = await fs.readFile(getCrossBuildSignatureMemoryPath(), "utf8");
@@ -5455,11 +5625,61 @@ async function loadCrossBuildSignatureMemory() {
   }
 }
 
+async function loadChromePresetHistory() {
+  try {
+    const raw = await fs.readFile(getChromePresetHistoryPath(), "utf8");
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (x) =>
+        x &&
+        typeof x.templateId === "string" &&
+        Number.isFinite(Number(x.headerPresetId)) &&
+        Number.isFinite(Number(x.footerPresetId))
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function saveCrossBuildSignatureMemory(rows) {
   const file = getCrossBuildSignatureMemoryPath();
   await fs.mkdir(path.dirname(file), { recursive: true });
   const list = Array.isArray(rows) ? rows.slice(-CROSS_BUILD_HISTORY_PAGES) : [];
   await fs.writeFile(file, JSON.stringify(list, null, 2), "utf8");
+}
+
+async function saveChromePresetHistory(rows) {
+  const file = getChromePresetHistoryPath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const list = Array.isArray(rows) ? rows.slice(-240) : [];
+  await fs.writeFile(file, JSON.stringify(list, null, 2), "utf8");
+}
+
+function pickChromePresetPair(seed, templateId, recentRows) {
+  const tpl = String(templateId || "bet162").toLowerCase();
+  const recent = Array.isArray(recentRows) ? recentRows.slice(-10) : [];
+  const banned = new Set(
+    recent.map(
+      (r) =>
+        `${String(r?.templateId || "").toLowerCase()}|${Number(r?.headerPresetId) || 0}|${Number(r?.footerPresetId) || 0}`
+    )
+  );
+  const candidates = [];
+  for (let h = 1; h <= 10; h += 1) {
+    for (let f = 1; f <= 10; f += 1) {
+      const score = siteHash32(`${seed}|${tpl}|H${h}|F${f}`);
+      candidates.push({ h, f, score });
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const picked =
+    candidates.find((c) => !banned.has(`${tpl}|${c.h}|${c.f}`)) || candidates[0];
+  return {
+    templateId: tpl,
+    headerPresetId: picked.h,
+    footerPresetId: picked.f,
+  };
 }
 
 function normalizeWordsForNav(text) {
@@ -6547,12 +6767,16 @@ async function generatePageBundle(
   ).trim();
   const refChromeTplPresent =
     refAsmHdrTpl.length > 0 || refAsmFtrTpl.length > 0;
+  const sharedPresetChromeMode = usesDualSiteTemplates();
   const useRefChromeAssembly =
     refChromeTplPresent &&
+    !sharedPresetChromeMode &&
     (Boolean(ctx.referenceBlendMode) || pageReferenceTemplateMode);
   const useTemplateChrome =
-    ctx.useTemplateChrome !== false && usesTemplateChrome();
+    ctx.useTemplateChrome !== false &&
+    (usesTemplateChrome() || usesDualSiteTemplates());
   const minRefChromeHtmlLen = 48;
+  const chromeAliasSeed = `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}|${pageSiteTemplateAsm}`;
   const headerChromeOpts = {
     ...(ctx.chromeContentOptions || {}),
     gatewayUrl: ctx.gatewayUrl || DEFAULT_GATEWAY_URL,
@@ -6570,32 +6794,51 @@ async function generatePageBundle(
   let footerBlock = "";
   if (shell.includeHeader) {
     if (useTemplateChrome && !useRefChromeAssembly) {
-      headerBlock = enforceCanonicalLogoInChromeHtml(
-        buildBrandHeaderHtml(
-          ctx.chromeVariant,
-          ctx.navLinks || [],
-          skins.headerSkin,
-          headerChromeOpts
-        ),
-        ctx.logoSrc || LAKI_LOGO_IMG_SRC
-      );
-    } else if (useRefChromeAssembly && refAsmHdrTpl) {
-      const cand = sanitizeModelChromeFragment(
-        String(data.headerHtml || "").trim()
-      );
       if (
-        isWellFormedChromeFragment(cand, "header") &&
-        cand.length >= minRefChromeHtmlLen
+        sharedPresetChromeMode &&
+        pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
       ) {
-        headerBlock = enforceCanonicalLogoInChromeHtml(
-          cand,
-          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        headerBlock = resolveSpot064RailHtml(
+          ctx,
+          pageMeta,
+          headerChromeOpts,
+          ctx.sharedHeaderPresetId || 1
         );
-      } else if (useTemplateChrome) {
-        emitLog(
-          onLog,
-          `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем lw-шапку.`
+      } else if (sharedPresetChromeMode) {
+        headerBlock = applyChromeAliasClasses(
+          enforceCanonicalLogoInChromeHtml(
+            buildSharedTemplateHeaderHtml({
+              presetId: ctx.sharedHeaderPresetId || 1,
+              templateId: ctx.siteChromeTemplateId || pageSiteTemplateAsm,
+              variant: ctx.chromeVariant,
+              navLinks: ctx.navLinks || [],
+              gatewayUrl: headerChromeOpts.gatewayUrl,
+              logoSrc: headerChromeOpts.logoSrc,
+              brandAlt: headerChromeOpts.brandAlt,
+              ctaPrimary: ctx.chromeVariant?.ctaPrimary,
+              ctaSecondary: ctx.chromeVariant?.ctaSecondary,
+            }),
+            ctx.logoSrc || LAKI_LOGO_IMG_SRC
+          ),
+          { seed: chromeAliasSeed, kind: "h", variantNo: Number(ctx.sharedHeaderPresetId) || 1 }
         );
+      } else if (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064) {
+        const etalonRail = stripUnsafeChromeMarkup(
+          String(refAsmHdrTpl || "").trim()
+        );
+        headerBlock =
+          etalonRail && /<aside\b/i.test(etalonRail)
+            ? enforceCanonicalLogoInChromeHtml(
+                etalonRail,
+                ctx.logoSrc || LAKI_LOGO_IMG_SRC
+              )
+            : resolveSpot064RailHtml(
+                ctx,
+                pageMeta,
+                headerChromeOpts,
+                skins.headerSkin || 1
+              );
+      } else {
         headerBlock = enforceCanonicalLogoInChromeHtml(
           buildBrandHeaderHtml(
             ctx.chromeVariant,
@@ -6605,17 +6848,60 @@ async function generatePageBundle(
           ),
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
+      }
+    } else if (useRefChromeAssembly && refAsmHdrTpl) {
+      const cand = sanitizeModelChromeFragment(
+        String(data.headerHtml || "").trim()
+      );
+      if (
+        (isWellFormedChromeFragment(cand, "header") ||
+          (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 &&
+            isSpot064RailBlock(cand))) &&
+        cand.length >= minRefChromeHtmlLen
+      ) {
+        headerBlock = enforceCanonicalLogoInChromeHtml(
+          cand,
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      } else if (useTemplateChrome) {
+        emitLog(
+          onLog,
+          pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+            ? `Референс-chrome: «${pageMeta.file}» — нет валидного rail, подставляем lw-site-rail.`
+            : `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем lw-шапку.`
+        );
+        headerBlock =
+          pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+            ? resolveSpot064RailHtml(
+                ctx,
+                pageMeta,
+                headerChromeOpts,
+                ctx.sharedHeaderPresetId || skins.headerSkin || 1
+              )
+            : enforceCanonicalLogoInChromeHtml(
+                buildBrandHeaderHtml(
+                  ctx.chromeVariant,
+                  ctx.navLinks || [],
+                  skins.headerSkin,
+                  headerChromeOpts
+                ),
+                ctx.logoSrc || LAKI_LOGO_IMG_SRC
+              );
       } else {
         emitLog(
           onLog,
-          `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем компактную AI-шапку.`
+          pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+            ? `Референс-chrome: «${pageMeta.file}» — нет валидного rail, подставляем компактный rail-fallback.`
+            : `Референс-chrome: «${pageMeta.file}» — нет валидного headerHtml, подставляем компактную AI-шапку.`
         );
         headerBlock = enforceCanonicalLogoInChromeHtml(
-          buildFallbackAiChromeHeader(
+          spot064OrCompactHeaderFallback(
+            pageSiteTemplateAsm,
+            ctx,
+            pageMeta,
+            headerChromeOpts,
             classPrefix,
-            ctx.chromeVariant,
-            ctx.navLinks || [],
-            headerChromeOpts
+            ctx.sharedHeaderPresetId || 1
           ),
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
@@ -6625,7 +6911,9 @@ async function generatePageBundle(
         String(data.headerHtml || "").trim()
       );
       if (
-        isWellFormedChromeFragment(cand, "header") &&
+        (isWellFormedChromeFragment(cand, "header") ||
+          (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 &&
+            isSpot064RailBlock(cand))) &&
         cand.length >= minRefChromeHtmlLen
       ) {
         headerBlock = enforceCanonicalLogoInChromeHtml(
@@ -6633,26 +6921,38 @@ async function generatePageBundle(
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
       } else if (useTemplateChrome) {
-        headerBlock = enforceCanonicalLogoInChromeHtml(
-          buildBrandHeaderHtml(
-            ctx.chromeVariant,
-            ctx.navLinks || [],
-            skins.headerSkin,
-            headerChromeOpts
-          ),
-          ctx.logoSrc || LAKI_LOGO_IMG_SRC
-        );
+        headerBlock =
+          pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+            ? resolveSpot064RailHtml(
+                ctx,
+                pageMeta,
+                headerChromeOpts,
+                ctx.sharedHeaderPresetId || skins.headerSkin || 1
+              )
+            : enforceCanonicalLogoInChromeHtml(
+                buildBrandHeaderHtml(
+                  ctx.chromeVariant,
+                  ctx.navLinks || [],
+                  skins.headerSkin,
+                  headerChromeOpts
+                ),
+                ctx.logoSrc || LAKI_LOGO_IMG_SRC
+              );
       } else {
         emitLog(
           onLog,
-          `«${pageMeta.file}» — нет валидного headerHtml от модели, подставляем компактную AI-шапку.`
+          pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+            ? `«${pageMeta.file}» — нет валидного rail от модели, подставляем lw-site-rail.`
+            : `«${pageMeta.file}» — нет валидного headerHtml от модели, подставляем компактную AI-шапку.`
         );
         headerBlock = enforceCanonicalLogoInChromeHtml(
-          buildFallbackAiChromeHeader(
+          spot064OrCompactHeaderFallback(
+            pageSiteTemplateAsm,
+            ctx,
+            pageMeta,
+            headerChromeOpts,
             classPrefix,
-            ctx.chromeVariant,
-            ctx.navLinks || [],
-            headerChromeOpts
+            ctx.sharedHeaderPresetId || 1
           ),
           ctx.logoSrc || LAKI_LOGO_IMG_SRC
         );
@@ -6678,17 +6978,35 @@ async function generatePageBundle(
       label: e.label,
     }));
     if (useTemplateChrome && !useRefChromeAssembly) {
-      footerBlock = enforceCanonicalLogoInChromeHtml(
-        buildBrandFooterHtml({
-          brandName: footerBrandName,
-          variant: ctx.chromeVariant,
-          footerLinks,
-          footerSkin: skins.footerSkin,
-          showFooterLogo: footerOpts.footerShowLogo !== false,
-          logoSrc: footerOpts.logoSrc,
-        }),
-        ctx.logoSrc || LAKI_LOGO_IMG_SRC
-      );
+      if (sharedPresetChromeMode) {
+        footerBlock = applyChromeAliasClasses(
+          enforceCanonicalLogoInChromeHtml(
+            buildSharedTemplateFooterHtml({
+              presetId: ctx.sharedFooterPresetId || 1,
+              templateId: ctx.siteChromeTemplateId || pageSiteTemplateAsm,
+              brandName: footerBrandName,
+              variant: ctx.chromeVariant,
+              footerLinks,
+              showFooterLogo: footerOpts.footerShowLogo !== false,
+              logoSrc: footerOpts.logoSrc,
+            }),
+            ctx.logoSrc || LAKI_LOGO_IMG_SRC
+          ),
+          { seed: chromeAliasSeed, kind: "f", variantNo: Number(ctx.sharedFooterPresetId) || 1 }
+        );
+      } else {
+        footerBlock = enforceCanonicalLogoInChromeHtml(
+          buildBrandFooterHtml({
+            brandName: footerBrandName,
+            variant: ctx.chromeVariant,
+            footerLinks,
+            footerSkin: skins.footerSkin,
+            showFooterLogo: footerOpts.footerShowLogo !== false,
+            logoSrc: footerOpts.logoSrc,
+          }),
+          ctx.logoSrc || LAKI_LOGO_IMG_SRC
+        );
+      }
     } else if (useRefChromeAssembly && refAsmFtrTpl) {
       const cand = sanitizeModelChromeFragment(
         String(data.footerHtml || "").trim()
@@ -6789,7 +7107,8 @@ async function generatePageBundle(
     shell.includeHeader &&
     headerBlock &&
     !/<header\b/i.test(headerBlock) &&
-    !/<aside\b/i.test(headerBlock)
+    !/<aside\b/i.test(headerBlock) &&
+    !/partials\/site-rail\.php/i.test(headerBlock)
   ) {
     emitLog(
       onLog,
@@ -6807,18 +7126,23 @@ async function generatePageBundle(
   const headerChromeOk =
     headerBlock &&
     (isWellFormedChromeFragment(headerBlock, "header") ||
-      (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 && /<aside\b/i.test(headerBlock)));
+      (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 &&
+        isSpot064RailBlock(headerBlock)));
   if (shell.includeHeader && !headerChromeOk) {
     emitLog(
       onLog,
-      `«${pageMeta.file}» — гарантированная AI-шапка (модель не дала валидный header).`
+      pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064
+        ? `«${pageMeta.file}» — гарантированный lw-site-rail (модель не дала валидный rail).`
+        : `«${pageMeta.file}» — гарантированная AI-шапка (модель не дала валидный header).`
     );
     headerBlock = enforceCanonicalLogoInChromeHtml(
-      buildFallbackAiChromeHeader(
+      spot064OrCompactHeaderFallback(
+        pageSiteTemplateAsm,
+        ctx,
+        pageMeta,
+        headerChromeOpts,
         classPrefix,
-        ctx.chromeVariant,
-        ctx.navLinks || [],
-        headerChromeOpts
+        ctx.sharedHeaderPresetId || 1
       ),
       ctx.logoSrc || LAKI_LOGO_IMG_SRC
     );
@@ -7510,16 +7834,21 @@ export async function buildMultipageSite({
   const perPageTplCount = Object.keys(
     referenceStructureSignals?.mainHtmlTemplatesByFile || {}
   ).length;
+  const tplLibCounts = referenceStructureSignals?.mainHtmlTemplateLibraryCounts;
   const referenceTemplateModeEnabled = Boolean(
     referenceLocked &&
       referenceTemplateModeWanted &&
       (perPageTplCount > 0 || mainTpl.length > 0)
   );
   if (referenceTemplateModeEnabled) {
+    const libHint =
+      referenceStructureSignals?.dualSiteTemplates && tplLibCounts
+        ? `; библиотека main: bet162=${tplLibCounts.bet162 ?? 0}, spot064=${tplLibCounts.spot064 ?? 0}`
+        : "";
     emitLog(
       onLog,
       referenceStructureSignals?.dualSiteTemplates
-        ? `Режим шаблона: эталоны u-bet162/u-spot064, inner <main> по страницам (${perPageTplCount} шт., план ${formatTemplatePlanLog(pageTemplatePlan)}).`
+        ? `Режим шаблона: эталоны u-bet162/u-spot064, inner <main> по страницам (${perPageTplCount} шт., план ${formatTemplatePlanLog(pageTemplatePlan)}${libHint}).`
         : `Режим шаблона: один эталонный inner <main> с reference_url (${Number(referenceStructureSignals?.mainHtmlTemplateChars) || mainTpl.length} симв.) — для всех страниц пакета; ref-structure gate отключён при непустом шаблоне.`
     );
   } else if (referenceTemplateModeWanted && referenceLocked) {
@@ -7844,7 +8173,7 @@ export async function buildMultipageSite({
   const chromeLayoutSkins = pickChromeLayoutSkins(structureSeed);
   const chromeContentOptions =
     pickChromeHeaderFooterOptions(structureSeed);
-  const templateChromeEnabled = usesTemplateChrome();
+  const templateChromeEnabled = usesTemplateChrome() || usesDualSiteTemplates();
   emitLog(
     onLog,
     `Chrome: ${templateChromeEnabled ? "lw-шаблон" : "уникальный AI chrome"} (логотип ${logoSrcForBuild}${templateChromeEnabled ? `, скины h${chromeLayoutSkins.headerSkin}/f${chromeLayoutSkins.footerSkin}` : ""}); <header>=${chromeShell.includeHeader ? "да" : "нет"}, <footer>=${chromeShell.includeFooter ? "да" : "нет"}; gateway в шапке=${chromeContentOptions.headerShowGatewayCtas ? "да" : "нет"}`
@@ -7875,6 +8204,7 @@ export async function buildMultipageSite({
       await fs.writeFile(path.join(cssDir, "igaming.css"), `${igCss}\n`, "utf8");
     }
   }
+  let spot064RailPartialReady = false;
   if (needsSiteShellCss) {
     const shellCss =
       String(templateCssFromEtalon?.siteShell || "").trim() ||
@@ -7882,6 +8212,21 @@ export async function buildMultipageSite({
     if (shellCss) {
       emitLog(onLog, "Запись css/site-shell.css (rail + rich footer, u-spot064)…");
       await fs.writeFile(path.join(cssDir, "site-shell.css"), `${shellCss}\n`, "utf8");
+    }
+    try {
+      await writeSpot064RailPartial(outputDir, {
+        chromeVariant,
+        navLinks,
+        gatewayUrl,
+        brandAlt: brandName || themeBrandHintEarly || "Логотип",
+      });
+      spot064RailPartialReady = true;
+      emitLog(onLog, "Запись partials/site-rail.php (навигация spot064, как u-spot064)…");
+    } catch (railPartialErr) {
+      emitLog(
+        onLog,
+        `Предупреждение: partials/site-rail.php — ${String(railPartialErr?.message || railPartialErr).slice(0, 180)}`
+      );
     }
   }
 
@@ -7904,6 +8249,29 @@ export async function buildMultipageSite({
     );
   }
   const homeGamesMode = resolveHomeGamesMode(structureSeed);
+  const siteChromeTemplateId = resolvePageSiteTemplate(
+    { pageTemplateByFile: pageTemplatePlan },
+    "index.php"
+  );
+  const chromePresetHistory = await loadChromePresetHistory();
+  const chosenPresetPair = pickChromePresetPair(
+    `${structureSeed}|${buildNonce}|${safeName}`,
+    siteChromeTemplateId,
+    chromePresetHistory
+  );
+  const sharedHeaderPresetId = chosenPresetPair.headerPresetId;
+  const sharedFooterPresetId = chosenPresetPair.footerPresetId;
+  await saveChromePresetHistory([
+    ...chromePresetHistory,
+    {
+      createdAt: new Date().toISOString(),
+      projectName: safeName,
+      siteSeed,
+      templateId: chosenPresetPair.templateId,
+      headerPresetId: sharedHeaderPresetId,
+      footerPresetId: sharedFooterPresetId,
+    },
+  ]);
   emitLog(
     onLog,
     `Каркас: structureSalt=${structureSalt.slice(0, 12)}…; главная — режим игр «${homeGamesMode}»; отпечаток ${structureFingerprint}; igaming-block-catalog=${usesPremiumIgamingLayout() ? "on" : "off"}; dual-templates=${usesDualSiteTemplates() ? formatTemplatePlanLog(pageTemplatePlan) : "off"}.`
@@ -7957,7 +8325,17 @@ export async function buildMultipageSite({
     pageTemplatePlan,
     needsIgamingCss,
     needsSiteShellCss,
+    sharedHeaderPresetId,
+    sharedFooterPresetId,
+    siteChromeTemplateId,
+    spot064RailPartialReady,
   };
+  if (usesDualSiteTemplates()) {
+    emitLog(
+      onLog,
+      `Shared chrome presets: template=${siteChromeTemplateId}; header H${sharedHeaderPresetId}/10 + footer F${sharedFooterPresetId}/10 (fixed for all pages of this site; anti-repeat window=10).`
+    );
+  }
 
   const results = [];
   const previousMainTexts = [];
@@ -8275,7 +8653,7 @@ export async function buildMultipageSite({
           footerHtml: ftrOk ? pair.footerHtml : "",
         };
         if (usesDualSiteTemplates()) {
-          chromeStore[pageTplForChrome] = chromePair;
+          ctx.siteCanonicalChromeByTemplate[pageTplForChrome] = chromePair;
         } else {
           ctx.siteCanonicalChrome = chromePair;
         }

@@ -381,22 +381,38 @@ export function GeneratorWorkbench({
 
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-union-muted">{t("theme")}</span>
-              <input
-                list="generator-theme-presets"
-                value={theme}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setTheme(next);
-                  const match = resolvedPresets.find((p) => p.value === next);
-                  if (match?.pageCount) setPageCount(match.pageCount);
-                }}
-                className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
-              />
-              <datalist id="generator-theme-presets">
-                {resolvedPresets.map((p) => (
-                  <option key={p.value} value={p.value} />
-                ))}
-              </datalist>
+              {resolvedPresets.length > 0 ? (
+                <select
+                  value={theme}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTheme(next);
+                    const match = resolvedPresets.find((p) => p.value === next);
+                    if (match?.pageCount) setPageCount(match.pageCount);
+                  }}
+                  className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
+                >
+                  {!resolvedPresets.some((p) => p.value === theme) && theme ? (
+                    <option value={theme}>{theme}</option>
+                  ) : null}
+                  {resolvedPresets.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.value}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={theme}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setTheme(next);
+                    const match = resolvedPresets.find((p) => p.value === next);
+                    if (match?.pageCount) setPageCount(match.pageCount);
+                  }}
+                  className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
+                />
+              )}
             </label>
 
             <label className="block space-y-1.5">

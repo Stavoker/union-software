@@ -218,6 +218,77 @@ export function resolvePageSiteTemplate(signals, pageFile) {
   return SITE_TEMPLATE_BET162;
 }
 
+/** Сторінка білда → найближчий файл еталона (index/games/payments/zerkalo). */
+export function resolveEtalonSourcePageFile(pageFile) {
+  const base = String(pageFile || "").trim().toLowerCase();
+  if (!base) return "index.php";
+  const stem = base.replace(/\.(php|html)$/i, "");
+  if (stem === "index" || stem === "home") return "index.php";
+  if (/^(games|game|slots|slot|catalog)/.test(stem)) return "games.php";
+  if (/^(payments|payment|loyalty|bonus|bonuses|cashier|deposit|vip|promo)/.test(stem)) {
+    return "payments.php";
+  }
+  if (/^(zerkalo|mirror|mobile|app|android|ios|download)/.test(stem)) {
+    return "zerkalo.php";
+  }
+  if (/^(faq|help|support|about|review)/.test(stem)) return "payments.php";
+  return "index.php";
+}
+
+function listBundlePageFiles(bundle) {
+  if (!bundle || typeof bundle.entries !== "function") return [];
+  const files = [];
+  for (const [rel, meta] of bundle.entries()) {
+    if (meta?.kind === "page" && /\.php$/i.test(rel)) {
+      files.push(rel);
+    }
+  }
+  return orderedPageFiles(files);
+}
+
+function collectMainTemplatesFromBundle(bundle) {
+  const out = {};
+  for (const file of listBundlePageFiles(bundle)) {
+    const html = readEtalonPageHtmlFromBundle(bundle, file);
+    const main = capMainTemplate(extractMainFromHtml(html));
+    if (main) out[file] = main;
+  }
+  return out;
+}
+
+function pickMainTemplateForBuildPage(library, pageFile, templateId) {
+  const tpl = templateId === SITE_TEMPLATE_SPOT064 ? SITE_TEMPLATE_SPOT064 : SITE_TEMPLATE_BET162;
+  const bucket = library?.[tpl] || {};
+  const exact = String(pageFile || "").trim();
+  if (bucket[exact]) return { main: bucket[exact], source: exact };
+  const alias = resolveEtalonSourcePageFile(exact);
+  if (bucket[alias]) return { main: bucket[alias], source: alias };
+  if (bucket["index.php"]) return { main: bucket["index.php"], source: "index.php" };
+  const firstKey = Object.keys(bucket)[0];
+  if (firstKey) return { main: bucket[firstKey], source: firstKey };
+  return { main: "", source: "" };
+}
+
+/**
+ * Inner <main> для сторінки білда: прямий збіг → alias на еталон → index fallback.
+ * @param {Record<string, unknown> | null | undefined} signals
+ * @param {string} pageFile
+ */
+export function resolveMainHtmlTemplateForPage(signals, pageFile) {
+  const file = String(pageFile || "").trim();
+  const byFile = signals?.mainHtmlTemplatesByFile;
+  if (byFile && file) {
+    const perPage = String(byFile[file] || byFile[file.toLowerCase()] || "").trim();
+    if (perPage) return perPage;
+  }
+  const lib = signals?.mainHtmlTemplateLibrary;
+  if (lib && file) {
+    const tpl = resolvePageSiteTemplate(signals, file);
+    return pickMainTemplateForBuildPage(lib, file, tpl).main;
+  }
+  return String(signals?.mainHtmlTemplate || "").trim();
+}
+
 function extractMainFromHtml(html) {
   const raw = String(html || "");
   const m = raw.match(/<main\b[^>]*>[\s\S]*?<\/main>/i);
@@ -326,8 +397,13 @@ export async function loadDualEtalonReferencePack(opts) {
   };
 
   const mainHtmlTemplatesByFile = {};
+  const mainHtmlTemplateSourceByFile = {};
   const pageTemplateByFile = { ...plan };
   const chromeByTemplate = {};
+  const mainHtmlTemplateLibrary = {
+    [SITE_TEMPLATE_BET162]: collectMainTemplatesFromBundle(bundles[SITE_TEMPLATE_BET162]),
+    [SITE_TEMPLATE_SPOT064]: collectMainTemplatesFromBundle(bundles[SITE_TEMPLATE_SPOT064]),
+  };
 
   for (const tpl of [SITE_TEMPLATE_BET162, SITE_TEMPLATE_SPOT064]) {
     chromeByTemplate[tpl] = loadTemplateChromeSignals(tpl, bundles[tpl]);
@@ -335,11 +411,17 @@ export async function loadDualEtalonReferencePack(opts) {
 
   for (const file of pageFiles) {
     const tpl = plan[file] || SITE_TEMPLATE_BET162;
-    const html = readEtalonPageHtmlFromBundle(bundles[tpl], file);
-    const main = capMainTemplate(extractMainFromHtml(html));
-    if (main) mainHtmlTemplatesByFile[file] = main;
     pageTemplateByFile[file] = tpl;
+    const picked = pickMainTemplateForBuildPage(mainHtmlTemplateLibrary, file, tpl);
+    if (picked.main) {
+      mainHtmlTemplatesByFile[file] = picked.main;
+      mainHtmlTemplateSourceByFile[file] = picked.source;
+    }
   }
+
+  const libBet = Object.keys(mainHtmlTemplateLibrary[SITE_TEMPLATE_BET162]).length;
+  const libSpot = Object.keys(mainHtmlTemplateLibrary[SITE_TEMPLATE_SPOT064]).length;
+  const assigned = Object.keys(mainHtmlTemplatesByFile).length;
 
   const firstMain = mainHtmlTemplatesByFile[pageFiles[0]] || "";
   const indexMain = mainHtmlTemplatesByFile["index.php"] || firstMain;
@@ -353,6 +435,12 @@ export async function loadDualEtalonReferencePack(opts) {
     etalonSource: "supabase",
     pageTemplateByFile,
     mainHtmlTemplatesByFile,
+    mainHtmlTemplateSourceByFile,
+    mainHtmlTemplateLibrary,
+    mainHtmlTemplateLibraryCounts: {
+      bet162: libBet,
+      spot064: libSpot,
+    },
     chromeByTemplate,
     mainHtmlTemplate: indexMain,
     mainHtmlTemplateChars: indexMain.length,
@@ -367,14 +455,14 @@ export async function loadDualEtalonReferencePack(opts) {
 
   const planLog = formatTemplatePlanLog(plan);
   onLog?.(
-    `Эталоны bet162/spot064 (Supabase API): план ${planLog}; main-шаблонов: ${Object.keys(mainHtmlTemplatesByFile).length}; assets bet162=${bundles[SITE_TEMPLATE_BET162].size}, spot064=${bundles[SITE_TEMPLATE_SPOT064].size}.`
+    `Эталоны bet162/spot064 (Supabase API): план ${planLog}; main-шаблонов: библиотека bet162=${libBet}, spot064=${libSpot}; назначено билду ${assigned}/${pageFiles.length}; assets bet162=${bundles[SITE_TEMPLATE_BET162].size}, spot064=${bundles[SITE_TEMPLATE_SPOT064].size}.`
   );
 
   const overlay = `
 ДВА ШАБЛОНА САЙТА (ротация по URL этого билда: ${planLog}):
 - **1 (bet162)**: классическая шапка <header> сверху, контент с опорой на css/igaming.css (секции в духе ig-* или свой BEM с префиксом билда).
 - **2 (spot064)**: body.has-lw-rail; навигация в <aside class="lw-site-rail"> (headerHtml); контент в .lw-site-col; подвал lw-footer-rich (footerHtml); css/site-shell.css.
-- На каждой странице — **свой** inner <main> с эталона **того же номера шаблона**, что в плане для этого файла.
+- На каждой странице — **свой** inner <main> с эталона **того же номера шаблона** (index/games/payments/zerkalo; для loyalty/slots/faq — ближайший файл из библиотеки).
 - Классы в <main>: единый логичный BEM-префикс билда; не union_index_*, не p1_e5b60fe2, не случайные хеши.
 `.trim();
 

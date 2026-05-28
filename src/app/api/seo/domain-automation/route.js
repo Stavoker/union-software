@@ -11,7 +11,8 @@ import {
 import { automateDomainProvisioning } from "@/lib/admin-seo/domainAutomation";
 import { deploySslCertificateToHost } from "@/lib/admin-seo/hostNginxSslDeploy";
 import { requireSeoSession } from "@/lib/admin-seo/seoApiAuth";
-import { sendDomainAutomationTelegramReport, sendSslProgressTelegramUpdate } from "@/lib/admin-seo/telegramDomainAutomation";
+import { sendSslProgressTelegramUpdate } from "@/lib/admin-seo/telegramDomainAutomation";
+import { sendUserDomainTelegramEvents } from "@/lib/telegram/telegramDomainNotify";
 import { getHostById } from "@/lib/admin-seo/hostsRepository";
 
 function buildRequestSummary(body, userEnv = {}) {
@@ -75,10 +76,10 @@ function parseBatchDomains(body) {
   return single && zone ? [{ domainLabel: single, zone }] : [];
 }
 
-async function resolveDeployTarget(body, creds) {
+async function resolveDeployTarget(body, creds, userId) {
   const selectedHostId = String(body?.hostId || "").trim();
   if (selectedHostId) {
-    const host = await getHostById(selectedHostId);
+    const host = await getHostById(selectedHostId, userId);
     if (!host) {
       throw new Error("Selected host not found or inactive");
     }
@@ -166,7 +167,7 @@ export async function POST(request) {
     for (let i = 0; i < domainEntries.length; i += 1) {
       const entry = domainEntries[i];
       const oneBody = { ...body, domainLabel: entry.domainLabel, zone: entry.zone };
-      const deployTarget = await resolveDeployTarget(oneBody, creds);
+      const deployTarget = await resolveDeployTarget(oneBody, creds, session.userId);
       oneBody.hostIp = oneBody.hostIp || deployTarget.hostIp;
       const oneRequestSummary = buildRequestSummary(oneBody, userEnv);
       try {
@@ -186,7 +187,12 @@ export async function POST(request) {
         if (oneResult?.__sslAsyncTask) {
           delete oneResult.__sslAsyncTask;
         }
-        await sendDomainAutomationTelegramReport({ ok: true, result: oneResult, requestSummary: oneRequestSummary }).catch(() => {});
+        void sendUserDomainTelegramEvents({
+          userId: session.userId,
+          ok: true,
+          result: oneResult,
+          requestSummary: oneRequestSummary,
+        }).catch(() => {});
         results.push({
           index: i + 1,
           domainLabel: entry.domainLabel,
@@ -197,7 +203,8 @@ export async function POST(request) {
         });
       } catch (error) {
         const partialResult = error?.partialResult || null;
-        await sendDomainAutomationTelegramReport({
+        void sendUserDomainTelegramEvents({
+          userId: session.userId,
           ok: false,
           result: partialResult,
           error,
@@ -227,7 +234,7 @@ export async function POST(request) {
   }
 
   try {
-    const deployTarget = await resolveDeployTarget(body, creds);
+    const deployTarget = await resolveDeployTarget(body, creds, session.userId);
     body.hostIp = body.hostIp || deployTarget.hostIp;
     const result = await automateDomainProvisioning(
       buildProvisioningOptions(body, deployTarget, creds, userEnv, {
@@ -247,19 +254,12 @@ export async function POST(request) {
       delete result.__sslAsyncTask;
     }
 
-    await sendDomainAutomationTelegramReport({
+    void sendUserDomainTelegramEvents({
+      userId: session.userId,
       ok: true,
       result,
       requestSummary,
-    })
-      .then((tg) => {
-        if (tg?.skipped) {
-          console.warn("[domain-automation][telegram] skipped:", tg.reason, tg);
-        } else if (tg?.partialFailure) {
-          console.warn("[domain-automation][telegram] partial send failure:", tg);
-        }
-      })
-      .catch((e) => console.error("[domain-automation][telegram] send error:", e));
+    }).catch((e) => console.error("[domain-automation][telegram]", e));
 
     if (sslTask) {
       const sslDomain = result?.domain || requestSummary?.domainLabel || "domain";
@@ -323,11 +323,12 @@ export async function POST(request) {
             }
           }
           const completedResult = { ...result, steps };
-          await sendDomainAutomationTelegramReport({
+          void sendUserDomainTelegramEvents({
+            userId: session.userId,
             ok: true,
             result: completedResult,
             requestSummary: { ...requestSummary, sslAsyncCompletion: true },
-          }).catch((e) => console.error("[domain-automation][telegram] ssl-complete notify error:", e));
+          }).catch((e) => console.error("[domain-automation][telegram] ssl-complete:", e));
           })
         )
         .catch((e) => console.error("[domain-automation][ssl-async] worker failed:", e));
@@ -336,20 +337,13 @@ export async function POST(request) {
     return NextResponse.json(result);
   } catch (error) {
     const partialResult = error?.partialResult || null;
-    await sendDomainAutomationTelegramReport({
+    void sendUserDomainTelegramEvents({
+      userId: session.userId,
       ok: false,
       result: partialResult,
       error,
       requestSummary,
-    })
-      .then((tg) => {
-        if (tg?.skipped) {
-          console.warn("[domain-automation][telegram] skipped (failure path):", tg.reason, tg);
-        } else if (tg?.partialFailure) {
-          console.warn("[domain-automation][telegram] partial send failure (failure path):", tg);
-        }
-      })
-      .catch((e) => console.error("[domain-automation][telegram] send error (failure path):", e));
+    }).catch((e) => console.error("[domain-automation][telegram] failure:", e));
 
     return NextResponse.json(
       {

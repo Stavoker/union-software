@@ -91,7 +91,7 @@
     "usageTitle": "AI tokens & usage",
     "usageLead": "Claude API metadata: averages per run, weekly, monthly.",
     "settingsTitle": "Settings",
-    "settingsLead": "Union keys and parameters (generator, domains, SEO, Telegram) are stored per account. NEXT_PUBLIC_* are set at deploy time."
+    "settingsLead": "Union keys and parameters (generator, domains, SEO, Telegram) are stored per account."
   },
   "integrationSettings": {
     "title": "Environment variables (Union)",
@@ -125,6 +125,46 @@
       "seo": "SEO (Yandex)",
       "telegram": "Telegram bot",
       "autoscript": "auto-script-v2 (webhook)"
+    },
+    "telegram": {
+      "title": "Telegram notifications",
+      "hint": "Short alerts for site generation, SSL, and deploy. Only for your account.",
+      "loading": "Loading…",
+      "linked": "✅ Telegram linked — notifications are on.",
+      "notLinked": "Telegram is not linked yet.",
+      "step1": "Open the bot in Telegram and tap /start",
+      "step2": "Choose language: UA, Eng, or Ru",
+      "step3": "Tap “Get code” here and send the code to the bot",
+      "getCode": "Get code",
+      "generating": "Generating…",
+      "yourCode": "Link code",
+      "expires": "Valid for {min} min",
+      "codeReady": "New code generated.",
+      "codeFailed": "Failed to create code",
+      "toastDismiss": "Dismiss"
+    },
+    "hosts": {
+      "title": "SSH servers for deploy",
+      "hint": "You can add multiple servers. Each account only sees its own hosts. On the domain purchase page, pick the one you need from the list.",
+      "loading": "Loading servers…",
+      "empty": "No servers yet — add one or more using the form below.",
+      "addTitle": "Add server",
+      "name": "Name",
+      "namePlaceholder": "VPS Frankfurt",
+      "ip": "IP",
+      "user": "SSH user",
+      "password": "SSH password",
+      "port": "Port",
+      "save": "Add server",
+      "addAnother": "Add another server",
+      "saving": "Saving…",
+      "saved": "Server saved.",
+      "deleted": "Server deleted.",
+      "delete": "Delete",
+      "loadFailed": "Failed to load server list",
+      "saveFailed": "Failed to save server",
+      "deleteFailed": "Failed to delete server",
+      "toastDismiss": "Dismiss"
     },
     "fields": {
       "CLAUDE_API_KEY_01": "Anthropic API key (sk-ant-…), slot 01 for parallel builds",
@@ -278,7 +318,8 @@
       "unknown": "Unknown error",
       "automationFailed": "Automation request failed",
       "failedDomains": "Failed: {list}",
-      "withMessage": "Error: {message}"
+      "withMessage": "Error: {message}",
+      "hostLoadFailed": "Failed to load host list"
     },
     "status": {
       "unfinishedRun": "Warning: unfinished run detected from {when}. It may still be running on the server.",
@@ -298,7 +339,9 @@
       "delete": "Delete",
       "addDomain": "Add another domain",
       "host": "Deploy host (SSH/SFTP)",
-      "hostFallback": "From .env (fallback)",
+      "hostFallback": "From Host settings (fallback, no saved server)",
+      "hostSettingsHint": "Add or remove servers in",
+      "hostSettingsLink": "Settings",
       "nameservers": "Nameservers",
       "nameserversPlaceholder": "ns1.example.com, ns2.example.com",
       "dnsRecordName": "DNS record name",

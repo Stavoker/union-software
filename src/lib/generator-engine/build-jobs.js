@@ -323,6 +323,26 @@ async function persistTokenUsageForJob(job) {
   }
 }
 
+async function notifyBuildJobTelegram(job, eventKey, extra = {}) {
+  const userId = String(job?.payload?.userId || "").trim();
+  if (!userId) return;
+  try {
+    const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
+    const project = String(job?.payload?.projectName || "site").trim();
+    const pages = Array.isArray(job?.result?.pages)
+      ? job.result.pages.length
+      : job?.payload?.pageCount || "—";
+    await notifyUserTelegram(userId, eventKey, {
+      project,
+      pages,
+      mode: job?.result?.mode || "",
+      error: String(extra.error || job?.error || "").slice(0, 280),
+    });
+  } catch (e) {
+    console.warn("[build-jobs][telegram]", e?.message || e);
+  }
+}
+
 export async function markBuildJobDone(id, result) {
   const job = getBuildJobLocal(id);
   if (!job) return;
@@ -335,6 +355,7 @@ export async function markBuildJobDone(id, result) {
   persistJobSync(job);
   await saveJobRedis(job);
   void persistTokenUsageForJob(job);
+  void notifyBuildJobTelegram(job, "generator_done");
 }
 
 export async function markBuildJobError(id, error) {
@@ -349,6 +370,7 @@ export async function markBuildJobError(id, error) {
   persistJobSync(job);
   await saveJobRedis(job);
   void persistTokenUsageForJob(job);
+  void notifyBuildJobTelegram(job, "generator_error", { error });
 }
 
 export async function markBuildJobCancelled(id) {
@@ -363,6 +385,7 @@ export async function markBuildJobCancelled(id) {
   persistJobSync(job);
   await saveJobRedis(job);
   void persistTokenUsageForJob(job);
+  void notifyBuildJobTelegram(job, "generator_cancelled");
 }
 
 export async function cancelBuildJob(id) {
@@ -408,6 +431,7 @@ export async function runBuildJob(id, runner) {
       );
     }
     await markBuildJobRunning(id);
+    void notifyBuildJobTelegram(job, "generator_started");
     const result = await runner(
       runPayload,
       (msg) => {

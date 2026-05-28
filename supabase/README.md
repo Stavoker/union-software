@@ -23,6 +23,8 @@ SQL-міграції та політики **не виконуються авт�
 - `generation_reference_sites` — для Union generation **варіант B** не використовується як вхід верстки; залишається в БД для сумісності/статистики.
 - `generation_site_templates` + `generation_site_template_assets` — эталони **u-bet162** (`bet162`) та **u-spot064** (`spot064`): PHP/CSS/JS окремими рядками; генератор і `GET /api/generator/site-templates/[slug]` читають через Supabase. Сид: `node scripts/seed-generation-site-templates.mjs` (після міграції `20260525120000_generation_site_templates.sql`).
 - `source_articles` — корпус текстів для Copy Engine.
-- `hosts`, `seo_*`, `telegram_*` — перенесені з поточних сервісів за потреби.
+- `hosts` — SSH/VPS для `/dashboard/domain`; **по одному набору на користувача** (`user_id`, RLS). Міграція: `migrations/20260527120000_user_hosts.sql`. Глобальні рядки без `user_id` видаляються при застосуванні.
+- `telegram_subscribers`, `telegram_link_codes`, `telegram_bot_messages` — бот і персональні сповіщення (`20260528120000_telegram_user_notifications.sql`).
+- `seo_*` — перенесені з поточних сервісів за потреби.
 
 Додайте файли міграцій у цю папку й документуйте порядок застосування.

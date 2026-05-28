@@ -3,6 +3,7 @@ import {
   deleteAllTrackedBotMessagesForChat,
   sendTelegramWebhookReply,
 } from "@/lib/admin-seo/telegramBotMessages";
+import { handleTelegramUpdate } from "@/lib/telegram/telegramBotHandler";
 
 export const dynamic = "force-dynamic";
 
@@ -52,12 +53,20 @@ export async function POST(request) {
   }
 
   const msg = update?.message || update?.edited_message;
-  const chatId = msg?.chat?.id;
-  if (msg?.text == null || chatId === undefined || chatId === null) {
+  const cb = update?.callback_query;
+  const chatId = msg?.chat?.id ?? cb?.message?.chat?.id;
+  const chatType = String(msg?.chat?.type || cb?.message?.chat?.type || "private");
+
+  if (cb || (msg && chatType === "private")) {
+    void handleTelegramUpdate(update).catch((e) => {
+      console.error("[telegram-webhook] onboarding:", e);
+    });
+  }
+
+  if (!msg?.text || chatId === undefined || chatId === null) {
     return NextResponse.json({ ok: true });
   }
 
-  const chatType = String(msg.chat?.type || "private");
   const botUsername = process.env.TELEGRAM_BOT_USERNAME || "";
 
   if (!matchesDeleteCommand(msg.text, botUsername, chatType)) {

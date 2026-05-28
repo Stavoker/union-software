@@ -291,6 +291,136 @@ export function buildBrandHeaderHtml(
 </header>`;
 }
 
+function buildHeaderNavHtml(variant, navLinks) {
+  return buildOrderedNavEntries(variant, navLinks)
+    .map((e) => `<a href="${e.href}" class="lw-nav-link">${escapeHtml(e.label)}</a>`)
+    .join("");
+}
+
+/**
+ * 10 спільних preset-шапок для обох еталонів (bet162/spot064).
+ * Вибір preset робиться на рівні сайту і не змінюється між сторінками.
+ */
+export function buildSharedTemplateHeaderHtml({
+  presetId = 1,
+  templateId = "bet162",
+  variant,
+  navLinks,
+  gatewayUrl = DEFAULT_GATEWAY_URL,
+  logoSrc = LAKI_LOGO_IMG_SRC,
+  brandAlt = "Логотип",
+  ctaPrimary = "Регистрация",
+  ctaSecondary = "Вход",
+}) {
+  const id = Math.max(1, Math.min(10, Number(presetId) || 1));
+  const cfg = normalizeVariant(variant);
+  const nav = buildHeaderNavHtml(cfg, navLinks);
+  const gtw = escapeHtml(String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL);
+  const logo = escapeHtml(String(logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC);
+  const alt = escapeHtml(String(brandAlt || "Логотип").trim() || "Логотип");
+  const ctaA = escapeHtml(String(ctaPrimary || cfg.ctaPrimary || "Регистрация"));
+  const ctaB = escapeHtml(String(ctaSecondary || cfg.ctaSecondary || "Вход"));
+  const tpl = String(templateId || "bet162").toLowerCase() === "spot064" ? "spot064" : "bet162";
+  const cls = `lw-hp lw-hp-${id} lw-hp-${tpl}`;
+
+  const ctas = `<div class="lw-header-actions">
+    <a href="${gtw}" class="lw-btn lw-btn-reg" target="_blank" rel="noopener noreferrer nofollow">${ctaA}</a>
+    <a href="${gtw}" class="lw-btn lw-btn-login" target="_blank" rel="noopener noreferrer nofollow">${ctaB}</a>
+  </div>`;
+
+  const logoBlock = `<a href="index.php" class="lw-logo" aria-label="Главная">
+    <img src="${logo}" alt="${alt}" class="lw-logo-img">
+  </a>`;
+
+  const navBlock = `<nav class="lw-nav lw-nav--${cfg.navStyle}" aria-label="Основное меню">${nav}</nav>`;
+
+  const betBodies = {
+    1: `<div class="lw-header-inner">${logoBlock}${navBlock}${ctas}</div>`,
+    2: `<div class="lw-header-inner"><div class="lw-hp-topline"><span class="lw-hp-tag">Official</span><span class="lw-hp-dot">•</span><span class="lw-hp-tag">Secure access</span></div>${logoBlock}${navBlock}${ctas}</div>`,
+    3: `<div class="lw-header-inner"><div class="lw-hp-left">${logoBlock}</div><div class="lw-hp-center">${navBlock}</div><div class="lw-hp-right">${ctas}</div></div>`,
+    4: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-stacked">${navBlock}${ctas}</div></div>`,
+    5: `<div class="lw-header-inner"><div class="lw-hp-rail">${logoBlock}<span class="lw-hp-rail-text">Игровой портал</span></div>${navBlock}${ctas}</div>`,
+    6: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-chipline"><span class="lw-hp-chip">24/7</span><span class="lw-hp-chip">VIP</span><span class="lw-hp-chip">Fast payout</span></div>${navBlock}${ctas}</div>`,
+    7: `<div class="lw-header-inner">${logoBlock}${ctas}${navBlock}</div>`,
+    8: `<div class="lw-header-inner"><div class="lw-hp-double">${logoBlock}${navBlock}</div>${ctas}</div>`,
+    9: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-search-shell"><button type="button" class="lw-hp-search-btn" aria-label="Поиск">⌕</button></div>${navBlock}${ctas}</div>`,
+    10:`<div class="lw-header-inner"><div class="lw-hp-marquee"><span>Live</span><span>Slots</span><span>Tournaments</span></div>${logoBlock}${navBlock}${ctas}</div>`,
+  };
+  const spotBodies = {
+    1: `<div class="lw-header-inner"><div class="lw-hp-topline"><span class="lw-hp-tag">Rail mode</span></div>${logoBlock}${navBlock}${ctas}</div>`,
+    2: `<div class="lw-header-inner"><div class="lw-hp-left">${logoBlock}</div><div class="lw-hp-center">${navBlock}</div><div class="lw-hp-right">${ctas}</div></div>`,
+    3: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-stacked">${ctas}${navBlock}</div></div>`,
+    4: `<div class="lw-header-inner"><div class="lw-hp-marquee"><span>Navigation</span><span>Quick links</span></div>${logoBlock}${navBlock}${ctas}</div>`,
+    5: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-chipline"><span class="lw-hp-chip">Mirror</span><span class="lw-hp-chip">Cashout</span><span class="lw-hp-chip">VIP</span></div>${navBlock}${ctas}</div>`,
+    6: `<div class="lw-header-inner">${logoBlock}${ctas}${navBlock}</div>`,
+    7: `<div class="lw-header-inner"><div class="lw-hp-double">${logoBlock}${ctas}</div>${navBlock}</div>`,
+    8: `<div class="lw-header-inner">${logoBlock}<div class="lw-hp-search-shell"><button type="button" class="lw-hp-search-btn" aria-label="Поиск">⌕</button></div>${ctas}${navBlock}</div>`,
+    9: `<div class="lw-header-inner"><div class="lw-hp-rail">${logoBlock}<span class="lw-hp-rail-text">Rail-ready</span></div>${ctas}${navBlock}</div>`,
+    10:`<div class="lw-header-inner"><div class="lw-hp-topline"><span class="lw-hp-tag">Spot</span><span class="lw-hp-dot">•</span><span class="lw-hp-tag">Template</span></div>${logoBlock}${ctas}${navBlock}</div>`,
+  };
+  const bodies = tpl === "spot064" ? spotBodies : betBodies;
+  return `<header class="lw-header ${cls}">${bodies[id]}</header>`;
+}
+
+/**
+ * Лівий rail для шаблону spot064 (u-spot064): <aside class="lw-site-rail">, не top-header.
+ */
+export function buildSharedTemplateSiteRailHtml({
+  presetId = 1,
+  variant,
+  navLinks,
+  gatewayUrl = DEFAULT_GATEWAY_URL,
+  logoSrc = LAKI_LOGO_IMG_SRC,
+  brandAlt = "Логотип",
+  ctaPrimary = "Регистрация",
+  activeNavKey = "index",
+}) {
+  const id = Math.max(1, Math.min(10, Number(presetId) || 1));
+  const cfg = normalizeVariant(variant);
+  const entries = buildOrderedNavEntries(cfg, navLinks);
+  const gtw = escapeHtml(
+    String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL
+  );
+  const logo = escapeHtml(String(logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC);
+  const alt = escapeHtml(String(brandAlt || "Логотип").trim() || "Логотип");
+  const cta = escapeHtml(String(ctaPrimary || cfg.ctaPrimary || "Регистрация"));
+  const active = String(activeNavKey || "index").trim() || "index";
+  const navItems = entries
+    .map((e) => {
+      const href = String(e.href || "").trim();
+      const key =
+        href === "/" || href === "index.php" || href === "./index.php"
+          ? "index"
+          : href.replace(/^\.\//, "").replace(/\.php$/i, "") || "page";
+      const isActive = key === active;
+      const cls = `lw-site-rail__link${isActive ? " is-active" : ""}`;
+      const aria = isActive ? ' aria-current="page"' : "";
+      return `<a href="${escapeHtml(href === "/" ? "./index.php" : href.startsWith("./") ? href : `./${href.replace(/^\.\//, "")}`)}" class="${cls}"${aria}><span class="lw-site-rail__link-label">${escapeHtml(e.label)}</span></a>`;
+    })
+    .join("\n      ");
+  const secondaryHref = entries[1]
+    ? escapeHtml(
+        entries[1].href === "/"
+          ? "./index.php"
+          : entries[1].href.startsWith("./")
+            ? entries[1].href
+            : `./${String(entries[1].href).replace(/^\.\//, "")}`
+      )
+    : "./index.php";
+  return `<aside class="lw-site-rail lw-rail-p${id}" id="site-rail" aria-label="Навигация сайта">
+  <a class="lw-site-rail__logo" href="./index.php" aria-label="${alt} — на главную">
+    <img src="${logo}" alt="${alt}" class="lw-logo-img lw-site-rail__logo-img">
+  </a>
+  <nav class="lw-site-rail__nav" aria-label="Основное меню">
+      ${navItems}
+  </nav>
+  <div class="lw-site-rail__bottom">
+    <a class="lw-site-rail__cta" href="${gtw}" target="_blank" rel="noopener noreferrer nofollow">${cta}</a>
+    <a class="lw-site-rail__secondary" href="${secondaryHref}">Касса</a>
+  </div>
+</aside>`;
+}
+
 export function buildBrandFooterHtml({
   brandName,
   variant,
@@ -345,6 +475,113 @@ export function buildBrandFooterHtml({
     Связаться
   </button>
 </div>`;
+}
+
+/**
+ * 10 спільних preset-підвалів для обох еталонів; включає платіжні іконки і коротку ліцензію.
+ */
+export function buildSharedTemplateFooterHtml({
+  presetId = 1,
+  templateId = "bet162",
+  brandName,
+  variant,
+  footerLinks,
+  logoSrc = LAKI_LOGO_IMG_SRC,
+  showFooterLogo = true,
+}) {
+  const id = Math.max(1, Math.min(10, Number(presetId) || 1));
+  const tpl = String(templateId || "bet162").toLowerCase() === "spot064" ? "spot064" : "bet162";
+  const cfg = normalizeVariant(variant);
+  const y = new Date().getFullYear();
+  const brand = escapeHtml(String(brandName || "Казино").trim());
+  const logoImg = String(logoSrc || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC;
+  const fl =
+    Array.isArray(footerLinks) && footerLinks.length >= 3
+      ? footerLinks.slice(0, 4)
+      : [
+          { href: "index.php", label: cfg.navLabels[0] || "Главная" },
+          { href: "reviews.php", label: "Отзывы игроков" },
+          { href: "registration.php", label: cfg.navLabels[2] || "Условия" },
+          { href: "payments.php", label: "Платежи" },
+        ];
+  const links = fl
+    .map((item) => `<a href="${String(item.href)}">${escapeHtml(String(item.label || "Раздел"))}</a>`)
+    .join('<span class="lw-footer-sep">|</span>');
+
+  const pay = `<div class="lw-payments">
+    <span class="lw-pay-chip">VISA</span>
+    <span class="lw-pay-chip">Mastercard</span>
+    <span class="lw-pay-chip">Skrill</span>
+    <span class="lw-pay-chip">Neteller</span>
+    <span class="lw-pay-chip">Crypto</span>
+  </div>`;
+  const license = `<p class="lw-license-note">18+ Licensed operator. Play responsibly.</p>`;
+  const logoBlock = showFooterLogo
+    ? `<div class="lw-footer-brand"><img src="${escapeHtml(logoImg)}" alt="${brand}" class="lw-footer-logo"></div>`
+    : "";
+
+  const betShells = {
+    1: `${logoBlock}<div class="lw-footer-links">${links}</div>${pay}${license}`,
+    2: `${pay}<div class="lw-footer-links">${links}</div>${logoBlock}${license}`,
+    3: `<div class="lw-footer-grid-a">${logoBlock}<div>${pay}${license}</div><div class="lw-footer-links">${links}</div></div>`,
+    4: `<div class="lw-footer-grid-b"><div class="lw-footer-links">${links}</div>${pay}</div>${logoBlock}${license}`,
+    5: `${logoBlock}<div class="lw-footer-stack">${links}${pay}${license}</div>`,
+    6: `<div class="lw-footer-banner">Secure Payments</div>${logoBlock}${pay}<div class="lw-footer-links">${links}</div>${license}`,
+    7: `${logoBlock}<div class="lw-footer-links">${links}</div><div class="lw-footer-inline">${pay}${license}</div>`,
+    8: `<div class="lw-footer-mix">${pay}<div class="lw-footer-links">${links}</div>${logoBlock}</div>${license}`,
+    9: `<div class="lw-footer-compact">${logoBlock}<div class="lw-footer-links">${links}</div></div>${pay}${license}`,
+    10:`<div class="lw-footer-elevated">${logoBlock}${pay}<div class="lw-footer-links">${links}</div>${license}</div>`,
+  };
+  const spotShells = {
+    1: `${pay}<div class="lw-footer-links">${links}</div>${logoBlock}${license}`,
+    2: `<div class="lw-footer-grid-b">${logoBlock}<div>${pay}</div></div><div class="lw-footer-links">${links}</div>${license}`,
+    3: `${logoBlock}<div class="lw-footer-inline">${links}${pay}</div>${license}`,
+    4: `<div class="lw-footer-elevated">${pay}<div class="lw-footer-links">${links}</div>${license}</div>${logoBlock}`,
+    5: `<div class="lw-footer-mix"><div class="lw-footer-links">${links}</div>${pay}</div>${logoBlock}${license}`,
+    6: `${logoBlock}<div class="lw-footer-banner">Trusted payouts</div>${pay}<div class="lw-footer-links">${links}</div>${license}`,
+    7: `<div class="lw-footer-grid-a">${pay}<div class="lw-footer-links">${links}</div>${logoBlock}</div>${license}`,
+    8: `${logoBlock}<div class="lw-footer-stack">${pay}${links}${license}</div>`,
+    9: `<div class="lw-footer-compact">${logoBlock}${pay}</div><div class="lw-footer-links">${links}</div>${license}`,
+    10:`<div class="lw-footer-elevated">${logoBlock}${pay}<div class="lw-footer-links">${links}</div>${license}</div>`,
+  };
+  const shells = tpl === "spot064" ? spotShells : betShells;
+
+  return `<footer class="lw-footer lw-fp lw-fp-${id} lw-fp-${tpl}" id="lw-contact">
+  <div class="lw-footer-inner">${shells[id]}</div>
+  <p class="lw-footer-copy">© ${y} ${brand}. Все права защищены.</p>
+</footer>`;
+}
+
+function buildSharedTemplateChromePresetCss() {
+  return `
+.lw-hp .lw-header-inner { gap: 12px; }
+.lw-hp-topline { width: 100%; display: flex; gap: 8px; font-size: 11px; opacity: .78; }
+.lw-hp-left, .lw-hp-center, .lw-hp-right { display: flex; align-items: center; }
+.lw-hp-center { flex: 1 1 auto; justify-content: center; }
+.lw-hp-stacked { flex: 1 1 auto; display: grid; gap: 10px; }
+.lw-hp-rail { display: flex; align-items: center; gap: 10px; }
+.lw-hp-chipline { display: flex; flex-wrap: wrap; gap: 8px; }
+.lw-hp-chip { border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: 4px 10px; font-size: 11px; }
+.lw-hp-double { display: grid; gap: 10px; flex: 1 1 auto; }
+.lw-hp-search-shell { display: flex; align-items: center; }
+.lw-hp-search-btn { border: 1px solid rgba(255,255,255,.25); background: transparent; color: #fff; border-radius: 999px; width: 34px; height: 34px; cursor: pointer; }
+.lw-hp-marquee { display: flex; gap: 10px; font-size: 11px; opacity: .84; }
+
+.lw-fp .lw-footer-inner { gap: 12px; }
+.lw-payments { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 8px 0; }
+.lw-pay-chip { border: 1px solid rgba(255,255,255,.2); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; color: var(--lw-accent, #ffe14a); }
+.lw-license-note { font-size: 12px; opacity: .78; margin: 8px 0 0; }
+.lw-footer-grid-a { display: grid; grid-template-columns: auto 1fr 1fr; gap: 12px; align-items: center; }
+.lw-footer-grid-b { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+.lw-footer-stack { display: grid; gap: 10px; }
+.lw-footer-inline { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; }
+.lw-footer-mix { display: grid; gap: 10px; }
+.lw-footer-compact { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; }
+.lw-footer-elevated { border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 12px; }
+@media (max-width: 900px) {
+  .lw-footer-grid-a, .lw-footer-grid-b { grid-template-columns: 1fr; }
+}
+`;
 }
 
 /** Додаткові розкладки хедера/футера (логотип той самий файл, що й завжди). */
@@ -1060,6 +1297,7 @@ img.lw-footer-logo {
 }
 ${buildSiteEnhancementCss()}
 ${buildAiChromeBaselineCss()}
+${buildSharedTemplateChromePresetCss()}
 `;
   }
 
@@ -1372,6 +1610,7 @@ ${buildSiteEnhancementCss({ fixedHeader: true, mainPadExtra })}
   filter: drop-shadow(${logoGlow});
 }
 ${skinCss}
+${buildSharedTemplateChromePresetCss()}
 `;
 }
 
