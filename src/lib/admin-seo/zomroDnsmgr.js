@@ -1,3 +1,5 @@
+import { XMLParser } from "fast-xml-parser";
+
 /**
  * Zomro: панель керування DNS (endpoint `.../dnsmgr` на вузлі хостингу, напр. ns.server-panel.net:1500).
  *
@@ -34,6 +36,63 @@ async function fetchWithRetry(url, options, { retries = 2, retryDelayMs = 1200, 
   throw new Error(`${label}: network fetch failed (${lastError?.message || "unknown"})`);
 }
 
+function tokenFromAuthNode(authNode) {
+  if (typeof authNode === "string" && authNode.trim()) {
+    return authNode.trim();
+  }
+  if (!authNode || typeof authNode !== "object") {
+    return null;
+  }
+  const direct = authNode["$"] ?? authNode._ ?? authNode["#text"] ?? authNode.$;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+  const id = authNode["$id"] ?? authNode.id ?? authNode["@_id"];
+  if (typeof id === "string" && id.trim()) {
+    return id.trim();
+  }
+  return null;
+}
+
+function parseDnsmgrAuthXml(xmlText) {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "@_",
+    trimValues: true,
+  });
+  const parsed = parser.parse(String(xmlText || ""));
+  return tokenFromAuthNode(parsed?.doc?.auth);
+}
+
+/** Повідомлення з doc.error (ISPsystem JSON). */
+export function extractDnsmgrAuthError(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const roots = [payload, payload.doc].filter((r) => r && typeof r === "object");
+  for (const root of roots) {
+    const err = root.error;
+    if (!err) continue;
+    if (typeof err === "string" && err.trim()) {
+      return err.trim();
+    }
+    if (typeof err === "object") {
+      const msg = err.msg?.$ ?? err.msg ?? err.detail?.$ ?? err.detail ?? err.message;
+      if (typeof msg === "string" && msg.trim()) {
+        return msg.trim();
+      }
+      const group = err.group?.$ ?? err.group;
+      if (typeof group === "string" && group.trim()) {
+        return group.trim();
+      }
+    }
+  }
+  if (typeof payload.raw === "string" && /invalid|password|auth|denied/i.test(payload.raw)) {
+    return payload.raw.slice(0, 240);
+  }
+  return null;
+}
+
 /**
  * Витягує сесійний токен з відповіді `func=auth` панелі dnsmgr (різні варіанти полів).
  */
@@ -41,21 +100,20 @@ export function extractDnsmgrAuthToken(payload) {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const a = payload.auth;
-  if (typeof a === "string" && a.trim()) {
-    return a.trim();
-  }
-  if (a && typeof a === "object") {
-    const id = a["$id"] ?? a.id ?? a.$;
-    if (typeof id === "string" && id.trim()) {
-      return id.trim();
+  if (typeof payload.raw === "string" && payload.raw.includes("<auth")) {
+    const fromXml = parseDnsmgrAuthXml(payload.raw);
+    if (fromXml) {
+      return fromXml;
     }
   }
-  const top = pickLooseToken(payload);
-  if (top) {
-    return top;
+  const roots = [payload, payload.doc].filter((r) => r && typeof r === "object");
+  for (const root of roots) {
+    const token = tokenFromAuthNode(root.auth);
+    if (token) {
+      return token;
+    }
   }
-  return null;
+  return pickLooseToken(payload);
 }
 
 function pickLooseToken(payload) {
@@ -117,7 +175,12 @@ export async function authZomroDnsmgr(dnsmgrUrl, username, password) {
   }
   const token = extractDnsmgrAuthToken(payload);
   if (!token) {
-    throw new Error("Zomro DNS panel: auth response has no session token (expected auth or auth.$id)");
+    const apiError = extractDnsmgrAuthError(payload);
+    const hint = apiError
+      ? `Zomro DNS panel auth failed: ${apiError}`
+      : "Zomro DNS panel: auth response has no session token (expected doc.auth / auth.$id). Check ZOMRO_USERNAME and ZOMRO_PASSWORD in Settings.";
+    const preview = JSON.stringify(payload).slice(0, 280);
+    throw new Error(`${hint} Response: ${preview}`);
   }
   return { token, payload };
 }
