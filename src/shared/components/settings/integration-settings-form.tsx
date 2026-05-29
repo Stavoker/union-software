@@ -276,12 +276,23 @@ export function IntegrationSettingsForm() {
     });
   }
 
+  function shouldSkipSecretInPatch(def, value) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return true;
+    if (/•|\u2022/.test(trimmed)) return true;
+    const preview = storedPreview[def.key] || "";
+    if (preview && trimmed === String(preview).trim()) return true;
+    if (preview && !editingKeys.has(def.key)) return true;
+    return false;
+  }
+
   function buildSavePatch() {
     const patch = {};
     for (const def of definitions) {
       if (!Object.prototype.hasOwnProperty.call(fields, def.key)) continue;
       const v = fields[def.key];
       if (v === undefined || v === null) continue;
+      if (def.secret && shouldSkipSecretInPatch(def, v)) continue;
       patch[def.key] = v;
     }
     return patch;

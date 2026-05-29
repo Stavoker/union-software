@@ -209,6 +209,9 @@ export async function automateDomainProvisioning(input) {
   const deploySshUser = String(input?.deploySshUser || process.env.SUBDOMAIN_HOST_USER || "").trim();
   const deploySshPassword = String(input?.deploySshPassword || process.env.SUBDOMAIN_HOST_PASSWORD || "");
   const deploySshPort = Number(input?.deploySshPort || process.env.SUBDOMAIN_HOST_PORT || 22);
+  const deployProjectsBaseDir =
+    String(input?.deployProjectsBaseDir || process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() ||
+    "/var/www";
   const hostRecordName = String(input?.hostRecordName || "@").trim() || "@";
   const skipPurchase = !!input?.skipPurchase;
   const zomroVpsEnabled = !!input?.zomroVpsEnabled;
@@ -276,6 +279,7 @@ export async function automateDomainProvisioning(input) {
       zomroBillmgrHost: input?.zomroBillmgrHost,
       zomroBillmgrPort: input?.zomroBillmgrPort,
       zomroBillmgrUseHttps: input?.zomroBillmgrUseHttps,
+      zomroDnsmgrUrl: input?.zomroDnsmgrUrl,
     });
     zomroAuth = zomroResolved.token;
     steps.push({
@@ -479,6 +483,7 @@ export async function automateDomainProvisioning(input) {
               sshUser: deploySshUser,
               sshPassword: deploySshPassword,
               sshPort: deploySshPort,
+              projectsBaseDir: deployProjectsBaseDir,
             });
             steps.push({
               id: "host-nginx-ssl-deploy",

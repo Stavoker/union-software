@@ -29,6 +29,16 @@ export function UserHostsSettingsPanel() {
   const [hostFormUser, setHostFormUser] = useState("root");
   const [hostFormPassword, setHostFormPassword] = useState("");
   const [hostFormPort, setHostFormPort] = useState("22");
+  const [hostFormProjectsDir, setHostFormProjectsDir] = useState("/var/www");
+
+  function resetHostForm() {
+    setHostFormName("");
+    setHostFormIp("");
+    setHostFormUser("");
+    setHostFormPassword("");
+    setHostFormPort("");
+    setHostFormProjectsDir("");
+  }
 
   async function loadHosts() {
     const response = await fetch("/api/settings/hosts");
@@ -72,6 +82,7 @@ export function UserHostsSettingsPanel() {
           sshUser: hostFormUser,
           sshPassword: hostFormPassword,
           sshPort: Number(hostFormPort || 22),
+          projectsDir: hostFormProjectsDir,
         }),
       });
       const payload = await readJsonSafe(response);
@@ -79,9 +90,7 @@ export function UserHostsSettingsPanel() {
         throw new Error(payload?.details || payload?.error || t("saveFailed"));
       }
       await loadHosts();
-      setHostFormPassword("");
-      setHostFormName("");
-      setHostFormIp("");
+      resetHostForm();
       setToast({ message: t("saved"), lime: true });
     } catch (e) {
       setToast({ message: String(e?.message || t("saveFailed")), lime: true });
@@ -151,6 +160,7 @@ export function UserHostsSettingsPanel() {
                     {host.hostIp}
                     {host.sshUser ? ` · ${host.sshUser}` : ""}
                     {host.sshPort ? ` · :${host.sshPort}` : ""}
+                    {host.projectsDir ? ` · ${host.projectsDir}` : ""}
                   </p>
                 </div>
                 <button
@@ -172,7 +182,7 @@ export function UserHostsSettingsPanel() {
 
         <div className="space-y-3 border-t border-white/10 pt-4">
           <p className="text-xs font-medium text-union-text">{t("addTitle")}</p>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">
               <label htmlFor="settingsHostName" className="text-xs text-union-muted">
                 {t("name")}
@@ -241,6 +251,21 @@ export function UserHostsSettingsPanel() {
                 onChange={(e) => setHostFormPort(e.target.value)}
                 placeholder="22"
                 disabled={saving}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="settingsHostProjectsDir" className="text-xs text-union-muted">
+                {t("projectsDir")}
+              </label>
+              <input
+                id="settingsHostProjectsDir"
+                type="text"
+                className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2 disabled:opacity-50"
+                value={hostFormProjectsDir}
+                onChange={(e) => setHostFormProjectsDir(e.target.value)}
+                placeholder={t("projectsDirPlaceholder")}
+                disabled={saving}
+                autoComplete="off"
               />
             </div>
           </div>

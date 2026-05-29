@@ -38,6 +38,7 @@ export async function POST(request) {
       sshUser: body?.sshUser ?? body?.ssh_user,
       sshPassword: body?.sshPassword ?? body?.ssh_password,
       sshPort: body?.sshPort ?? body?.ssh_port,
+      projectsDir: body?.projectsDir ?? body?.projects_dir,
     });
 
     return NextResponse.json({ ok: true, host });

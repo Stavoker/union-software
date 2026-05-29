@@ -144,7 +144,7 @@
     },
     "hosts": {
       "title": "SSH servers for deploy",
-      "hint": "You can add multiple servers. Each account only sees its own hosts. On the domain purchase page, pick the one you need from the list.",
+      "hint": "Add multiple servers (SSH + sites directory, e.g. /var/www). On the domain page, pick one from the list.",
       "loading": "Loading servers…",
       "empty": "No servers yet — add one or more using the form below.",
       "addTitle": "Add server",
@@ -154,6 +154,8 @@
       "user": "SSH user",
       "password": "SSH password",
       "port": "Port",
+      "projectsDir": "Sites directory on server",
+      "projectsDirPlaceholder": "/var/www",
       "save": "Add server",
       "addAnother": "Add another server",
       "saving": "Saving…",

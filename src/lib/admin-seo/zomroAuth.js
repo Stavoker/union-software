@@ -61,10 +61,41 @@ function normalizeBillmgrBaseUrl(raw) {
   return `${s}/billmgr`;
 }
 
-function buildBillmgrAuthUrl(opts) {
+/** Якщо задано лише ZOMRO_DNSMGR_URL (…/dnsmgr), будуємо Billmgr на тому ж хості. */
+export function billmgrBaseUrlFromDnsmgrUrl(dnsmgrUrl) {
+  const s = String(dnsmgrUrl || "").trim().replace(/\/+$/, "");
+  if (!s) {
+    return null;
+  }
+  if (/\/dnsmgr$/i.test(s)) {
+    return normalizeBillmgrBaseUrl(s.replace(/\/dnsmgr$/i, "/billmgr"));
+  }
+  try {
+    const parsed = new URL(s);
+    if (parsed.pathname && parsed.pathname !== "/") {
+      return normalizeBillmgrBaseUrl(s);
+    }
+    return normalizeBillmgrBaseUrl(`${parsed.origin}/billmgr`);
+  } catch {
+    return null;
+  }
+}
+
+function resolveBillmgrUrlForAuth(opts = {}) {
   const explicit = normalizeBillmgrBaseUrl(opts.zomroBillmgrUrl);
   if (explicit) {
-    const url = new URL(`${explicit}`);
+    return explicit;
+  }
+  if (String(opts.zomroBillmgrHost || "").trim()) {
+    return null;
+  }
+  return billmgrBaseUrlFromDnsmgrUrl(opts.zomroDnsmgrUrl);
+}
+
+function buildBillmgrAuthUrl(opts) {
+  const billmgrBase = resolveBillmgrUrlForAuth(opts);
+  if (billmgrBase) {
+    const url = new URL(`${billmgrBase}`);
     url.searchParams.set("out", "xml");
     url.searchParams.set("func", "auth");
     url.searchParams.set("username", String(opts.zomroUsername || "").trim());
@@ -149,7 +180,11 @@ export async function resolveZomroAuthToken(opts = {}) {
 
   const username = String(opts.zomroUsername || "").trim();
   const password = String(opts.zomroPassword || "").trim();
-  const billUrl = buildBillmgrAuthUrl({ ...opts, zomroUsername: username, zomroPassword: password });
+  const billUrl = buildBillmgrAuthUrl({
+    ...opts,
+    zomroUsername: username,
+    zomroPassword: password,
+  });
   if (billUrl && username && password) {
     const response = await fetch(billUrl, { method: "GET", cache: "no-store" });
     const xmlText = await response.text();
@@ -167,7 +202,18 @@ export async function resolveZomroAuthToken(opts = {}) {
     };
   }
 
+  const missing = [];
+  if (!username) missing.push("ZOMRO_USERNAME");
+  if (!password) missing.push("ZOMRO_PASSWORD");
+  const hasBillmgrTarget =
+    !!String(opts.zomroBillmgrUrl || "").trim() ||
+    !!String(opts.zomroBillmgrHost || "").trim() ||
+    !!billmgrBaseUrlFromDnsmgrUrl(opts.zomroDnsmgrUrl);
+  if (username && password && !hasBillmgrTarget) {
+    missing.push("ZOMRO_BILLMGR_URL or ZOMRO_BILLMGR_HOST (or ZOMRO_DNSMGR_URL …/dnsmgr)");
+  }
+  const missingHint = missing.length ? ` Missing: ${missing.join(", ")}.` : "";
   throw new Error(
-    "Zomro auth: set ZOMRO_AUTH_TOKEN, or ZOMRO_AUTH_THROUGH_KEY, or ZOMRO_AUTHINFO, or (ZOMRO_BILLMGR_URL or ZOMRO_BILLMGR_HOST + ZOMRO_USERNAME + ZOMRO_PASSWORD)"
+    `Zomro auth: set ZOMRO_AUTH_TOKEN, ZOMRO_AUTH_THROUGH_KEY, ZOMRO_AUTHINFO, or ZOMRO_USERNAME + ZOMRO_PASSWORD + Billmgr URL/host (or ZOMRO_DNSMGR_URL on the same panel).${missingHint} Check Settings → Zomro and save.`
   );
 }

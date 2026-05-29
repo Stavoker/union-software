@@ -313,6 +313,8 @@ export function buildDomainAutomationCredentials(body, userEnv) {
     deploySshPassword: pick("SUBDOMAIN_HOST_PASSWORD"),
     deploySshPort: Number(pick("SUBDOMAIN_HOST_PORT") || 22),
     hostIpFallback: pick("SUBDOMAIN_HOST_IP"),
+    projectsDirFallback:
+      pick("SUBDOMAIN_HOST_PROJECTS_DIR") || "/var/www",
     hostSslDeployEnabled: envBool("SUBDOMAIN_HOST_SSL_DEPLOY"),
     userEnv: userEnv || {},
   };
@@ -347,6 +349,10 @@ export function buildProvisioningOptions(oneBody, deployTarget, creds, userEnv, 
     deploySshUser: deployTarget.deploySshUser || creds.deploySshUser,
     deploySshPassword: deployTarget.deploySshPassword || creds.deploySshPassword,
     deploySshPort: deployTarget.deploySshPort || creds.deploySshPort,
+    deployProjectsBaseDir:
+      deployTarget.projectsDir ||
+      creds.projectsDirFallback ||
+      "/var/www",
     sslLetsEncryptEmail: creds.sslLetsEncryptEmail,
     sslLetsEncryptStaging: creds.sslLetsEncryptStaging,
     sslLetsEncryptSkipVerify: creds.sslLetsEncryptSkipVerify,

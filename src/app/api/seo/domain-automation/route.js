@@ -94,6 +94,7 @@ async function resolveDeployTarget(body, creds, userId) {
       deploySshUser: host.sshUser,
       deploySshPassword: host.sshPassword,
       deploySshPort: host.sshPort || 22,
+      projectsDir: host.projectsDir || creds?.projectsDirFallback || null,
     };
   }
   const fallbackIp = creds?.hostIpFallback || "";
@@ -105,6 +106,7 @@ async function resolveDeployTarget(body, creds, userId) {
     deploySshUser: creds?.deploySshUser || "",
     deploySshPassword: creds?.deploySshPassword || "",
     deploySshPort: creds?.deploySshPort || 22,
+    projectsDir: creds?.projectsDirFallback || null,
   };
 }
 
@@ -297,6 +299,10 @@ export async function POST(request) {
                 sshUser: deployTarget.deploySshUser,
                 sshPassword: deployTarget.deploySshPassword,
                 sshPort: deployTarget.deploySshPort,
+                projectsBaseDir:
+                  deployTarget.projectsDir ||
+                  creds.projectsDirFallback ||
+                  "/var/www",
               });
               steps.push({
                 id: "host-nginx-ssl-deploy",

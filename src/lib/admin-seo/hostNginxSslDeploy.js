@@ -156,6 +156,7 @@ export async function deploySslCertificateToHost({
   sshUser: sshUserInput,
   sshPassword: sshPasswordInput,
   sshPort: sshPortInput,
+  projectsBaseDir: projectsBaseDirInput,
 }) {
   if (!envBool("SUBDOMAIN_HOST_SSL_DEPLOY")) {
     return { skipped: true, ok: false, reason: "SUBDOMAIN_HOST_SSL_DEPLOY not set" };
@@ -172,7 +173,8 @@ export async function deploySslCertificateToHost({
   const sshUser = String(sshUserInput || process.env.SUBDOMAIN_HOST_USER || "").trim();
   const sshPassword = String(sshPasswordInput || process.env.SUBDOMAIN_HOST_PASSWORD || "");
   const sshPort = Number(sshPortInput || process.env.SUBDOMAIN_HOST_PORT || 22);
-  const projectsBaseDir = String(process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() || "/var/www";
+  const projectsBaseDir =
+    String(projectsBaseDirInput || process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() || "/var/www";
   const sitesAvail = (String(process.env.SUBDOMAIN_HOST_NGINX_SITES_AVAILABLE || "").trim() || "/etc/nginx/sites-available").replace(
     /\/+$/,
     ""
