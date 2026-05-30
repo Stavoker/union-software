@@ -149,7 +149,7 @@ export async function syncSeoDomainsFromUserHosts(userId, { integrationEnv } = {
     throw new Error("userId is required");
   }
 
-  const servers = await listActiveHosts(uid);
+  const servers = await listActiveHostsWithCredentials(uid);
   const legacy = buildLegacyHostTarget(integrationEnv);
   if (legacy && !servers.some((s) => s.hostIp === legacy.hostIp)) {
     servers.push(legacy);
