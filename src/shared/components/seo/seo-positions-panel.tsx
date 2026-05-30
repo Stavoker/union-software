@@ -463,7 +463,7 @@ export function SeoPositionsPanel() {
       setDomainsLoading(true);
       try {
         const [domainsRequest, keywordsRequest] = await Promise.all([
-          fetchJsonWithRetry("/api/seo/subdomains", {}, 3, t),
+          fetchJsonWithRetry("/api/seo/subdomains?sync=1", { cache: "no-store" }, 3, t),
           fetchJsonWithRetry("/api/seo/keywords", { cache: "no-store" }, 3, t),
         ]);
         const domainsResponse = domainsRequest.response;
@@ -492,6 +492,10 @@ export function SeoPositionsPanel() {
             { lime: true }
           );
         } else {
+          const syncedCount = Number(domainsPayload?.syncedFromHost?.upserted || 0);
+          if (syncedCount > 0) {
+            applyStatus(t("statusSyncedFromHost", { count: syncedCount }), { lime: true });
+          }
           if (positionsLoadResult.ok) {
             applyStatus(
               t("statusLoaded", {

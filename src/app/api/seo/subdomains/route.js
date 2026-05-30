@@ -1,37 +1,65 @@
 import { NextResponse } from "next/server";
-import { getSupabaseSourceLabel } from "@/lib/admin-seo/supabaseServer";
+import { loadIntegrationSettingsForUser } from "@/lib/account-integration-settings";
 import { removeHostProjectDirectory } from "@/lib/admin-seo/hostProjectCleanup";
+import {
+  listSeoDomainsForUser,
+  syncSeoDomainsFromUserHosts,
+  upsertSeoDomainForUser,
+} from "@/lib/admin-seo/seoDomainsRepository";
 import { requireSeoSession } from "@/lib/admin-seo/seoApiAuth";
+import { getSupabaseSourceLabel } from "@/lib/admin-seo/supabaseServer";
 
-export async function GET() {
+function mapDomainsPayload(data) {
+  const hosts = [...new Set((data || []).map((item) => item.host).filter(Boolean))];
+  const indexStatusMap = {};
+  const projectNameMap = {};
+  for (const item of data || []) {
+    if (!item?.host) {
+      continue;
+    }
+    if (typeof item.is_indexed === "boolean") {
+      indexStatusMap[item.host] = item.is_indexed;
+    }
+    if (item.project_name) {
+      projectNameMap[item.host] = item.project_name;
+    }
+  }
+  return { hosts, indexStatusMap, projectNameMap };
+}
+
+export async function GET(request) {
   try {
     const session = await requireSeoSession();
-    if (session.errorResponse) return session.errorResponse;
-
-    const { userId, supabase } = session;
-    const { data, error } = await supabase
-      .from("seo_domains")
-      .select("host, root_domain, project_name, deployed_at, is_indexed, indexed_checked_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      throw new Error(error.message);
+    if (session.errorResponse) {
+      return session.errorResponse;
     }
 
-    const hosts = [...new Set((data || []).map((item) => item.host).filter(Boolean))];
-    const indexStatusMap = {};
-    const projectNameMap = {};
-    for (const item of data || []) {
-      if (!item?.host) {
-        continue;
+    const { userId, supabase } = session;
+    const url = new URL(request.url);
+    const syncRequested = url.searchParams.get("sync") === "1";
+
+    let data = await listSeoDomainsForUser(userId);
+    let syncMeta = null;
+
+    if (syncRequested || data.length === 0) {
+      const userEnv = await loadIntegrationSettingsForUser(supabase, userId).catch(() => ({}));
+      syncMeta = await syncSeoDomainsFromUserHosts(userId, { integrationEnv: userEnv });
+      data = await listSeoDomainsForUser(userId);
+    }
+
+    const { hosts, indexStatusMap, projectNameMap } = mapDomainsPayload(data);
+
+    let warning = null;
+    if (hosts.length === 0) {
+      const parts = [];
+      if (syncMeta?.warnings?.length) {
+        parts.push(...syncMeta.warnings);
+      } else {
+        parts.push(
+          "No domains in seo_domains. Run domain automation or sync from SSH host (Settings → SSH servers with /var/www projects)."
+        );
       }
-      if (typeof item.is_indexed === "boolean") {
-        indexStatusMap[item.host] = item.is_indexed;
-      }
-      if (item.project_name) {
-        projectNameMap[item.host] = item.project_name;
-      }
+      warning = parts.join(" ");
     }
 
     return NextResponse.json({
@@ -40,10 +68,8 @@ export async function GET() {
       indexStatusMap,
       projectNameMap,
       source: getSupabaseSourceLabel(),
-      warning:
-        hosts.length === 0
-          ? "No rows returned. Add domains to seo_domains for your account, or check RLS / migration."
-          : null,
+      syncedFromHost: syncMeta,
+      warning,
     });
   } catch (error) {
     return NextResponse.json(
@@ -60,7 +86,9 @@ export async function GET() {
 export async function POST(request) {
   try {
     const session = await requireSeoSession();
-    if (session.errorResponse) return session.errorResponse;
+    if (session.errorResponse) {
+      return session.errorResponse;
+    }
 
     const body = await request.json().catch(() => ({}));
     const host = String(body?.host || "").trim().toLowerCase();
@@ -68,22 +96,11 @@ export async function POST(request) {
       return NextResponse.json({ error: "host is required" }, { status: 400 });
     }
 
-    const { userId, supabase } = session;
-    const row = {
-      user_id: userId,
-      host,
-      root_domain: body?.root_domain ? String(body.root_domain).trim().toLowerCase() : null,
-      project_name: body?.project_name ? String(body.project_name).trim() : null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from("seo_domains").upsert(row, {
-      onConflict: "user_id,host",
+    await upsertSeoDomainForUser(session.userId, host, {
+      rootDomain: body?.root_domain,
+      projectName: body?.project_name,
+      setDeployedAt: false,
     });
-
-    if (error) {
-      throw new Error(error.message);
-    }
 
     return NextResponse.json({ success: true, host });
   } catch (error) {
@@ -99,7 +116,9 @@ export async function POST(request) {
 
 export async function DELETE(request) {
   const session = await requireSeoSession();
-  if (session.errorResponse) return session.errorResponse;
+  if (session.errorResponse) {
+    return session.errorResponse;
+  }
 
   const body = await request.json().catch(() => ({}));
   const host = String(body?.host || "").trim().toLowerCase();

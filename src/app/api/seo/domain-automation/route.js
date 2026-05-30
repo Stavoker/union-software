@@ -14,6 +14,19 @@ import { requireSeoSession } from "@/lib/admin-seo/seoApiAuth";
 import { sendSslProgressTelegramUpdate } from "@/lib/admin-seo/telegramDomainAutomation";
 import { sendUserDomainTelegramEvents } from "@/lib/telegram/telegramDomainNotify";
 import { getHostById } from "@/lib/admin-seo/hostsRepository";
+import { upsertSeoDomainForUser } from "@/lib/admin-seo/seoDomainsRepository";
+
+async function registerDomainInSeoDashboard(userId, domain) {
+  const d = String(domain || "").trim().toLowerCase();
+  if (!d) {
+    return;
+  }
+  try {
+    await upsertSeoDomainForUser(userId, d);
+  } catch (e) {
+    console.warn(`[domain-automation] seo_domains upsert failed for ${d}:`, e?.message || e);
+  }
+}
 
 function buildRequestSummary(body, userEnv = {}) {
   const { pick, envBool } = pickIntegrationConfig(body, userEnv);
@@ -195,6 +208,9 @@ export async function POST(request) {
           result: oneResult,
           requestSummary: oneRequestSummary,
         }).catch(() => {});
+        if (oneResult?.domain) {
+          await registerDomainInSeoDashboard(session.userId, oneResult.domain);
+        }
         results.push({
           index: i + 1,
           domainLabel: entry.domainLabel,
@@ -254,6 +270,10 @@ export async function POST(request) {
     const sslTask = result?.__sslAsyncTask || null;
     if (sslTask) {
       delete result.__sslAsyncTask;
+    }
+
+    if (result?.domain) {
+      await registerDomainInSeoDashboard(session.userId, result.domain);
     }
 
     void sendUserDomainTelegramEvents({
@@ -329,6 +349,9 @@ export async function POST(request) {
             }
           }
           const completedResult = { ...result, steps };
+          if (result?.domain) {
+            await registerDomainInSeoDashboard(session.userId, result.domain);
+          }
           void sendUserDomainTelegramEvents({
             userId: session.userId,
             ok: true,
