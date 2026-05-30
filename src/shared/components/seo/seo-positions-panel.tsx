@@ -1,7 +1,6 @@
 // @ts-nocheck
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Rocket, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -10,8 +9,10 @@ import {
   seoBtnLimeOutline,
   seoBtnLimeOutlineMuted,
   seoBtnPrimary,
+  seoCard,
   seoInput,
 } from "@/shared/components/seo/seo-ui";
+import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 
 function parseKeywords(value) {
   return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
@@ -130,20 +131,16 @@ export function SeoPositionsPanel() {
   const [keywordsInput, setKeywordsInput] = useState("");
   const [storedKeywords, setStoredKeywords] = useState([]);
   const [statusMessage, setStatusMessage] = useState("");
-  const [statusLime, setStatusLime] = useState(false);
 
-  function applyStatus(text, options = {}) {
-    const lime = !!options.lime;
-    const msg = text ? String(text) : "";
-    setStatusMessage(msg);
-    setStatusLime(Boolean(lime && msg));
+  function applyStatus(text) {
+    setStatusMessage(text ? String(text) : "");
   }
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [domains, setDomains] = useState([]);
   const [domainsLoading, setDomainsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [keywordRowFilter, setKeywordRowFilter] = useState("");
+  const [tableSearch, setTableSearch] = useState("");
   const [domainIndexStatus, setDomainIndexStatus] = useState({});
   const [domainSortMode, setDomainSortMode] = useState("best");
 
@@ -172,20 +169,41 @@ export function SeoPositionsPanel() {
       domains: {},
     }));
   }, [data, keywords]);
+  const searchQuery = String(tableSearch || "").trim().toLowerCase();
+
+  const searchMatchedDomains = useMemo(() => {
+    if (!searchQuery) {
+      return [];
+    }
+    return activeDomains.filter((domain) => domain.toLowerCase().includes(searchQuery));
+  }, [activeDomains, searchQuery]);
+
+  const domainsForTable = useMemo(() => {
+    if (!searchQuery || searchMatchedDomains.length === 0) {
+      return activeDomains;
+    }
+    return searchMatchedDomains;
+  }, [activeDomains, searchQuery, searchMatchedDomains]);
+
   const filteredTableRows = useMemo(() => {
-    const q = String(keywordRowFilter || "").trim().toLowerCase();
-    if (!q) {
+    if (!searchQuery) {
       return tableRows;
     }
-    return tableRows.filter((row) => String(row?.keyword || "").toLowerCase().includes(q));
-  }, [tableRows, keywordRowFilter]);
+    const hasDomainFilter = searchMatchedDomains.length > 0;
+    return tableRows.filter((row) => {
+      if (String(row?.keyword || "").toLowerCase().includes(searchQuery)) {
+        return true;
+      }
+      return hasDomainFilter;
+    });
+  }, [tableRows, searchQuery, searchMatchedDomains]);
   const totalPages = Math.max(1, Math.ceil(filteredTableRows.length / keywordsPerPage));
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * keywordsPerPage;
     return filteredTableRows.slice(start, start + keywordsPerPage);
   }, [filteredTableRows, currentPage]);
   const sortedActiveDomains = useMemo(() => {
-    const source = [...activeDomains];
+    const source = [...domainsForTable];
     if (domainSortMode === "none" || source.length <= 1 || !tableRows.length) {
       return source;
     }
@@ -233,7 +251,7 @@ export function SeoPositionsPanel() {
       return lexical;
     });
     return source;
-  }, [activeDomains, tableRows, domainSortMode]);
+  }, [domainsForTable, tableRows, domainSortMode]);
 
   function removeKeyword(keywordToRemove) {
     const nextStored = storedKeywords.filter((item) => item !== keywordToRemove);
@@ -487,14 +505,11 @@ export function SeoPositionsPanel() {
 
         if ((domainsPayload.count || 0) === 0) {
           const warn = String(domainsPayload.warning || "").trim();
-          applyStatus(
-            t("statusNoDomainsFromDb", { warning: warn }).replace(/\s{2,}/g, " ").trim(),
-            { lime: true }
-          );
+          applyStatus(t("statusNoDomainsFromDb", { warning: warn }).replace(/\s{2,}/g, " ").trim());
         } else {
           const syncedCount = Number(domainsPayload?.syncedFromHost?.upserted || 0);
           if (syncedCount > 0) {
-            applyStatus(t("statusSyncedFromHost", { count: syncedCount }), { lime: true });
+            applyStatus(t("statusSyncedFromHost", { count: syncedCount }));
           }
           if (positionsLoadResult.ok) {
             applyStatus(
@@ -528,7 +543,7 @@ export function SeoPositionsPanel() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [keywordRowFilter]);
+  }, [tableSearch]);
 
   async function refreshPositions(keywordList, selectedDomains, showProgress = true) {
     if (!keywordList.length || !selectedDomains.length) {
@@ -711,53 +726,27 @@ export function SeoPositionsPanel() {
     return () => clearInterval(intervalId);
   }, [storedKeywords, domains, loading, t]);
 
-  const dotIn = "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500";
-  const dotOut = "inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500/75";
+  const dotIn = "inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(34,197,94,0.45)]";
+  const dotOut = "inline-block h-2 w-2 shrink-0 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)]";
+
+  const hasTableSearch = Boolean(searchQuery);
+  const showPagination = totalPages > 1;
+  const tableEmpty = !loading && !domainsLoading && filteredTableRows.length === 0;
+  const tableEmptyMessage = hasTableSearch ? t("emptyFiltered") : t("emptyTable");
 
   const btnIconQuiet =
     "inline-flex cursor-pointer items-center justify-center rounded-lg p-2 text-union-muted transition-colors hover:bg-white/[0.06] hover:text-red-300 disabled:opacity-40";
 
   return (
     <>
-      <AnimatePresence mode="wait">
-        {statusMessage ? (
-          <motion.div
-            key="seo-status-toast"
-            role="status"
-            className="fixed right-4 top-4 z-[100] max-w-[min(calc(100vw-2rem),22rem)] origin-top-right"
-            initial={{ opacity: 0, x: 22, y: -6, scale: 0.96 }}
-            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 18, y: -4, scale: 0.96 }}
-            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <div
-              className={`relative rounded-xl px-4 py-3 pr-10 text-sm leading-relaxed shadow-lg backdrop-blur-md ${
-                statusLime
-                  ? "border border-[#d1fe17] bg-[#d1fe17]/[0.09] text-[#d1fe17]"
-                  : "border border-union-border bg-union-bg/95 text-union-muted"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => applyStatus("")}
-                className={
-                  statusLime
-                    ? "absolute right-2 top-2 rounded-md p-1 text-[#d1fe17]/75 transition-colors hover:bg-[#d1fe17]/10 hover:text-[#d1fe17]"
-                    : "absolute right-2 top-2 rounded-md p-1 text-union-muted transition-colors hover:bg-white/[0.06] hover:text-union-text"
-                }
-                aria-label={t("statusDismiss")}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-              <p className="whitespace-pre-wrap break-words">{statusMessage}</p>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <UnionStatusToast
+        message={statusMessage}
+        variant="lime"
+        onDismiss={() => applyStatus("")}
+        dismissLabel={t("statusDismiss")}
+      />
 
-      <div className="w-full space-y-6 pb-10 pt-2">
+      <div className="w-full space-y-8 pb-10 pt-2">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-union-text">{t("title")}</h1>
         <div className="flex flex-wrap items-center gap-3">
@@ -824,110 +813,204 @@ export function SeoPositionsPanel() {
         </div>
       </div>
 
-      <p className="text-xs text-union-muted">
-        {t("statsLine", {
-          columns: activeDomains.length,
-          domains: domains.length,
-          keywords: storedKeywords.length || 0,
-        })}
-      </p>
-
-      <div
-        className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
-        aria-label={t("paginationAria")}
-      >
-        <p className="text-xs text-union-muted">
-          {t("paginationSummary", { current: currentPage, total: totalPages })}
-          {String(keywordRowFilter || "").trim()
-            ? t("paginationFilterFound", { found: filteredTableRows.length, total: tableRows.length })
-            : null}
-        </p>
-        <input
-          type="search"
-          className={`${seoInput} w-full sm:max-w-md`}
-          value={keywordRowFilter}
-          onChange={(e) => setKeywordRowFilter(e.target.value)}
-          placeholder={t("filterPlaceholder")}
-          aria-label={t("filterAria")}
-          disabled={loading}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className={seoBtnLimeOutline}
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={currentPage <= 1 || loading}
-          >
-            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-            {t("navBack")}
-          </button>
-          <button
-            type="button"
-            className={seoBtnLimeOutline}
-            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            disabled={currentPage >= totalPages || loading}
-          >
-            {t("navNext")}
-            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-          </button>
-        </div>
-      </div>
-
-      <div className="max-h-[62vh] overflow-auto">
-        <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 border-b border-union-border bg-union-bg/90 backdrop-blur-sm">
-            <tr>
-              <th className="whitespace-nowrap py-3 pr-3 font-medium text-union-text">{t("colKeyword")}</th>
-              <th className="w-11 py-3" aria-hidden />
-              {sortedActiveDomains.map((domain) => (
-                <th key={domain} className="whitespace-nowrap px-2 py-3 font-medium text-union-text">
-                  <span className="inline-flex items-center gap-2">
-                    <span className={domainIndexState[domain] ? dotIn : dotOut} />
-                    <span className="max-w-[12rem] truncate font-mono text-xs font-normal text-union-muted">
-                      {domain}
-                    </span>
+      <section className={`${seoCard} overflow-hidden !p-0`}>
+        <div className="space-y-4 border-b border-union-border px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-union-text">{t("positionsTableTitle")}</h2>
+              <p className="mt-1 text-xs text-union-muted">
+                {t("statsLine", {
+                  columns: activeDomains.length,
+                  domains: domains.length,
+                  keywords: storedKeywords.length || 0,
+                })}
+              </p>
+            </div>
+            {showPagination && !loading ? (
+              <div
+                className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+                aria-label={t("paginationAria")}
+              >
+                <p className="text-xs text-union-muted">
+                  <span className="font-medium text-[#d1fe17]">
+                    {t("paginationSummary", { current: currentPage, total: totalPages })}
                   </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedRows.map((row) => (
-              <tr key={row.keyword} className="border-b border-union-border/25 last:border-b-0">
-                <td className="max-w-[240px] truncate py-2.5 pr-3 text-union-text">{row.keyword}</td>
-                <td className="py-2">
+                  {hasTableSearch
+                    ? t("paginationFilterFound", {
+                        found: filteredTableRows.length,
+                        total: tableRows.length,
+                      })
+                    : null}
+                </p>
+                <div className="flex gap-2">
                   <button
                     type="button"
-                    className={btnIconQuiet}
-                    onClick={() => removeKeyword(row.keyword)}
-                    disabled={loading}
-                    title={t("deleteKeywordTitle")}
-                    aria-label={t("deleteKeywordAria", { keyword: row.keyword })}
+                    className={seoBtnLimeOutline}
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1 || loading}
                   >
-                    <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                    {t("navBack")}
                   </button>
-                </td>
-                {sortedActiveDomains.map((domain) => {
-                  const numericPosition = getNumericPosition(row, domain);
-                  const miss = numericPosition > 100;
-                  return (
-                    <td
-                      key={domain}
-                      className={`px-2 py-2 text-center tabular-nums ${
-                        miss ? "text-union-muted" : "font-medium text-[#d1fe17]"
-                      }`}
-                    >
-                      {numericPosition}
-                    </td>
-                  );
-                })}
+                  <button
+                    type="button"
+                    className={seoBtnLimeOutline}
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage >= totalPages || loading}
+                  >
+                    {t("navNext")}
+                    <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <label htmlFor="seo-positions-search" className="sr-only">
+              {t("searchAria")}
+            </label>
+            <input
+              id="seo-positions-search"
+              type="search"
+              className={`${seoInput} w-full`}
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+              placeholder={t("searchPlaceholder")}
+              aria-label={t("searchAria")}
+              disabled={loading}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+          {hasTableSearch && !loading ? (
+            <p className="text-xs text-union-muted">
+              {searchMatchedDomains.length > 0
+                ? t("filterResultDomains", {
+                    count: searchMatchedDomains.length,
+                    rows: filteredTableRows.length,
+                  })
+                : t("filterResultCount", { found: filteredTableRows.length })}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b border-union-border bg-union-bg/50 text-xs text-union-muted">
+              <tr>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">{t("colKeyword")}</th>
+                {sortedActiveDomains.map((domain) => (
+                  <th key={domain} className="whitespace-nowrap px-5 py-3 font-medium">
+                    <span className="inline-flex max-w-[12rem] items-center gap-2">
+                      <span
+                        className={domainIndexState[domain] ? dotIn : dotOut}
+                        title={domainIndexState[domain] ? t("indexIn") : t("indexOut")}
+                      />
+                      <span className="truncate font-mono text-xs font-normal text-union-muted">{domain}</span>
+                    </span>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {loading || domainsLoading ? (
+                <tr>
+                  <td
+                    colSpan={Math.max(1, sortedActiveDomains.length + 1)}
+                    className="px-5 py-8 text-center text-union-muted"
+                  >
+                    {t("loadingTable")}
+                  </td>
+                </tr>
+              ) : tableEmpty ? (
+                <tr>
+                  <td
+                    colSpan={Math.max(1, sortedActiveDomains.length + 1)}
+                    className="px-5 py-8 text-center text-union-muted"
+                  >
+                    {tableEmptyMessage}
+                  </td>
+                </tr>
+              ) : (
+                paginatedRows.map((row) => (
+                  <tr
+                    key={row.keyword}
+                    className="border-b border-union-border/40 last:border-b-0 hover:bg-white/[0.02]"
+                  >
+                    <td className="max-w-[240px] px-5 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium text-union-text">{row.keyword}</span>
+                        <button
+                          type="button"
+                          className={btnIconQuiet}
+                          onClick={() => removeKeyword(row.keyword)}
+                          disabled={loading}
+                          title={t("deleteKeywordTitle")}
+                          aria-label={t("deleteKeywordAria", { keyword: row.keyword })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        </button>
+                      </div>
+                    </td>
+                    {sortedActiveDomains.map((domain) => {
+                      const numericPosition = getNumericPosition(row, domain);
+                      const miss = numericPosition > 100;
+                      return (
+                        <td
+                          key={domain}
+                          className={`px-5 py-3 text-right tabular-nums ${
+                            miss ? "text-union-muted" : "font-medium text-[#d1fe17]"
+                          }`}
+                        >
+                          {numericPosition}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {showPagination && !loading ? (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 border-t border-union-border px-5 py-3 sm:hidden"
+            aria-label={t("paginationAria")}
+          >
+            <p className="text-xs text-union-muted">
+              {t("paginationSummary", { current: currentPage, total: totalPages })}
+              {hasTableSearch
+                ? t("paginationFilterFound", {
+                    found: filteredTableRows.length,
+                    total: tableRows.length,
+                  })
+                : null}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={seoBtnLimeOutline}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage <= 1}
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                {t("navBack")}
+              </button>
+              <button
+                type="button"
+                className={seoBtnLimeOutline}
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+              >
+                {t("navNext")}
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
     </div>
     </>
   );

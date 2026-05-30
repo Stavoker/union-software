@@ -2,9 +2,11 @@
 "use client";
 
 import { Link } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
 import { seoBtnDanger, seoBtnGhost, seoLinkBack } from "@/shared/components/seo/seo-ui";
+import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 
 async function readJsonSafe(response) {
   const text = await response.text();
@@ -31,6 +33,7 @@ function IconDelete() {
 }
 
 export default function HostCleanupPage() {
+  const t = useTranslations("seoWorkbench");
   const [domains, setDomains] = useState([]);
   const [projectNameMap, setProjectNameMap] = useState({});
   const [indexStatusMap, setIndexStatusMap] = useState({});
@@ -102,6 +105,13 @@ export default function HostCleanupPage() {
   const dotOut = "inline-block h-2 w-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)]";
 
   return (
+    <>
+      <UnionStatusToast
+        message={status}
+        variant="lime"
+        onDismiss={() => setStatus("")}
+        dismissLabel={t("statusDismiss")}
+      />
     <div className="w-full space-y-6">
       <Link href="/dashboard/seo" className={seoLinkBack}>
         ← До панелі позицій
@@ -122,8 +132,6 @@ export default function HostCleanupPage() {
           Оновити список
         </button>
       </header>
-
-      {status ? <p className="text-sm text-union-muted">{status}</p> : null}
 
       <div className="overflow-hidden rounded-2xl border border-union-border bg-union-surface/50 backdrop-blur-md">
         <div className="max-h-[min(65vh,560px)] overflow-auto">
@@ -182,5 +190,6 @@ export default function HostCleanupPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

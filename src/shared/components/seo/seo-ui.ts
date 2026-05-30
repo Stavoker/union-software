@@ -31,9 +31,16 @@ export const seoBtnLimeOutline =
 export const seoBtnLimeOutlineMuted =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-[#6d7f42] px-4 py-2 text-sm font-medium text-[#8fa04a] transition-colors hover:border-[#d1fe17]/55 hover:text-[#b8d65c] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#6d7f42] disabled:hover:text-[#8fa04a] [&_svg]:text-current";
 
-/** Лаймова замітка — як status toast на SEO (border + blur + #d1fe17). */
+/** Лаймова замітка — як status toast на SEO (border + blur + #D1FE17). */
 export const seoNoteLime =
-  "min-w-0 flex-1 rounded-xl border border-[#d1fe17] bg-[#d1fe17]/[0.09] px-4 py-2.5 text-xs leading-relaxed text-[#d1fe17] shadow-lg backdrop-blur-md [&_code]:text-[#d1fe17]/90";
+  "min-w-0 flex-1 rounded-xl border border-[#D1FE17] bg-[#D1FE17]/15 px-4 py-2.5 text-xs leading-relaxed text-[#D1FE17] shadow-lg shadow-[#D1FE17]/10 backdrop-blur-md [&_code]:text-[#D1FE17]";
+
+/** Toast статусу (fixed top-right) — завжди лайм #D1FE17. */
+export const seoStatusToast =
+  "relative rounded-xl border border-[#D1FE17] bg-[#D1FE17]/15 px-4 py-3 pr-10 text-sm leading-relaxed text-[#D1FE17] shadow-lg shadow-[#D1FE17]/20 backdrop-blur-md";
+
+export const seoStatusToastDismiss =
+  "absolute right-2 top-2 rounded-md p-1 text-[#D1FE17]/80 transition-colors hover:bg-[#D1FE17]/15 hover:text-[#D1FE17]";
 
 export const seoBtnDanger =
   "inline-flex cursor-pointer items-center justify-center rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-200 transition-colors hover:bg-red-500/20 disabled:opacity-40";

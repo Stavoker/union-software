@@ -14,6 +14,7 @@ import {
   seoFormDescendantControls,
   seoNoteLime,
 } from "@/shared/components/seo/seo-ui";
+import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 
 const POPULAR_ZONES = ["com", "org", "net", "top", "casino", "info", "io", "co", "xyz"];
 
@@ -87,9 +88,8 @@ export function DomainAutomationPanel() {
   const [vpsPaymethodId, setVpsPaymethodId] = useState("0");
   const [skipPurchase, setSkipPurchase] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
   const [result, setResult] = useState(null);
-  const [errorToasts, setErrorToasts] = useState([]);
   const [logs, setLogs] = useState([]);
   const [activeRunMeta, setActiveRunMeta] = useState(null);
 
@@ -106,15 +106,9 @@ export function DomainAutomationPanel() {
       .filter((d) => d.domainLabel && d.zone);
   }, [domainRows]);
 
-  function pushErrorToast(message) {
-    const text = String(message || t("errors.unknown")).trim();
-    if (!text) return;
-    const toast = { id: `${Date.now()}-${Math.random()}`, message: text };
-    setErrorToasts((prev) => [...prev, toast].slice(-4));
-  }
-
-  function removeErrorToast(id) {
-    setErrorToasts((prev) => prev.filter((t) => t.id !== id));
+  function showToast(message) {
+    const text = String(message || "").trim();
+    if (text) setToastMessage(text);
   }
 
   function appendLog(message, extra = null) {
@@ -215,7 +209,7 @@ export function DomainAutomationPanel() {
 
   useEffect(() => {
     if (!activeRunMeta?.startedAt) return;
-    setStatus(
+    showToast(
       t("status.unfinishedRun", {
         when: new Date(activeRunMeta.startedAt).toLocaleString(locale),
       })
@@ -229,15 +223,13 @@ export function DomainAutomationPanel() {
     }
     if (!parsedDomains.length) {
       const msg = t("errors.noDomains");
-      setStatus(msg);
-      pushErrorToast(msg);
+      showToast(msg);
       appendLog(msg);
       return;
     }
     if (parsedDomains.length > 60) {
       const msg = t("errors.maxDomains");
-      setStatus(msg);
-      pushErrorToast(msg);
+      showToast(msg);
       appendLog(msg);
       return;
     }
@@ -249,14 +241,13 @@ export function DomainAutomationPanel() {
       parsedRecordExtra = zomroRecordExtraParams.trim() ? JSON.parse(zomroRecordExtraParams) : {};
     } catch {
       const msg = t("errors.invalidJson");
-      setStatus(msg);
-      pushErrorToast(msg);
+      showToast(msg);
       appendLog(msg);
       return;
     }
 
     setLoading(true);
-    setStatus(t("status.starting", { count: parsedDomains.length }));
+    showToast(t("status.starting", { count: parsedDomains.length }));
     setResult(null);
     setLogs([]);
     appendLog(t("logs.starting", { count: parsedDomains.length }));
@@ -326,7 +317,7 @@ export function DomainAutomationPanel() {
       appendLog(t("logs.apiSuccess"), payload);
       if (payload?.mode === "batch") {
         const pendingSslBatch = payloadHasPendingSsl(payload) ? t("status.batchSslPending") : "";
-        setStatus(
+        showToast(
           t("status.batchDone", {
             ok: payload.okCount || 0,
             total: payload.total || 0,
@@ -335,9 +326,9 @@ export function DomainAutomationPanel() {
           })
         );
       } else if (payloadHasPendingSsl(payload)) {
-        setStatus(t("status.acceptedPendingSsl", { domain: payload.domain }));
+        showToast(t("status.acceptedPendingSsl", { domain: payload.domain }));
       } else {
-        setStatus(t("status.done", { domain: payload.domain }));
+        showToast(t("status.done", { domain: payload.domain }));
       }
       if (!payloadHasPendingSsl(payload)) {
         clearActiveRun();
@@ -348,8 +339,7 @@ export function DomainAutomationPanel() {
       const msg = t("errors.withMessage", {
         message: error?.message || t("errors.unknown"),
       });
-      setStatus(msg);
-      pushErrorToast(msg);
+      showToast(msg);
       appendLog(msg, { stack: error?.stack || null });
     } finally {
       setLoading(false);
@@ -358,31 +348,12 @@ export function DomainAutomationPanel() {
 
   return (
     <div className="w-full space-y-6 pb-10 pt-2">
-      {errorToasts.length ? (
-        <div
-          className="fixed right-4 top-4 z-50 flex max-w-md flex-col gap-2 md:right-8"
-          role="region"
-          aria-label={t("errorToastsAria")}
-        >
-          {errorToasts.map((toast) => (
-            <div
-              key={toast.id}
-              className="flex items-start justify-between gap-3 rounded-xl border border-red-500/35 bg-red-950/90 px-4 py-3 text-sm text-red-100 shadow-lg backdrop-blur-md"
-              role="alert"
-            >
-              <p className="min-w-0 flex-1 leading-snug">{toast.message}</p>
-              <button
-                type="button"
-                className="shrink-0 rounded-md px-2 py-0.5 text-lg leading-none text-red-200 hover:bg-red-900/60"
-                onClick={() => removeErrorToast(toast.id)}
-                aria-label={t("closeToast")}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <UnionStatusToast
+        message={toastMessage}
+        variant="lime"
+        onDismiss={() => setToastMessage("")}
+        dismissLabel={t("closeToast")}
+      />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-union-text">{t("title")}</h1>
@@ -755,9 +726,8 @@ export function DomainAutomationPanel() {
           </div>
         </form>
 
-        <p className="text-sm text-union-muted">{status}</p>
         {activeRunMeta ? (
-          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
+          <div className={seoNoteLime}>
             {t("status.activeRun")}{" "}
             <button type="button" className={`${seoBtnGhost} ml-1 inline-flex`} onClick={clearActiveRun}>
               {t("status.clearRun")}

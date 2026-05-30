@@ -2,21 +2,17 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 
+import { seoStatusToast, seoStatusToastDismiss } from "@/shared/components/seo/seo-ui";
+
 type Props = {
   message: string;
+  /** Залишено для сумісності; усі toast — лайм #D1FE17. */
   variant?: "lime" | "muted";
   onDismiss: () => void;
   dismissLabel: string;
 };
 
-export function UnionStatusToast({
-  message,
-  variant = "lime",
-  onDismiss,
-  dismissLabel,
-}: Props) {
-  const isLime = variant === "lime";
-
+export function UnionStatusToast({ message, onDismiss, dismissLabel }: Props) {
   return (
     <AnimatePresence mode="wait">
       {message ? (
@@ -29,21 +25,11 @@ export function UnionStatusToast({
           exit={{ opacity: 0, x: 18, y: -4, scale: 0.96 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div
-            className={`relative rounded-xl px-4 py-3 pr-10 text-sm leading-relaxed shadow-lg backdrop-blur-md ${
-              isLime
-                ? "border border-[#d1fe17] bg-[#d1fe17]/[0.09] text-[#d1fe17]"
-                : "border border-union-border bg-union-bg/95 text-union-muted"
-            }`}
-          >
+          <div className={seoStatusToast}>
             <button
               type="button"
               onClick={onDismiss}
-              className={
-                isLime
-                  ? "absolute right-2 top-2 rounded-md p-1 text-[#d1fe17]/75 transition-colors hover:bg-[#d1fe17]/10 hover:text-[#d1fe17]"
-                  : "absolute right-2 top-2 rounded-md p-1 text-union-muted transition-colors hover:bg-white/[0.06] hover:text-union-text"
-              }
+              className={seoStatusToastDismiss}
               aria-label={dismissLabel}
             >
               <svg
