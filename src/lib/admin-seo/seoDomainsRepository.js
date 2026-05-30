@@ -1,7 +1,7 @@
 import SftpClient from "ssh2-sftp-client";
 
 import { assertSafeHostForRemotePath } from "./hostProjectCleanup.js";
-import { listActiveHosts } from "./hostsRepository.js";
+import { listActiveHostsWithCredentials } from "./hostsRepository.js";
 import { getSupabaseServerClient } from "./supabaseServer.js";
 
 const SKIP_DIR_NAMES = new Set(["html", "ssl", "cgi-bin", "logs", "tmp", ".well-known"]);
@@ -42,7 +42,14 @@ export async function listRemoteProjectHostsOnServer({
   const base = String(projectsBaseDir || "/var/www").trim().replace(/\/+$/, "") || "/var/www";
 
   if (!host || !user || !password) {
-    return { hosts: [], projectsBaseDir: base, warning: "SSH credentials incomplete" };
+    const missing = [
+      !host ? "host IP" : null,
+      !user ? "SSH user" : null,
+      !password ? "SSH password" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return { hosts: [], projectsBaseDir: base, warning: `SSH credentials incomplete (missing: ${missing})` };
   }
 
   const sftp = new SftpClient();

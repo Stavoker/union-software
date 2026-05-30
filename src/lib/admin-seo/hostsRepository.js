@@ -28,12 +28,47 @@ function requireUserId(userId) {
   return id;
 }
 
+const HOST_PUBLIC_COLUMNS =
+  "id,name,host_ip,ssh_user,ssh_port,projects_dir,is_active,created_at,updated_at";
+const HOST_INTERNAL_COLUMNS = `${HOST_PUBLIC_COLUMNS},ssh_password`;
+
+/** Для UI/API — без пароля в відповіді. */
 export async function listActiveHosts(userId) {
   const uid = requireUserId(userId);
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("hosts")
-    .select("id,name,host_ip,ssh_user,ssh_port,projects_dir,is_active,created_at,updated_at")
+    .select(`${HOST_PUBLIC_COLUMNS},ssh_password`)
+    .eq("user_id", uid)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+  if (error) {
+    throw new Error(error.message || "Failed to load hosts");
+  }
+  return (data || []).map((row) => {
+    const mapped = mapHostRow(row);
+    return {
+      id: mapped.id,
+      name: mapped.name,
+      hostIp: mapped.hostIp,
+      sshUser: mapped.sshUser,
+      sshPort: mapped.sshPort,
+      projectsDir: mapped.projectsDir,
+      isActive: mapped.isActive,
+      createdAt: mapped.createdAt,
+      updatedAt: mapped.updatedAt,
+      hasPassword: !!String(row?.ssh_password || "").trim(),
+    };
+  });
+}
+
+/** Для серверного SFTP (domain automation, seo sync) — з паролем. */
+export async function listActiveHostsWithCredentials(userId) {
+  const uid = requireUserId(userId);
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("hosts")
+    .select(HOST_INTERNAL_COLUMNS)
     .eq("user_id", uid)
     .eq("is_active", true)
     .order("name", { ascending: true });
