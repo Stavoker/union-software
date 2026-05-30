@@ -349,186 +349,6 @@ export async function automateDomainProvisioning(input) {
     }
   }
 
-  let sslAsyncTask = null;
-  if (sslEmail) {
-    let delegationNsHosts = await resolveCurrentDelegationNs(fullDomain);
-    if (!skipPurchase && delegationNsHosts.length === 0) {
-      const waited = await waitForDelegationNsReady(fullDomain, {
-        timeoutMs: Number.isFinite(sslDelegationWaitTimeoutMs) && sslDelegationWaitTimeoutMs > 0 ? sslDelegationWaitTimeoutMs : 600000,
-        pollMs: Number.isFinite(sslDelegationWaitPollMs) && sslDelegationWaitPollMs > 0 ? sslDelegationWaitPollMs : 10000,
-      });
-      delegationNsHosts = waited.nsHosts;
-      steps.push({
-        id: "ssl-delegation-wait",
-        ok: delegationNsHosts.length > 0,
-        waitedMs: waited.waitedMs,
-        delegationNsHosts: delegationNsHosts.length ? delegationNsHosts : null,
-        warning: delegationNsHosts.length
-          ? null
-          : "Delegation NS still not visible in public DNS after wait; SSL may fail and retry.",
-      });
-    }
-    const requestedNsLookLikeZomro = delegationLooksLikeZomro(nameservers);
-    const sslUseZomroDnsmgr =
-      (delegationLooksLikeZomro(delegationNsHosts) || requestedNsLookLikeZomro) &&
-      zomroDnsmgrUrl &&
-      zomroPanelUser &&
-      zomroPanelPass;
-
-    if (delegationLooksLikeZomro(delegationNsHosts) && !sslUseZomroDnsmgr) {
-      throw new Error(
-        "SSL: делегування DNS уже на Zomro (NS містять zomro), тож TXT для ACME через API Spaceship не потрапляє в публічний DNS. Додай ZOMRO_DNSMGR_URL і ZOMRO_USERNAME/ZOMRO_PASSWORD у .env (панель dnsmgr), або тимчасово поверни NS на DNS Spaceship до видачі сертифіката."
-      );
-    }
-
-    const sslProviderLabel = sslUseZomroDnsmgr ? "zomro-dnsmgr" : "spaceship";
-    const sslTimeoutMs = sslUseZomroDnsmgr
-      ? Math.max(Number(sslDnsPropagationTimeoutMs) || 0, 180000)
-      : sslDnsPropagationTimeoutMs;
-
-    const runSslOnce = sslUseZomroDnsmgr
-      ? () =>
-          issueLetsEncryptCertificateDns01ZomroDnsmgr({
-            zoneApex: fullDomain,
-            email: sslEmail,
-            useStaging: sslStaging,
-            skipChallengeVerification: sslSkipVerifyRaw === false ? false : true,
-            dnsPropagationTimeoutMs: sslTimeoutMs,
-            dnsPropagationPollMs: sslDnsPropagationPollMs,
-            minAuthoritativeNsReady: Number.isFinite(sslMinAuthoritativeNsReady) ? sslMinAuthoritativeNsReady : 3,
-            dnsPostPropagationDelayMs: sslZomroDnsPostDelayMs,
-            dnsRemoveDelayMs: sslDnsRemoveDelayMs,
-            dnsmgrUrl: zomroDnsmgrUrl,
-            zomroUsername: zomroPanelUser,
-            zomroPassword: zomroPanelPass,
-            txtCreateFunc: zomroDnsmgrTxtCreateFunc,
-            txtDeleteFunc: zomroDnsmgrTxtDeleteFunc,
-          })
-      : () =>
-          issueLetsEncryptCertificateDns01Spaceship({
-            zoneApex: fullDomain,
-            email: sslEmail,
-            apiKey,
-            apiSecret,
-            useStaging: sslStaging,
-            skipChallengeVerification: sslSkipVerify,
-            dnsPropagationTimeoutMs: sslDnsPropagationTimeoutMs,
-            dnsPropagationPollMs: sslDnsPropagationPollMs,
-            dnsRemoveDelayMs: sslDnsRemoveDelayMs,
-          });
-
-    if (sslAsync) {
-      steps.push({
-        id: "spaceship-ssl-letsencrypt-dns01",
-        ok: false,
-        pending: true,
-        staging: sslStaging,
-        provider: sslProviderLabel,
-        delegationNsHosts: delegationNsHosts.length ? delegationNsHosts : null,
-        warning:
-          sslUseZomroDnsmgr
-            ? "SSL у фоні: DNS-01 через Zomro dnsmgr (делегування вже на Zomro NS)"
-            : "SSL background job started; waiting for DNS propagation/validation",
-      });
-      sslAsyncTask = (async () => {
-        const logPrefix = `[ssl-async][${fullDomain}][${sslProviderLabel}]`;
-        console.info(`${logPrefix} background job started`);
-        let attempt = 0;
-        for (;;) {
-          attempt += 1;
-          console.info(`${logPrefix} attempt ${attempt} starting`);
-          try {
-            const sslOut = await runSslOnce();
-            console.info(`${logPrefix} attempt ${attempt} finished OK (certificate received)`);
-            return sslOut;
-          } catch (error) {
-            const msg = error?.message || "SSL retry failed";
-            console.warn(`${logPrefix} attempt ${attempt} failed: ${msg}`);
-            if (onSslRetry) {
-              try {
-                await onSslRetry({
-                  attempt,
-                  errorMessage: msg,
-                  nextRetryMs: sslAsyncRetryMs > 0 ? sslAsyncRetryMs : 60000,
-                  domain: fullDomain,
-                });
-              } catch {}
-            }
-            const waitMs = sslAsyncRetryMs > 0 ? sslAsyncRetryMs : 60000;
-            console.info(`${logPrefix} retry in ${waitMs}ms`);
-            await new Promise((r) => setTimeout(r, waitMs));
-          }
-        }
-      })();
-    } else {
-      try {
-        const sslResult = await runSslOnce();
-        const certPem = sslResult.certificatePem && String(sslResult.certificatePem).trim();
-        steps.push({
-          id: "spaceship-ssl-letsencrypt-dns01",
-          ok: !!certPem,
-          staging: sslStaging,
-          provider: sslProviderLabel,
-          challengeRecords: sslResult.challengeRecords,
-          certificatePem: sslResult.certificatePem,
-          privateKeyPem: sslResult.privateKeyPem,
-        });
-        if (certPem) {
-          try {
-            const deploy = await deploySslCertificateToHost({
-              domain: fullDomain,
-              certificatePem: sslResult.certificatePem,
-              privateKeyPem: sslResult.privateKeyPem,
-              deployHostIp,
-              sshUser: deploySshUser,
-              sshPassword: deploySshPassword,
-              sshPort: deploySshPort,
-              projectsBaseDir: deployProjectsBaseDir,
-            });
-            steps.push({
-              id: "host-nginx-ssl-deploy",
-              ok: deploy.skipped ? true : !!deploy.ok,
-              skipped: !!deploy.skipped,
-              reason: deploy.reason || null,
-              warning: deploy.warning || null,
-              remoteProjectDir: deploy.remoteProjectDir || null,
-              sslDir: deploy.sslDir || null,
-              nginxConfPath: deploy.nginxConfPath || null,
-              nginxLinkPath: deploy.nginxLinkPath || null,
-              nginxReloaded: !!deploy.nginxReloaded,
-            });
-          } catch (e) {
-            steps.push({
-              id: "host-nginx-ssl-deploy",
-              ok: false,
-              warning: e?.message || String(e),
-            });
-          }
-        }
-      } catch (e) {
-        steps.push({
-          id: "spaceship-ssl-letsencrypt-dns01",
-          ok: false,
-          staging: sslStaging,
-          provider: sslProviderLabel,
-          warning: e?.message || "SSL challenge failed",
-          diagnostics: e?.sslDiagnostics || null,
-        });
-        const wrapped = new Error(e?.message || "SSL challenge failed");
-        wrapped.partialResult = {
-          ok: false,
-          domain: fullDomain,
-          nameservers,
-          hostIp,
-          skipPurchase,
-          domainPurchased: !skipPurchase,
-          steps,
-        };
-        throw wrapped;
-      }
-    }
-  }
-
   const nameserverResponse = await spaceshipRequest(`/domains/${fullDomain}/nameservers`, {
     method: "PUT",
     headers,
@@ -705,6 +525,195 @@ export async function automateDomainProvisioning(input) {
     remoteProjectDir: hostCreateWithTarget.remoteProjectDir || null,
     deployHostIp: deployHostIp || null,
   });
+
+  let sslAsyncTask = null;
+  if (sslEmail) {
+    let delegationNsHosts = await resolveCurrentDelegationNs(fullDomain);
+    const requestedNsLookLikeZomro = delegationLooksLikeZomro(nameservers);
+    const needDelegationWait =
+      delegationNsHosts.length === 0 ||
+      (requestedNsLookLikeZomro && !delegationLooksLikeZomro(delegationNsHosts));
+    if (needDelegationWait) {
+      const configuredTimeout =
+        Number.isFinite(sslDelegationWaitTimeoutMs) && sslDelegationWaitTimeoutMs > 0 ? sslDelegationWaitTimeoutMs : 600000;
+      const syncCapRaw = Number(process.env.SSL_DELEGATION_SYNC_WAIT_CAP_MS);
+      const syncCapMs = Number.isFinite(syncCapRaw) && syncCapRaw > 0 ? syncCapRaw : 90000;
+      const waited = await waitForDelegationNsReady(fullDomain, {
+        timeoutMs: Math.min(configuredTimeout, syncCapMs),
+        pollMs: Number.isFinite(sslDelegationWaitPollMs) && sslDelegationWaitPollMs > 0 ? sslDelegationWaitPollMs : 10000,
+      });
+      delegationNsHosts = waited.nsHosts;
+      steps.push({
+        id: "ssl-delegation-wait",
+        ok: delegationNsHosts.length > 0,
+        waitedMs: waited.waitedMs,
+        delegationNsHosts: delegationNsHosts.length ? delegationNsHosts : null,
+        warning: delegationNsHosts.length
+          ? null
+          : "Delegation NS still not visible in public DNS after wait; SSL may fail and retry.",
+      });
+    }
+    const sslUseZomroDnsmgr =
+      (delegationLooksLikeZomro(delegationNsHosts) || requestedNsLookLikeZomro) &&
+      zomroDnsmgrUrl &&
+      zomroPanelUser &&
+      zomroPanelPass;
+
+    if (delegationLooksLikeZomro(delegationNsHosts) && !sslUseZomroDnsmgr) {
+      throw new Error(
+        "SSL: делегування DNS уже на Zomro (NS містять zomro), тож TXT для ACME через API Spaceship не потрапляє в публічний DNS. Додай ZOMRO_DNSMGR_URL і ZOMRO_USERNAME/ZOMRO_PASSWORD у .env (панель dnsmgr), або тимчасово поверни NS на DNS Spaceship до видачі сертифіката."
+      );
+    }
+
+    const sslProviderLabel = sslUseZomroDnsmgr ? "zomro-dnsmgr" : "spaceship";
+    const sslTimeoutMs = sslUseZomroDnsmgr
+      ? Math.max(Number(sslDnsPropagationTimeoutMs) || 0, 180000)
+      : sslDnsPropagationTimeoutMs;
+
+    const zomroNsFallback = requestedNsLookLikeZomro ? nameservers : [];
+    const runSslOnce = sslUseZomroDnsmgr
+      ? () =>
+          issueLetsEncryptCertificateDns01ZomroDnsmgr({
+            zoneApex: fullDomain,
+            email: sslEmail,
+            useStaging: sslStaging,
+            skipChallengeVerification: sslSkipVerifyRaw === false ? false : true,
+            dnsPropagationTimeoutMs: sslTimeoutMs,
+            dnsPropagationPollMs: sslDnsPropagationPollMs,
+            minAuthoritativeNsReady: Number.isFinite(sslMinAuthoritativeNsReady) ? sslMinAuthoritativeNsReady : 3,
+            dnsPostPropagationDelayMs: sslZomroDnsPostDelayMs,
+            dnsRemoveDelayMs: sslDnsRemoveDelayMs,
+            dnsmgrUrl: zomroDnsmgrUrl,
+            zomroUsername: zomroPanelUser,
+            zomroPassword: zomroPanelPass,
+            txtCreateFunc: zomroDnsmgrTxtCreateFunc,
+            txtDeleteFunc: zomroDnsmgrTxtDeleteFunc,
+            authoritativeNsFallback: zomroNsFallback,
+          })
+      : () =>
+          issueLetsEncryptCertificateDns01Spaceship({
+            zoneApex: fullDomain,
+            email: sslEmail,
+            apiKey,
+            apiSecret,
+            useStaging: sslStaging,
+            skipChallengeVerification: sslSkipVerify,
+            dnsPropagationTimeoutMs: sslDnsPropagationTimeoutMs,
+            dnsPropagationPollMs: sslDnsPropagationPollMs,
+            dnsRemoveDelayMs: sslDnsRemoveDelayMs,
+          });
+
+    if (sslAsync) {
+      steps.push({
+        id: "spaceship-ssl-letsencrypt-dns01",
+        ok: false,
+        pending: true,
+        staging: sslStaging,
+        provider: sslProviderLabel,
+        delegationNsHosts: delegationNsHosts.length ? delegationNsHosts : null,
+        warning:
+          sslUseZomroDnsmgr
+            ? "SSL у фоні: DNS-01 через Zomro dnsmgr (делегування вже на Zomro NS)"
+            : "SSL background job started; waiting for DNS propagation/validation",
+      });
+      sslAsyncTask = (async () => {
+        const logPrefix = `[ssl-async][${fullDomain}][${sslProviderLabel}]`;
+        console.info(`${logPrefix} background job started`);
+        let attempt = 0;
+        for (;;) {
+          attempt += 1;
+          console.info(`${logPrefix} attempt ${attempt} starting`);
+          try {
+            const sslOut = await runSslOnce();
+            console.info(`${logPrefix} attempt ${attempt} finished OK (certificate received)`);
+            return sslOut;
+          } catch (error) {
+            const msg = error?.message || "SSL retry failed";
+            console.warn(`${logPrefix} attempt ${attempt} failed: ${msg}`);
+            if (onSslRetry) {
+              try {
+                await onSslRetry({
+                  attempt,
+                  errorMessage: msg,
+                  nextRetryMs: sslAsyncRetryMs > 0 ? sslAsyncRetryMs : 60000,
+                  domain: fullDomain,
+                });
+              } catch {}
+            }
+            const waitMs = sslAsyncRetryMs > 0 ? sslAsyncRetryMs : 60000;
+            console.info(`${logPrefix} retry in ${waitMs}ms`);
+            await new Promise((r) => setTimeout(r, waitMs));
+          }
+        }
+      })();
+    } else {
+      try {
+        const sslResult = await runSslOnce();
+        const certPem = sslResult.certificatePem && String(sslResult.certificatePem).trim();
+        steps.push({
+          id: "spaceship-ssl-letsencrypt-dns01",
+          ok: !!certPem,
+          staging: sslStaging,
+          provider: sslProviderLabel,
+          challengeRecords: sslResult.challengeRecords,
+          certificatePem: sslResult.certificatePem,
+          privateKeyPem: sslResult.privateKeyPem,
+        });
+        if (certPem) {
+          try {
+            const deploy = await deploySslCertificateToHost({
+              domain: fullDomain,
+              certificatePem: sslResult.certificatePem,
+              privateKeyPem: sslResult.privateKeyPem,
+              deployHostIp,
+              sshUser: deploySshUser,
+              sshPassword: deploySshPassword,
+              sshPort: deploySshPort,
+              projectsBaseDir: deployProjectsBaseDir,
+            });
+            steps.push({
+              id: "host-nginx-ssl-deploy",
+              ok: deploy.skipped ? true : !!deploy.ok,
+              skipped: !!deploy.skipped,
+              reason: deploy.reason || null,
+              warning: deploy.warning || null,
+              remoteProjectDir: deploy.remoteProjectDir || null,
+              sslDir: deploy.sslDir || null,
+              nginxConfPath: deploy.nginxConfPath || null,
+              nginxLinkPath: deploy.nginxLinkPath || null,
+              nginxReloaded: !!deploy.nginxReloaded,
+            });
+          } catch (e) {
+            steps.push({
+              id: "host-nginx-ssl-deploy",
+              ok: false,
+              warning: e?.message || String(e),
+            });
+          }
+        }
+      } catch (e) {
+        steps.push({
+          id: "spaceship-ssl-letsencrypt-dns01",
+          ok: false,
+          staging: sslStaging,
+          provider: sslProviderLabel,
+          warning: e?.message || "SSL challenge failed",
+          diagnostics: e?.sslDiagnostics || null,
+        });
+        const wrapped = new Error(e?.message || "SSL challenge failed");
+        wrapped.partialResult = {
+          ok: false,
+          domain: fullDomain,
+          nameservers,
+          hostIp,
+          skipPurchase,
+          domainPurchased: !skipPurchase,
+          steps,
+        };
+        throw wrapped;
+      }
+    }
+  }
 
   const result = {
     ok: true,

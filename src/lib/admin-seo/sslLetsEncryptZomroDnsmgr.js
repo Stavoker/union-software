@@ -68,14 +68,32 @@ function resolveTxtViaAuthoritativeNs(nsHost, fqdn) {
  * Чи всі авторитативні NS зони `zoneApex` віддають очікуваний digest для `fqdn`.
  * Рекурсивний resolv недостатній: один NS може вже мати TXT, інші — ще ні, а LE перевіряє з різних точок.
  */
-async function authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex) {
+async function authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex, { authoritativeNsFallback = [] } = {}) {
   const zone = String(zoneApex || "").trim().toLowerCase();
   const exp = String(expected || "").trim();
   let nsList = [];
+  let resolveNsError = null;
   try {
     nsList = await dns.resolveNs(zone);
   } catch (e) {
-    return { allOk: false, nsList: [], failures: [{ ns: "(resolveNs)", error: e?.message || String(e) }] };
+    resolveNsError = e?.message || String(e);
+    const fallback = (Array.isArray(authoritativeNsFallback) ? authoritativeNsFallback : [])
+      .map((h) => String(h || "").trim().toLowerCase())
+      .filter(Boolean);
+    if (fallback.length) {
+      nsList = fallback;
+      console.info(
+        `[ssl-zomro-dnsmgr][${zone}] resolveNs failed (${resolveNsError}); using configured NS fallback (${fallback.length} hosts)`
+      );
+    } else {
+      return {
+        allOk: false,
+        nsList: [],
+        failures: [{ ns: "(resolveNs)", error: resolveNsError }],
+        okCount: 0,
+        totalCount: 0,
+      };
+    }
   }
   const failures = [];
   let okCount = 0;
@@ -112,7 +130,13 @@ async function waitForTxtPropagation(
   fqdn,
   expectedValue,
   zoneApex,
-  { timeoutMs = 180000, intervalMs = 5000, logLabel = "", minAuthoritativeNsReady = 0 } = {}
+  {
+    timeoutMs = 180000,
+    intervalMs = 5000,
+    logLabel = "",
+    minAuthoritativeNsReady = 0,
+    authoritativeNsFallback = [],
+  } = {}
 ) {
   const startedAt = Date.now();
   const expected = String(expectedValue || "").trim();
@@ -126,7 +150,9 @@ async function waitForTxtPropagation(
       lastLogAt = elapsed;
       console.info(`${tag} TXT propagation poll #${poll} (+${Math.round(elapsed / 1000)}s / ${Math.round(timeoutMs / 1000)}s) ${fqdn}`);
     }
-    const auth = await authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex);
+    const auth = await authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex, {
+      authoritativeNsFallback: authoritativeNsFallback,
+    });
     const required = resolveRequiredNsCount(auth.totalCount, minAuthoritativeNsReady);
     const quorumOk = auth.okCount >= required;
     if (quorumOk) {
@@ -162,6 +188,8 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
   zomroPassword,
   txtCreateFunc = "domain.record.edit",
   txtDeleteFunc = "domain.record.delete",
+  /** When public resolveNs(apex) is ENOTFOUND (new domain), query these NS directly (e.g. Zomro from automation form). */
+  authoritativeNsFallback = [],
 }) {
   if (!zoneApex || !email || !dnsmgrUrl || !zomroUsername || !zomroPassword) {
     throw new Error("SSL(Zomro dnsmgr): required zoneApex/email/dnsmgrUrl/zomroUsername/zomroPassword");
@@ -230,6 +258,7 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
         intervalMs: Number(dnsPropagationPollMs) || 5000,
         logLabel: logTag,
         minAuthoritativeNsReady: Number(minAuthoritativeNsReady) || 0,
+        authoritativeNsFallback,
       });
       const settleDelay = Number(dnsPostPropagationDelayMs) || 0;
       if (settleDelay > 0) {
