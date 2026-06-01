@@ -2,34 +2,44 @@ import crypto from "node:crypto";
 
 const TABLE = "generation_prompt_profiles";
 
+const LEGACY_BRAND_PATTERNS = [
+  [/\blaki\s*world\b/gi, "{brand}"],
+  [/\blakiworld\b/gi, "{brand}"],
+  [/\bлаки\s*ворлд\b/gi, "{brand}"],
+  [/\bлаки\s*world\b/gi, "{brand}"],
+  [/\blaki\b/gi, "{brand}"],
+  [/\bлаки\b/gi, "{brand}"],
+];
+
 /**
- * Груба оцінка пакета бренду з SEO-теми (для фільтра brand_scope).
- * @param {string} theme
- * @returns {"laki" | "lakiworld" | null}
+ * Прибирає застарілі Laki/Лаки з текстів профілю; підстановка бренду — на етапі збірки.
+ * @param {string} text
+ * @param {string} [themeBrandHint]
  */
-export function inferBrandPackScopeFromTheme(theme) {
-  const t = String(theme || "").toLowerCase();
-  if (!t.trim()) return null;
-  if (/\blakiworld\b/.test(t)) return "lakiworld";
-  if (/\blaki\s+world\b/.test(t)) return "lakiworld";
-  if (t.includes("лаки") && t.includes("ворлд")) return "lakiworld";
-  if (/\blaki\b/.test(t) || t.includes("лаки")) return "laki";
+export function scrubLegacyBrandMentionsInProfileText(text, themeBrandHint = "") {
+  const brand = String(themeBrandHint || "").trim() || "{brand}";
+  let out = String(text || "");
+  for (const [re, repl] of LEGACY_BRAND_PATTERNS) {
+    out = out.replace(re, brand === "{brand}" ? repl : brand);
+  }
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+/** @deprecated Універсальні профілі — скоуп завжди any; тема не фільтрує laki/lakiworld. */
+export function inferBrandPackScopeFromTheme(_theme) {
   return null;
 }
 
 /**
+ * Профіль підходить, якщо active і brand_scope універсальний (any / порожньо).
  * @param {Record<string, unknown>} row
- * @param {"laki" | "lakiworld" | null} inferred
  */
-export function profileMatchesThemeScope(row, inferred) {
-  const raw = row?.brand_scope;
-  const s =
-    raw == null || String(raw).trim() === ""
-      ? ""
-      : String(raw).trim().toLowerCase();
+export function profileMatchesThemeScope(row) {
+  const s = String(row?.brand_scope ?? "")
+    .trim()
+    .toLowerCase();
   if (!s || s === "any") return true;
-  if (!inferred) return false;
-  return s === inferred;
+  return false;
 }
 
 /**
@@ -47,7 +57,6 @@ export async function fetchActiveGenerationPromptProfiles(supabaseUrl, serviceKe
     "select",
     [
       "id",
-      "slug",
       "name",
       "brand_label",
       "brand_scope",
@@ -62,7 +71,8 @@ export async function fetchActiveGenerationPromptProfiles(supabaseUrl, serviceKe
     ].join(",")
   );
   url.searchParams.set("active_status", "eq.true");
-  url.searchParams.set("order", "slug.asc");
+  url.searchParams.set("brand_scope", "eq.any");
+  url.searchParams.set("order", "name.asc");
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -111,35 +121,45 @@ export function pickWeightedGenerationProfile(rows, seed) {
 
 /**
  * @param {Record<string, unknown> | null} profile
+ * @param {{ themeBrandHint?: string; publicBrandName?: string }} [opts]
  * @returns {string}
  */
-export function formatGenerationPromptProfileBlock(profile) {
+export function formatGenerationPromptProfileBlock(profile, opts = {}) {
   if (!profile) return "";
+  const themeBrand = String(
+    opts.themeBrandHint || opts.publicBrandName || ""
+  ).trim();
+  const scrub = (s) => scrubLegacyBrandMentionsInProfileText(s, themeBrand);
+
   const lines = [];
   lines.push(
-    "=== ПРОФИЛЬ ГЕНЕРАЦИИ (дополнительный слой поверх базовых правил генератора; не нарушай жёсткие требования к формату ответа: JSON/HTML/маркеры @@PHn@@) ==="
+    "=== ПРОФИЛЬ ГЕНЕРАЦИИ (универсальный слой; не нарушай JSON/HTML контракт генератора) ==="
   );
-  if (profile.slug) lines.push(`Профиль (slug): ${profile.slug}`);
-  if (profile.name) lines.push(`Название: ${profile.name}`);
-  if (profile.brand_label) lines.push(`Бренд (таблица): ${profile.brand_label}`);
-  if (profile.brand_scope) lines.push(`Скоуп (таблица): ${profile.brand_scope}`);
-  const mk = String(profile.main_keyword || "").trim();
+  lines.push(
+    `БРЕНД В ТЕКСТАХ САЙТА: только «${themeBrand || "из темы и brandKit текущей сборки"}»; запрещены Laki, Laki World, Лаки и любые чужие ТМ из названия профиля.`
+  );
+  if (profile.name) lines.push(`Профиль: ${scrub(profile.name)}`);
+  const packLabel = String(profile.brand_label || "").trim();
+  if (packLabel && !/laki|лаки/i.test(packLabel)) {
+    lines.push(`Метка набора: ${packLabel}`);
+  }
+  const mk = scrub(profile.main_keyword);
   if (mk) lines.push(`Главный ключ (фокус главной): ${mk}`);
-  const c = String(profile.concept || "").trim();
+  const c = scrub(profile.concept);
   if (c) lines.push(`Концепция / угол: ${c}`);
-  const ta = String(profile.target_audience || "").trim();
+  const ta = scrub(profile.target_audience);
   if (ta) lines.push(`Целевая аудитория: ${ta}`);
-  const tone = String(profile.tone || "").trim();
+  const tone = scrub(profile.tone);
   if (tone) lines.push(`Тон: ${tone}`);
-  const m4 = String(profile.mandatory_fourth_subpage || "").trim();
+  const m4 = scrub(profile.mandatory_fourth_subpage);
   if (m4) lines.push(`4-я подстраница (обязательная тема): ${m4}`);
-  const full = String(profile.full_generation_prompt || "").trim();
+  const full = scrub(profile.full_generation_prompt);
   if (full) lines.push(`\nПолный доп. промпт:\n${full}`);
   return lines.join("\n").trim();
 }
 
 /**
- * @param {{ theme: string; pickSeed: string; supabaseUrl?: string; serviceKey?: string; onLog?: (m: string) => void }} opts
+ * @param {{ theme: string; pickSeed: string; themeBrandHint?: string; supabaseUrl?: string; serviceKey?: string; onLog?: (m: string) => void }} opts
  * @returns {Promise<Record<string, unknown> | null>}
  */
 export async function selectGenerationPromptProfileForBuild(opts) {
@@ -158,15 +178,17 @@ export async function selectGenerationPromptProfileForBuild(opts) {
     return null;
   }
 
-  const inferred = inferBrandPackScopeFromTheme(theme);
   const all = await fetchActiveGenerationPromptProfiles(supabaseUrl, serviceKey);
-  const filtered = all.filter((r) => profileMatchesThemeScope(r, inferred));
+  const filtered = all.filter((r) => profileMatchesThemeScope(r));
   if (!filtered.length) {
     onLog?.(
-      `Supabase: подходящих активных профилей нет (всего активных: ${all.length}; скоуп темы: ${inferred ?? "универсальный только any/null"}).`
+      `Supabase: нет активных универсальных профилей (brand_scope=any). Всего active в БД: ${all.length}. Запустите repair_generation_prompt_profiles_brand_scope().`
     );
     return null;
   }
-  const picked = pickWeightedGenerationProfile(filtered, `${pickSeed}|${theme}|${filtered.length}`);
+  const picked = pickWeightedGenerationProfile(
+    filtered,
+    `${pickSeed}|${theme}|${filtered.length}`
+  );
   return picked || null;
 }

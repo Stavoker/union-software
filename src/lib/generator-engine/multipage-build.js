@@ -9,6 +9,13 @@ import {
   selectGenerationPromptProfileForBuild,
   formatGenerationPromptProfileBlock,
 } from "@/src/lib/generation-prompt-profiles";
+import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
+import {
+  formatSourceArticlesPromptBlock,
+  loadSourceArticlesContextForBuild,
+  pickSourceArticlesFromPool,
+  resolveSourceArticlesSettings,
+} from "@/lib/generator-engine/source-articles-for-generation";
 import {
   selectReferenceSiteForBuild,
   formatReferenceSitePromptBlock,
@@ -72,6 +79,19 @@ import {
   runGeneratedSiteQualityGate,
   runMultipageHtmlQa,
 } from "@/lib/generator-engine/multipage-postprocess";
+import {
+  ARCHITECT_JSON_TEMPERATURE,
+  PAGE_JSON_TEMPERATURE,
+  buildArchitectJsonSystemPrompt,
+  buildEtalonMainSkeleton,
+  buildPageForbiddenPromptBlock,
+  buildPageJsonSystemPrompt,
+  buildPageRegenFailureOverlay,
+  computeClaudeSiteTokenBudgets,
+  evaluatePageQualityRegen,
+  readPromptTemperatureEnv,
+  stripModelJsonFences,
+} from "@/lib/generator-engine/multipage-prompt-contract";
 import {
   isCrossBuildMemoryEnabled,
   isFreeGenerationMode,
@@ -1159,6 +1179,7 @@ function extractJsonObject(text) {
     const t = String(r || "").trim();
     if (t && !roots.includes(t)) roots.push(t);
   };
+  pushRoot(stripModelJsonFences(raw0));
   pushRoot(raw0);
   const fenced = raw0.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced) pushRoot(String(fenced[1] || "").trim());
@@ -3192,6 +3213,8 @@ function buildArchitectPrompt({
   promptProfileOverlay = "",
   promptFamilyOverlay = "",
   referenceBlend = false,
+  siteGenerationRulesBlock = "",
+  sourceArticlesOverlay = "",
 }) {
   const layoutCatalog = shuffleWithSeed(
     getLayoutVariantPool(),
@@ -3240,9 +3263,16 @@ function buildArchitectPrompt({
       )
         .slice(0, 2)
         .join(" ");
-  return `Ты формируешь краткий план сайта. Верни ТОЛЬКО валидный JSON без markdown.
+  return `JSON CONTRACT: верни ТОЛЬКО валидный JSON. Без markdown. Без \`\`\`json. Без комментариев до/после.
+Схема корня: { "brandName": string, "pages": Page[] }
+Каждая страница: file, role (ru), title, description, contentAngle, tone, layoutVariant, sectionOrder, mainComponents, structuralArchetypeIds
+
+Ты формируешь краткий план сайта.
 
 ${buildQualityAndSeoPriorityBlock("architect")}
+
+${siteGenerationRulesBlock ? `\n${siteGenerationRulesBlock}\n` : ""}
+${sourceArticlesOverlay ? `\n${sourceArticlesOverlay}\n` : ""}
 
 Тема: ${theme}
 Бренд из темы: «${brandFromTheme}».
@@ -3436,6 +3466,9 @@ function buildPagePrompt({
   siteClassNamespace = null,
   strictEtalonLayout = false,
   allPages = [],
+  projectSlug = "",
+  siteGenerationRulesBlock = "",
+  sourceArticlesOverlay = "",
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const allowedPageFiles = (Array.isArray(allPages) ? allPages : [])
@@ -3908,9 +3941,9 @@ ${refDocContextBlock}${referenceTemplateShellLayoutBlock}
 - **Согласованность:** смысл и классы <main> должны соответствовать file «${pageMeta.file}» и role «${String(pageMeta.role || "").trim()}» (не подставляй чужой тип страницы, например payments_* на vip.php).
 - Сохрани **порядок и вложенность** блоков шаблона (включая сайдбары). План архитектора и sectionOrder **не** важнее шаблона — **не** перестраивай DOM под «фиксированные» слоты. **#lw-games** / **#lw-vip** — см. отдельные блоки выше: по умолчанию **не** добавляй ради плана.
 
---- ШАБЛОН (inner HTML <main> референса) ---
-${String(referenceTemplateMainHtml || "").trim()}
---- конец шаблона ---
+--- СКЕЛЕТ inner <main> (порядок секций и классы; текст в эталоне заменён на […]) ---
+${etalonMainForPrompt || buildEtalonMainSkeleton(referenceTemplateMainHtml) || "(пусто)"}
+--- конец скелета ---
 
 **mainHtml** в ответе: один корневой \`<main class="…">\` на основе шаблона (не пустой и не вся страница целиком).
 `
@@ -3929,6 +3962,15 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
 `
     : "";
 
+  const forbiddenBlock = buildPageForbiddenPromptBlock({
+    projectSlug: projectSlug || buildNonce,
+    brandName: themeBrandHint || brandTerms?.[0] || "",
+    navFiles: (Array.isArray(allPages) ? allPages : []).map((p) => p?.file),
+    imgList: allowedImgList,
+  });
+  const etalonMainForPrompt = refTpl
+    ? buildEtalonMainSkeleton(referenceTemplateMainHtml)
+    : "";
   const pagePolicy = strictTpl
     ? `Генерация (${templatePageLabel}): **DOM 1:1** с эталоном; меняй только русские тексты, бренд, href и SEO в head; **запрещено** менять структуру секций и переименовывать классы ig-* / lw-* / union_*.`
     : refTpl
@@ -4094,7 +4136,17 @@ ${incF ? `  "footerHtml": "<footer class=\\"${classPrefix}site-footer\\">...</fo
 
   return `Ты senior фронтенд-разработчик. Сгенерируй контент ОДНОЙ страницы для статического сайта.
 
+${forbiddenBlock}
+
 ${buildQualityAndSeoPriorityBlock("page")}
+
+${siteGenerationRulesBlock ? `\n${siteGenerationRulesBlock}\n` : ""}
+${sourceArticlesOverlay ? `\n${sourceArticlesOverlay}\n` : ""}
+
+Gateway CTA URL: ${gtw}
+Internal links ONLY to: ${allowedPageFiles || "файлы плана"}
+Available ./img/ files: ${allowedImgList || "logo.png, favicon.png"}
+Min word count (<main>, русский текст): ${Number(minPageWords) || MIN_PAGE_WORDS}
 
 ${referenceTemplateBlock}
 ${diversityPackText}
@@ -6320,11 +6372,14 @@ async function generatePageBundle(
   onLog
 ) {
   const totalPg = Math.max(1, Number(ctx.totalPages) || 1);
+  const perFileCap =
+    ctx.claudePageMaxTokensByFile?.[pageMeta.file] ??
+    ctx.claudePageMaxTokens;
   const claudePageCap =
-    Number(ctx.claudePageMaxTokens) > 0
+    Number(perFileCap) > 0
       ? Math.min(
           PAGE_MAX_TOKENS,
-          Math.max(512, Math.trunc(Number(ctx.claudePageMaxTokens)))
+          Math.max(512, Math.trunc(Number(perFileCap)))
         )
       : PAGE_MAX_TOKENS;
   emitLog(
@@ -6351,6 +6406,18 @@ async function generatePageBundle(
   const siblingPlanSummary = formatSiblingPlanSummary(
     ctx.allPages,
     pageMeta.file
+  );
+  const sourceArticlesPicked = pickSourceArticlesFromPool(
+    ctx.sourceArticlesPool || [],
+    `${ctx.structureSeed || ctx.siteSeed || ""}|${pageMeta.file}|${ctx.buildNonce || ""}`,
+    resolveSourceArticlesSettings().countPerPage
+  );
+  const sourceArticlesOverlay = formatSourceArticlesPromptBlock(
+    sourceArticlesPicked,
+    {
+      themeBrandHint: ctx.themeBrandHint || ctx.publicBrandName || "",
+      pageFile: pageMeta.file,
+    }
   );
   const retryStep = Math.max(
     Number(ctx.similarityRetryCount) || 0,
@@ -6450,6 +6517,9 @@ async function generatePageBundle(
     catalogSeedKey: `${ctx.structureFingerprint || ""}|${ctx.buildNonce || ""}`,
     strictEtalonLayout: Boolean(ctx.strictEtalonLayout),
     allPages: ctx.allPages || [],
+    projectSlug: ctx.projectSlug || "",
+    siteGenerationRulesBlock: ctx.siteGenerationRulesBlock || "",
+    sourceArticlesOverlay,
   });
 
   let user = userBase;
@@ -6501,16 +6571,25 @@ async function generatePageBundle(
   const fontS = sp.fontStack ?? "Arial, sans-serif";
   const minWordsDs =
     Number(ctx.minPageWords) || minWordsTargetForPageFile(pageMeta.file);
+  const pageTemp = Math.min(
+    GENERATION_TEMPERATURE,
+    readPromptTemperatureEnv("SOFTGEN_PAGE_TEMPERATURE", PAGE_JSON_TEMPERATURE)
+  );
   const systemDeepseekPage =
+    buildPageJsonSystemPrompt({
+      minWords: minWordsDs,
+      bg: bgS,
+      card: cardS,
+      block: blockS,
+      accent: accS,
+      fontStack: fontS,
+      strictEtalonDom: Boolean(ctx.strictEtalonLayout),
+    }) +
+    " " +
     buildQualityAndSeoPriorityBlock("system") +
     " " +
-    "Ты генерируешь только один JSON-объект (без markdown и текста до/после). " +
-    "HTML/CSS/JS внутри строк JSON: экранируй двойные кавычки как \\\", переносы как \\n, обратный слэш как \\\\. " +
-    "Сразу пиши финальный русский текст для людей (без плейсхолдеров @@PHn@@). " +
-    "В JSON обязательны ключи headHtml, headerHtml, mainHtml, footerHtml, pageCss, pageJs (headerHtml/footerHtml могут быть \"\" по инструкции user). " +
-    `Визуал <main>: уникальная палитра этого билда — полотно ${bgS}, слоты ${cardS}, блоки ${blockS}, акцент ${accS}; шрифт ${fontS}. Не копируй «фирменный» вид других сгенерированных сайтов. Порядок секций и каркас свободные (левые/правые сайдбары, асимметрия, лонгриды — допустимы). Не используй Tailwind bg-slate/bg-zinc/bg-blue для обложки страницы и секций. Минимум декоративных <img> в <main> (не слоты игр): приоритет полноценному тексту в <p>. ` +
-    `Внутри <main> — много содержательных абзацев и списков; ориентир по объёму: не меньше ~${minWordsDs} слов plain-текста. ` +
-    "Имена в pageJs — человекочитаемые (initFaqToggle, bindPromoCards), не function-12345 и не однобуквенные идентификаторы.";
+    "Финальный русский текст без @@PHn@@. " +
+    "Не используй Tailwind bg-slate/bg-zinc/bg-blue для обложки. Приоритет абзацам <p>, не коллажу картинок.";
 
   const systemDeepseekRetry =
     systemDeepseekPage +
@@ -6522,7 +6601,8 @@ async function generatePageBundle(
     "Верни полный JSON; исправь ТОЛЬКО pageJs: корректный JavaScript для браузера без import/export, TypeScript и JSX; при необходимости оберни в (function(){ ... })(); " +
     "не дублируй имена переменных из типичных паттернов вроде $$ или gateway. Остальные поля сохрани как в запросе.";
 
-  const userWithLayout = `${user}${LAYOUT_PLACEHOLDER_BLOCK}`;
+  const regenOverlay = buildPageRegenFailureOverlay(ctx.pageRegenReason);
+  const userWithLayout = `${user}${regenOverlay}${LAYOUT_PLACEHOLDER_BLOCK}`;
 
   let data;
   let lastParseError = null;
@@ -6540,7 +6620,7 @@ async function generatePageBundle(
       system: attempt === 1 ? systemDeepseekPage : systemDeepseekRetry,
       user: userWithLayout,
       maxTokens: claudePageCap,
-      temperature: GENERATION_TEMPERATURE,
+      temperature: pageTemp,
       onLog,
       shouldStop: ctx.shouldStop,
       budgetTracker: ctx.claudeBudgetTracker,
@@ -7505,7 +7585,9 @@ export async function buildPromptPreview({
       pickSeed: `${buildNonce}|${safeName}|preview`,
     });
     if (profile) {
-      promptProfileOverlay = formatGenerationPromptProfileBlock(profile);
+      promptProfileOverlay = formatGenerationPromptProfileBlock(profile, {
+        themeBrandHint: themeBrandHintEarly,
+      });
     }
   } catch {
     /* ignore profile load errors in preview */
@@ -7856,24 +7938,34 @@ export async function buildMultipageSite({
     budget: SITE_CLAUDE_OUTPUT_BUDGET,
     used: 0,
   };
+  const claudeTokenPlan = computeClaudeSiteTokenBudgets(
+    expectedFiles,
+    SITE_CLAUDE_OUTPUT_BUDGET
+  );
   const claudeArchitectCap = Math.max(
-    4096,
+    512,
     Math.min(
       ARCHITECT_MAX_TOKENS,
-      Math.floor(SITE_CLAUDE_OUTPUT_BUDGET * 0.18)
+      claudeTokenPlan.architectMaxTokens
     )
   );
-  const claudeRemainder = Math.max(0, SITE_CLAUDE_OUTPUT_BUDGET - claudeArchitectCap);
+  const perPageCaps = Object.values(claudeTokenPlan.pageMaxTokensByFile).map(
+    (n) => Number(n) || 0
+  );
   const claudePagePassCap = Math.max(
-    8192,
+    512,
     Math.min(
       PAGE_MAX_TOKENS,
-      Math.floor(claudeRemainder / pageCountForBudget)
+      ...(perPageCaps.length ? perPageCaps : [8192]),
+      Math.floor(
+        (SITE_CLAUDE_OUTPUT_BUDGET - claudeArchitectCap) /
+          Math.max(1, pageCountForBudget)
+      )
     )
   );
   emitLog(
     onLog,
-    `Claude-only: бюджет ~${SITE_CLAUDE_OUTPUT_BUDGET} output-токенов на сайт → архитектор max≈${claudeArchitectCap}, на страницу max≈${claudePagePassCap} (${pageCountForBudget} стр.)`
+    `Claude-only: бюджет ~${SITE_CLAUDE_OUTPUT_BUDGET} output-токенов → архитектор max≈${claudeArchitectCap} (15%, cap 2000), страницы: index≈40% остатка, прочие поровну (${pageCountForBudget} стр., default cap≈${claudePagePassCap})`
   );
   const themeBrandHintEarly = brandKit?.brandName
     ? String(brandKit.brandName).trim()
@@ -7892,13 +7984,16 @@ export async function buildMultipageSite({
     const profile = await selectGenerationPromptProfileForBuild({
       theme: themeNorm,
       pickSeed: `${buildNonce}|${safeName}`,
+      themeBrandHint: themeBrandHintEarly,
       onLog: (m) => emitLog(onLog, m),
     });
     if (profile) {
-      promptProfileOverlay = formatGenerationPromptProfileBlock(profile);
+      promptProfileOverlay = formatGenerationPromptProfileBlock(profile, {
+        themeBrandHint: themeBrandHintEarly,
+      });
       emitLog(
         onLog,
-        `Профиль промпта (Supabase): ${String(profile.slug || profile.id || "?").slice(0, 80)}`
+        `Профиль промпта (Supabase): ${String(profile.name || profile.id || "?").slice(0, 80)}`
       );
     }
   } catch (e) {
@@ -7907,6 +8002,31 @@ export async function buildMultipageSite({
       `Supabase generation_prompt_profiles: ${String(e?.message || e).slice(0, 240)} — без профиля`
     );
   }
+
+  let sourceArticlesPool = [];
+  let sourceArticlesArchitectBlock = "";
+  try {
+    const saArchitect = await loadSourceArticlesContextForBuild({
+      theme: themeNorm,
+      pickSeed: `${buildNonce}|${safeName}`,
+      pageFile: "architect",
+      themeBrandHint: themeBrandHintEarly,
+      articleCount: 1,
+      onLog: (m) => emitLog(onLog, m),
+    });
+    sourceArticlesPool = saArchitect.pool;
+    sourceArticlesArchitectBlock = saArchitect.block;
+  } catch (e) {
+    emitLog(
+      onLog,
+      `source_articles (architect): ${String(e?.message || e).slice(0, 180)}`
+    );
+  }
+
+  const siteRulesForArchitect = buildSiteGenerationRulesBlock({
+    themeBrandHint: themeBrandHintEarly,
+    logoSrc: logoSrcForBuild,
+  });
   let pageTemplatePlan = {};
   let templateCssFromEtalon = null;
   let singleEtalonTemplateId = null;
@@ -8212,6 +8332,8 @@ export async function buildMultipageSite({
     promptProfileOverlay: finalPromptOverlay,
     promptFamilyOverlay: architectPromptFamilyOverlay,
     referenceBlend: referenceLocked,
+    siteGenerationRulesBlock: siteRulesForArchitect,
+    sourceArticlesOverlay: sourceArticlesArchitectBlock,
   });
   let architectUser = architectUserBase;
   if (!referenceLocked) {
@@ -8245,11 +8367,23 @@ export async function buildMultipageSite({
     "LLM: архитектор сайта — запрос плана страниц и бренда (это может занять несколько минут)…"
   );
   emitLog(onLog, "ЭТАП: архитектор JSON (Claude) — план страниц и brandName");
+  const architectTemp = readPromptTemperatureEnv(
+    "SOFTGEN_ARCHITECT_TEMPERATURE",
+    ARCHITECT_JSON_TEMPERATURE
+  );
   const architectSystemJsonRules =
+    buildArchitectJsonSystemPrompt({
+      expectedPageCount: expectedFiles.length,
+      referenceLocked,
+      minIndexWords: MIN_INDEX_PAGE_WORDS,
+      minPageWords: MIN_PAGE_WORDS,
+      maxPageWords: MAX_PAGE_WORDS,
+      mainWordGuide: MAIN_WORD_VOLUME_GUIDE,
+    }) +
+    " " +
     buildQualityAndSeoPriorityBlock("architect") +
     " " +
-    "Отвечай только валидным JSON без обёрток и markdown. Корневой объект — только brandName и pages; не добавляй jsonLd, schema и другие ключи верхнего уровня. Не включай переводы строк внутри строк без экранирования. Во всех строковых значениях экранируй символ двойной кавычки как \\\" (иначе JSON ломается). Запрещены «умные» кавычки «» внутри JSON — только обычные \\\". Во всех полях JSON, которые попадут на сайт (title, description в pages, brandName): только русский язык для читабельных текстов. " +
-    "Никогда не подставляй в brandName и человекочитаемые поля техническое имя папки сборки (латиница вида my-project-08) и служебные метки билда — только осмысленное имя бренда из темы или плана. ";
+    "Экранируй \" как \\\". Только русский в title/description/role. Не подставляй имя папки сборки в brandName. ";
   const architectSystemPlanTail = referenceLocked
     ? `Режим референса (зеркало каркаса): если в user есть референс и ref-structure — **sectionOrder**, **layoutVariant** и типы секций **максимально как у референса** (включая сценарий с сайдбаром). Свежесть — в title/description/contentAngle/tone/role и текстах; **не** ломай каркас и **не** гони контраст URL ценой расхождения с референсом. Избегай типовых заголовков-штампов. Цель по объёму в <main>: ориентир ~${MAIN_WORD_VOLUME_GUIDE} слов; **index.php** — минимум ${MIN_INDEX_PAGE_WORDS} слов; остальные страницы пакета — минимум ${MIN_PAGE_WORDS} слов; максимум на любой странице ${MAX_PAGE_WORDS}; упор на полноценные абзацы <p>, минимум таблиц и галерей изображений. В плане ровно ${expectedFiles.length} страниц; title/description не дублировать между URL.`
     : `Разные проекты и разные билды не должны схлопываться в один шаблон: меняй акценты, формулировки title/description, contentAngle и порядок смысловых блоков; избегай типовых заголовков-штампов. Цель по объёму в <main>: ориентир ~${MAIN_WORD_VOLUME_GUIDE} слов; **index.php** — минимум ${MIN_INDEX_PAGE_WORDS} слов; остальные страницы пакета — минимум ${MIN_PAGE_WORDS} слов; максимум на любой странице ${MAX_PAGE_WORDS}; упор на полноценные абзацы <p>, минимум таблиц и галерей изображений. В плане ровно ${expectedFiles.length} страниц — все должны быть контрастны по структуре; не копируй один каркас на все URL. Разнообразь типы секций. Каждый новый JSON-план не должен повторять предыдущую генерацию другого сайта — важна уникальность для анти-дубликатных сигнатур.`;
@@ -8259,7 +8393,7 @@ export async function buildMultipageSite({
     system: architectSystemJsonRules + architectSystemPlanTail,
     user: architectUser,
     maxTokens: claudeArchitectCap,
-    temperature: GENERATION_TEMPERATURE,
+    temperature: architectTemp,
     onLog,
     budgetTracker: claudeBudgetTracker,
   });
@@ -8477,6 +8611,12 @@ export async function buildMultipageSite({
     gameTabSlotBatches[0]?.length > 0
       ? gameTabSlotBatches[0]
       : buildIndexedGameSlots(imageFiles, siteSeed, 8);
+  const siteGenerationRulesBlock = buildSiteGenerationRulesBlock({
+    themeBrandHint: themeBrandHintEarly,
+    gameSlotPaths,
+    logoSrc: logoSrcForBuild,
+    sitePalette,
+  });
   const canonSlotCount = CANONICAL_SLOT_GAME_FILENAMES.filter((f) =>
     imageFiles.includes(f)
   ).length;
@@ -8539,6 +8679,8 @@ export async function buildMultipageSite({
     publicBrandName: brandName,
     diversityPackText: diversityPackTextWithPlan,
     promptProfileOverlay: finalPromptOverlay,
+    sourceArticlesPool,
+    siteGenerationRulesBlock,
     allPages: pages,
     sitePalette,
     totalPages: pages.length,
@@ -8546,6 +8688,7 @@ export async function buildMultipageSite({
     brandTerms: [brandName, themeBrandHintEarly].filter(Boolean),
     requestTokenCap: claudePagePassCap,
     claudePageMaxTokens: claudePagePassCap,
+    claudePageMaxTokensByFile: claudeTokenPlan.pageMaxTokensByFile,
     claudeBudgetTracker,
     shouldStop: shouldStopJob,
     chromeShell,
@@ -8612,7 +8755,16 @@ export async function buildMultipageSite({
     ctx.similarityRetryCount = 0;
     ctx.wordCountRetryCount = 0;
     ctx.wordCountOverMaxRetryCount = 0;
+    ctx.pageRegenReason = "";
     ctx.isFirstSitePage = i === 0;
+    const pageCapLog =
+      ctx.claudePageMaxTokensByFile?.[pageMeta.file] ?? ctx.claudePageMaxTokens;
+    if (pageCapLog) {
+      emitLog(
+        onLog,
+        `Страница «${pageMeta.file}»: max_tokens≈${pageCapLog} (бюджет пакета)`
+      );
+    }
     let bundle = await generatePageBundle(
       claudeKey,
       ctx,
@@ -8699,6 +8851,19 @@ export async function buildMultipageSite({
           : 0;
         const words = countWords(bundle.mainText || "");
         const minWordsPage = minWordsTargetForPageFile(pageMeta.file);
+        const contractQuality =
+          isQualityRegenEnabled() && !ctx.strictEtalonLayout
+            ? evaluatePageQualityRegen({
+                html: bundle.html || "",
+                mainText: bundle.mainText || "",
+                wordCount: words,
+                gatewayUrl: ctx.gatewayUrl,
+                pages: ctx.allPages,
+                pageFile: pageMeta.file,
+                minWords: minWordsPage,
+              })
+            : { regen: false };
+        const contractFail = Boolean(contractQuality.regen);
         const tooShort = words < minWordsPage;
         const tooLong = words > MAX_PAGE_WORDS;
         const truncatedMain = Boolean(bundle.truncatedMain);
@@ -8753,6 +8918,7 @@ export async function buildMultipageSite({
           !tooShort &&
           !tooLong &&
           !truncatedMain &&
+          !contractFail &&
           !tooSimilar &&
           !tooSimilarCrossBuild &&
           !tooFarFromReference &&
@@ -8765,13 +8931,16 @@ export async function buildMultipageSite({
         ) {
           break;
         }
+        if (contractFail) {
+          ctx.pageRegenReason = contractQuality.reason || "quality_contract";
+        }
         ctx.similarityRetryCount = retry + 1;
         if (tooShort) ctx.wordCountRetryCount = retry + 1;
         if (tooLong) ctx.wordCountOverMaxRetryCount = retry + 1;
         if (truncatedMain) ctx.wordCountRetryCount = retry + 1;
         emitLog(
           onLog,
-          `Страница «${pageMeta.file}»: ${truncatedMain ? "обрезанный HTML (нет </main> или обрыв текста); " : ""}${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${textRegenStages}…`
+          `Страница «${pageMeta.file}»: ${truncatedMain ? "обрезанный HTML (нет </main> или обрыв текста); " : ""}${contractFail ? `контракт JSON/ссылок (${contractQuality.reason}); ` : ""}${tooShort ? `объём ${words} слов (< ${minWordsPage}); ` : ""}${tooLong ? `объём ${words} слов (> ${MAX_PAGE_WORDS}); ` : ""}${tooFewBrandMentions ? `бренд в h1-h3=${headingBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_HEADINGS}); ` : ""}${tooFewBrandParagraphMentions ? `бренд в <p>=${paragraphBrandMentions} (< ${MIN_BRAND_MENTIONS_IN_PARAGRAPHS}); ` : ""}${tooSimilar ? `text-sim=${maxSim.toFixed(2)} (порог < ${(MAIN_TEXT_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%); ` : ""}${tooSimilarCrossBuild ? `cross-build dom=${maxCrossBuildDomSim.toFixed(2)} (порог < ${(CROSS_BUILD_DOM_SIM_THRESHOLD * 100).toFixed(0)}%), cross-build class=${maxCrossBuildClassSim.toFixed(2)} (порог < ${(CROSS_BUILD_CLASS_SIM_THRESHOLD * 100).toFixed(0)}%); ` : ""}${(tooFarFromReference || tooLowReferenceOrder) && refSim ? `ref-structure=${refSim.score.toFixed(2)} (порог >= ${(REFERENCE_STRUCTURE_SIMILARITY_THRESHOLD * 100).toFixed(0)}%; secSet=${refSim.sectionsSet.toFixed(2)}, secOrder=${refSim.sectionsOrder.toFixed(2)} (min ${(REFERENCE_SECTION_ORDER_MIN * 100).toFixed(0)}%), semStyle=${refSim.semanticStyleSet.toFixed(2)}, layout=${refSim.layoutFlagsMatch.toFixed(2)}, mix=${Number(refSim.fullCompositeScore).toFixed(2)}); ` : ""}dom-sim=${maxDomSim.toFixed(2)}, class-rhythm=${maxClassRhythmSim.toFixed(2)}, depth-hist=${maxDepthHistSim.toFixed(2)} — похожесть каркаса на уже готовые страницы этого сайта (Jaccard 0…1; **чем ниже — тем лучше**); пока любая из метрик **≥** порога (${(DOM_STRUCTURE_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(CLASS_RHYTHM_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}% / ${(DOM_DEPTH_HIST_SIMILARITY_REGEN_THRESHOLD * 100).toFixed(0)}%) — перегенерация ${retry + 1}/${textRegenStages}…`
         );
         const mergedAvoid = buildAvoidPhrases([
           ...previousMainTexts,

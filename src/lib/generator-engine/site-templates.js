@@ -10,6 +10,7 @@ import {
   resolveSiteTemplateBundle,
   invalidateSiteTemplateCache,
 } from "@/src/lib/generation-site-templates";
+import { buildEtalonMainSkeleton } from "@/lib/generator-engine/multipage-prompt-contract";
 
 const ENGINE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -829,10 +830,11 @@ export function buildCloneModePromptBlock({
     }
   }
   if (mainTpl) {
+    const skeleton = buildEtalonMainSkeleton(mainTpl);
     lines.push(
-      "--- ШАБЛОН inner <main> (копируй структуру 1:1) ---",
-      mainTpl,
-      "--- конец шаблона ---"
+      "--- СКЕЛЕТ inner <main> (DOM 1:1; текст в эталоне → […]) ---",
+      skeleton || mainTpl.slice(0, 12000),
+      "--- конец скелета ---"
     );
   }
   return `\n${lines.filter(Boolean).join("\n")}\n`;

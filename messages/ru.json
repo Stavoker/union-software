@@ -192,6 +192,10 @@
       "SOFTGEN_MAX_PAGE_WORDS": "Максимум слов в основном контенте на любой странице (по умолч. 2000)",
       "AURORA_GENERATION_TEMPERATURE": "Температура Claude (0.75–1). Ниже — стабильнее SEO-текст и вёрстка; выше — больше вариативности (по умолч. 0.88)",
       "SOFTGEN_QUALITY_REGEN_ENABLED": "Повторная генерация страницы, если текст слишком короткий или похож на другие URL (1/0; по умолч. 1)",
+      "SOFTGEN_SOURCE_ARTICLES_ENABLED": "Референс-тексты из source_articles в промпте LLM (1/0; пусто = включено)",
+      "SOFTGEN_SOURCE_ARTICLES_LANGUAGE": "Язык статей в source_articles (напр. ru, uk, en; по умолч. ru)",
+      "SOFTGEN_SOURCE_ARTICLES_COUNT": "Сколько примеров статей на страницу, 0–4 (по умолч. 2)",
+      "SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT": "Сколько статей загружать в пул из Supabase (5–120; по умолч. 40)",
       "SPACESHIP_API_KEY": "Ключ Spaceship API",
       "SPACESHIP_API_SECRET": "Секрет Spaceship API",
       "SPACESHIP_CONTACT_ID": "Contact ID для регистрации домена",
@@ -618,7 +622,7 @@
       },
       "settingsGenerator": {
         "title": "Settings — генератор",
-        "body": "Settings → Генератор: ключи Claude, модель, URL API, лимиты токенов (ANTHROPIC_MAX_TOKENS_*, AURORA_CLAUDE_SITE_OUTPUT_BUDGET), объём текста (SOFTGEN_MIN_* / SOFTGEN_MAX_PAGE_WORDS), AURORA_GENERATION_TEMPERATURE, SOFTGEN_QUALITY_REGEN_ENABLED. Прочие SOFTGEN_* (эталоны) — в .env сервера."
+        "body": "Settings → Генератор: ключи Claude, модель, URL API, лимиты токенов (ANTHROPIC_MAX_TOKENS_*, AURORA_CLAUDE_SITE_OUTPUT_BUDGET), объём текста (SOFTGEN_MIN_* / SOFTGEN_MAX_PAGE_WORDS), AURORA_GENERATION_TEMPERATURE, SOFTGEN_QUALITY_REGEN_ENABLED, SOFTGEN_SOURCE_ARTICLES_* (референс-тексты из source_articles). Прочие SOFTGEN_* (эталоны) — в .env сервера."
       },
       "settingsSpaceshipZomro": {
         "title": "Settings — Spaceship и Zomro",

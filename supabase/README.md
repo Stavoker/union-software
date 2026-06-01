@@ -22,7 +22,9 @@ SQL-міграції та політики **не виконуються авт�
 
 - `generation_reference_sites` — для Union generation **варіант B** не використовується як вхід верстки; залишається в БД для сумісності/статистики.
 - `generation_site_templates` + `generation_site_template_assets` — эталони **u-bet162** (`bet162`) та **u-spot064** (`spot064`): PHP/CSS/JS окремими рядками; генератор і `GET /api/generator/site-templates/[slug]` читають через Supabase. Сид: `node scripts/seed-generation-site-templates.mjs` (після міграції `20260525120000_generation_site_templates.sql`).
-- `source_articles` — корпус текстів для Copy Engine.
+- `source_articles` — глобальний корпус текстів для Copy Engine (read: усі `authenticated`, write: `admin`). Міграція: `migrations/20260528160000_source_articles.sql` (потрібен `vector`, embedding 1536). Сид/редагування — `admin-text-gen`.
+- `generation_prompt_profiles` — універсальні профілі промптів (`brand_scope=any`); генератор: weighted random + `full_generation_prompt` у architect/page.
+- `source_articles` — корпус прикладів текстів; генератор підставляє фрагменти в промпт (стиль, не копіпаст). Налаштування: **Dashboard → Settings** (`SOFTGEN_SOURCE_ARTICLES_*` per-account).
 - `hosts` — SSH/VPS для `/dashboard/domain`; **по одному набору на користувача** (`user_id`, RLS). Міграція: `migrations/20260527120000_user_hosts.sql`. Глобальні рядки без `user_id` видаляються при застосуванні.
 - `telegram_subscribers`, `telegram_link_codes`, `telegram_bot_messages` — бот і персональні сповіщення (`20260528120000_telegram_user_notifications.sql`).
 - `seo_*` — перенесені з поточних сервісів за потреби.

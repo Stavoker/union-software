@@ -41,6 +41,10 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
   def("SOFTGEN_MAX_PAGE_WORDS", "generator"),
   def("AURORA_GENERATION_TEMPERATURE", "generator"),
   bool("SOFTGEN_QUALITY_REGEN_ENABLED", "generator"),
+  bool("SOFTGEN_SOURCE_ARTICLES_ENABLED", "generator"),
+  def("SOFTGEN_SOURCE_ARTICLES_LANGUAGE", "generator"),
+  def("SOFTGEN_SOURCE_ARTICLES_COUNT", "generator"),
+  def("SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT", "generator"),
 
   def("SPACESHIP_API_KEY", "spaceship", { secret: true }),
   def("SPACESHIP_API_SECRET", "spaceship", { secret: true }),

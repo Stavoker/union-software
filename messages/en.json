@@ -192,6 +192,10 @@
       "SOFTGEN_MAX_PAGE_WORDS": "Maximum words in page main content on any page (default 2000)",
       "AURORA_GENERATION_TEMPERATURE": "Claude temperature (0.75–1). Lower = steadier SEO copy and layout; higher = more variety (default 0.88)",
       "SOFTGEN_QUALITY_REGEN_ENABLED": "Regenerate a page if text is too short or too similar to other URLs (1/0; default 1)",
+      "SOFTGEN_SOURCE_ARTICLES_ENABLED": "Reference texts from source_articles in the LLM prompt (1/0; empty = on)",
+      "SOFTGEN_SOURCE_ARTICLES_LANGUAGE": "Language filter for source_articles (e.g. ru, uk, en; default ru)",
+      "SOFTGEN_SOURCE_ARTICLES_COUNT": "Example articles per page, 0–4 (default 2)",
+      "SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT": "How many articles to load into the pool from Supabase (5–120; default 40)",
       "SPACESHIP_API_KEY": "Spaceship API key",
       "SPACESHIP_API_SECRET": "Spaceship API secret",
       "SPACESHIP_CONTACT_ID": "Contact ID for domain registration",
@@ -618,7 +622,7 @@
       },
       "settingsGenerator": {
         "title": "Settings — generator (Claude / SoftGen)",
-        "body": "Site generator (per-account):\n\n- CLAUDE_API_KEY_01 … 10 — Anthropic keys.\n- ANTHROPIC_MODEL, ANTHROPIC_BASE_URL — model and API.\n- ANTHROPIC_MAX_TOKENS_PAGE, ANTHROPIC_MAX_TOKENS_ARCHITECT, AURORA_CLAUDE_SITE_OUTPUT_BUDGET — Claude token limits.\n- SOFTGEN_MIN_PAGE_WORDS, SOFTGEN_MIN_INDEX_PAGE_WORDS, SOFTGEN_MAX_PAGE_WORDS — word count in page main content.\n- AURORA_GENERATION_TEMPERATURE — model temperature (quality vs variety).\n- SOFTGEN_QUALITY_REGEN_ENABLED — retry page when text is too short or too similar.\n\nOther SOFTGEN_* (etalons) — server `.env` (see `.env.example`)."
+        "body": "Site generator (per-account):\n\n- CLAUDE_API_KEY_01 … 10 — Anthropic keys.\n- ANTHROPIC_MODEL, ANTHROPIC_BASE_URL — model and API.\n- ANTHROPIC_MAX_TOKENS_PAGE, ANTHROPIC_MAX_TOKENS_ARCHITECT, AURORA_CLAUDE_SITE_OUTPUT_BUDGET — Claude token limits.\n- SOFTGEN_MIN_PAGE_WORDS, SOFTGEN_MIN_INDEX_PAGE_WORDS, SOFTGEN_MAX_PAGE_WORDS — word count in page main content.\n- AURORA_GENERATION_TEMPERATURE — model temperature (quality vs variety).\n- SOFTGEN_QUALITY_REGEN_ENABLED — retry page when text is too short or too similar.\n- SOFTGEN_SOURCE_ARTICLES_* — reference texts from Supabase source_articles (language, count, pool size).\n\nOther SOFTGEN_* (etalons) — server `.env` (see `.env.example`)."
       },
       "settingsSpaceshipZomro": {
         "title": "Settings — Spaceship and Zomro",

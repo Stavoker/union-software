@@ -192,6 +192,10 @@
       "SOFTGEN_MAX_PAGE_WORDS": "Максимум слів у головному контенті на будь-якій сторінці (за замовч. 2000)",
       "AURORA_GENERATION_TEMPERATURE": "Температура Claude (0.75–1). Нижче — стабільніший SEO-текст і вёрстка; вище — більше варіативності (за замовч. 0.88)",
       "SOFTGEN_QUALITY_REGEN_ENABLED": "Повторна генерація сторінки, якщо текст занадто короткий або схожий на інші URL (1/0; за замовч. 1)",
+      "SOFTGEN_SOURCE_ARTICLES_ENABLED": "Референс-тексти з таблиці source_articles у промпті LLM (1/0; порожньо = увімкнено)",
+      "SOFTGEN_SOURCE_ARTICLES_LANGUAGE": "Мова статей у source_articles (напр. ru, uk, en; за замовч. ru)",
+      "SOFTGEN_SOURCE_ARTICLES_COUNT": "Скільки прикладів статей на кожну сторінку, 0–4 (за замовч. 2)",
+      "SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT": "Скільки статей завантажувати з Supabase у пул (5–120; за замовч. 40)",
       "SPACESHIP_API_KEY": "Ключ Spaceship API",
       "SPACESHIP_API_SECRET": "Секрет Spaceship API",
       "SPACESHIP_CONTACT_ID": "Contact ID для реєстрації домену",
@@ -618,7 +622,7 @@
       },
       "settingsGenerator": {
         "title": "Settings — генератор (Claude / SoftGen)",
-        "body": "Розділ «Генератор сайтів» (per-account):\n\n- CLAUDE_API_KEY_01 … 10 — ключі Anthropic.\n- ANTHROPIC_MODEL, ANTHROPIC_BASE_URL — модель і API.\n- ANTHROPIC_MAX_TOKENS_PAGE, ANTHROPIC_MAX_TOKENS_ARCHITECT, AURORA_CLAUDE_SITE_OUTPUT_BUDGET — ліміти токенів Claude.\n- SOFTGEN_MIN_PAGE_WORDS, SOFTGEN_MIN_INDEX_PAGE_WORDS, SOFTGEN_MAX_PAGE_WORDS — обсяг тексту в головному контенті (мін/макс слів).\n- AURORA_GENERATION_TEMPERATURE — температура моделі (якість vs варіативність).\n- SOFTGEN_QUALITY_REGEN_ENABLED — повтор сторінки при короткому/схожому тексті.\n\nІнші SOFTGEN_* (еталони) — у серверному `.env` (див. `.env.example`)."
+        "body": "Розділ «Генератор сайтів» (per-account):\n\n- CLAUDE_API_KEY_01 … 10 — ключі Anthropic.\n- ANTHROPIC_MODEL, ANTHROPIC_BASE_URL — модель і API.\n- ANTHROPIC_MAX_TOKENS_PAGE, ANTHROPIC_MAX_TOKENS_ARCHITECT, AURORA_CLAUDE_SITE_OUTPUT_BUDGET — ліміти токенів Claude.\n- SOFTGEN_MIN_PAGE_WORDS, SOFTGEN_MIN_INDEX_PAGE_WORDS, SOFTGEN_MAX_PAGE_WORDS — обсяг тексту в головному контенті (мін/макс слів).\n- AURORA_GENERATION_TEMPERATURE — температура моделі (якість vs варіативність).\n- SOFTGEN_QUALITY_REGEN_ENABLED — повтор сторінки при короткому/схожому тексті.\n- SOFTGEN_SOURCE_ARTICLES_* — референс-тексти з Supabase source_articles (мова, кількість, пул).\n\nІнші SOFTGEN_* (еталони) — у серверному `.env` (див. `.env.example`)."
       },
       "settingsSpaceshipZomro": {
         "title": "Settings — Spaceship та Zomro",
