@@ -1,6 +1,6 @@
 import SftpClient from "ssh2-sftp-client";
 
-import { getProjectPath } from "@/src/lib/project-service";
+import { getProjectPath } from "@/src/lib/project-paths";
 import { ensurePhpStackOnHost } from "./hostPhpStack.js";
 import {
   fixDeployedSitePermissions,
@@ -126,6 +126,12 @@ export async function listDomainFolderAvailabilityOnHost(host) {
 
 /**
  * Завантажує локальний згенерований проєкт у папку домену на VPS.
+ * @param {object} opts
+ * @param {object} opts.host
+ * @param {string} opts.domain
+ * @param {string} opts.projectName
+ * @param {string} [opts.userId]
+ * @param {(msg: string) => void} [opts.onLog]
  */
 export async function deployGeneratedSiteToDomainFolder({
   host,
@@ -319,7 +325,10 @@ export async function provisionHostPhpStack({ host, onLog }) {
   };
 }
 
-/** Лише права + nginx vhost (без повторного SFTP файлів) — коли на диску вже є сайт, а в браузері 403. */
+/**
+ * Лише права + nginx vhost (без повторного SFTP файлів) — коли на диску вже є сайт, а в браузері 403.
+ * @param {{ host: object, domain: string, onLog?: (msg: string) => void }} opts
+ */
 export async function repairDeployedSiteStack({ host, domain, onLog }) {
   const normalizedDomain = String(domain || "").trim().toLowerCase();
   if (!normalizedDomain) {

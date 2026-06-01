@@ -14,9 +14,16 @@ import {
 import { getProjectsDir } from "@/src/lib/app-paths";
 import { getPhpBinary } from "@/src/lib/php-binary";
 import { buildMultipageSite } from "@/src/lib/multipage-build";
+import {
+  ensureProjectExists,
+  getProjectPath,
+  sanitizeProjectName,
+} from "./project-paths.js";
 
 const execFileAsync = promisify(execFile);
 const PROJECTS_DIR = getProjectsDir();
+
+export { getProjectPath } from "./project-paths.js";
 
 /** Глубина цепочки /en/…/en/ в config.php (уровни depth 0 .. maxDepth-1). */
 export const MAX_DEPTH_MIN = 10;
@@ -393,13 +400,6 @@ export async function warmupProject({ projectName, force = true }) {
   };
 }
 
-export async function getProjectPath(projectName) {
-  const safeName = sanitizeProjectName(projectName);
-  const outputDir = path.join(PROJECTS_DIR, safeName);
-  await ensureProjectExists(outputDir);
-  return outputDir;
-}
-
 export async function deleteProject({ projectName }) {
   const safeName = sanitizeProjectName(projectName);
   const outputDir = path.join(PROJECTS_DIR, safeName);
@@ -749,29 +749,6 @@ async function applyClaudeApiKeyToProject(outputDir, claudeApiKey) {
   const filePath = path.join(outputDir, ".claude_api_key");
   // Avoid leaking keys via logs; store per-project key for PHP templates.
   await fs.writeFile(filePath, `${value}\n`, { encoding: "utf8", mode: 0o600 });
-}
-
-function sanitizeProjectName(name) {
-  const value = String(name || "").trim();
-  if (!value) {
-    throw new Error("Укажи название проекта.");
-  }
-  const safe = value.replace(/[^a-zA-Z0-9._-]/g, "-");
-  if (!safe) {
-    throw new Error("Некорректное название проекта.");
-  }
-  return safe;
-}
-
-async function ensureProjectExists(projectPath) {
-  try {
-    const stat = await fs.stat(projectPath);
-    if (!stat.isDirectory()) {
-      throw new Error("Путь проекта не является папкой.");
-    }
-  } catch {
-    throw new Error("Проект не найден. Сначала выполни сборку.");
-  }
 }
 
 async function applyClusterThemeIfNeeded({ outputDir, template, clusterTheme }) {
