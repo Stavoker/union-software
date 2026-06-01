@@ -75,6 +75,8 @@ import {
 } from "@/lib/generator-llm-endpoint";
 import {
   applyMultipageHtmlPostprocess,
+  isBrokenLwSiteRailFragment,
+  repairUnbalancedAnchorTags,
   rewriteInternalLinksInMainToPlan,
   runGeneratedSiteQualityGate,
   runMultipageHtmlQa,
@@ -117,6 +119,7 @@ import {
   resolvePageSiteTemplate,
   mergeEtalonPageCss,
   mergeEtalonPageJs,
+  markupUsesIgamingComponents,
   siteNeedsIgamingCss,
   siteNeedsSiteShellCss,
   SITE_TEMPLATE_SPOT064,
@@ -380,6 +383,7 @@ function repairCorruptedHtmlMarkup(html) {
   );
   out = out.replace(/<button\b([^>]*?)smooth['"]?\}\)["']?>/gi, "<button$1>");
   out = out.replace(/\bon\w+\s*=\s*["'][^"']*smooth[^"']*["']/gi, "");
+  out = repairUnbalancedAnchorTags(out);
   return out;
 }
 
@@ -641,10 +645,22 @@ async function writeSpot064RailPartial(outputDir, opts = {}) {
       return `  ${phpSingleQuoted(key)} => ['href' => ${phpSingleQuoted(href)}, 'label' => ${phpSingleQuoted(e.label)}],`;
     })
     .join("\n");
+  const payEntry =
+    entries.find((e) => /payments/i.test(String(e.href || ""))) ||
+    entries.find((e) => !/index/i.test(String(e.href || "")));
+  const secondaryHref = payEntry
+    ? payEntry.href === "/"
+      ? "./index.php"
+      : String(payEntry.href || "").startsWith("./")
+        ? payEntry.href
+        : `./${String(payEntry.href || "").replace(/^\.\//, "")}`
+    : "./index.php";
   const gateway = phpSingleQuoted(opts.gatewayUrl || DEFAULT_GATEWAY_URL);
+  const secondaryPhp = phpSingleQuoted(secondaryHref);
   const content = `<?php
 $lwActiveNav = $lwActiveNav ?? 'index';
 $lwGateway = ${gateway};
+$lwSecondaryHref = ${secondaryPhp};
 $lwNav = [
 ${navLines}
 ];
@@ -675,7 +691,7 @@ ${navLines}
       target="_blank"
       rel="noopener noreferrer nofollow"
     >Регистрация</a>
-    <a class="lw-site-rail__secondary" href="./index.php">Касса</a>
+    <a class="lw-site-rail__secondary" href="<?php echo htmlspecialchars($lwSecondaryHref, ENT_QUOTES, 'UTF-8'); ?>">Касса</a>
   </div>
 </aside>
 `;
@@ -6896,7 +6912,11 @@ async function generatePageBundle(
     ctx.logoSrc || LAKI_LOGO_IMG_SRC,
     `${ctx.structureSeed || ""}|${ctx.buildNonce || ""}|${ctx.projectSlug || ""}`,
     {
-      includeIgamingCss: Boolean(ctx.needsIgamingCss),
+      includeIgamingCss:
+        Boolean(ctx.needsIgamingCss) ||
+        markupUsesIgamingComponents(
+          `${data.mainHtml || ""} ${data.headerHtml || ""} ${data.footerHtml || ""}`
+        ),
       includeSiteShellCss: Boolean(ctx.needsSiteShellCss),
     }
   );
@@ -7313,7 +7333,20 @@ async function generatePageBundle(
     headerBlock &&
     (isWellFormedChromeFragment(headerBlock, "header") ||
       (pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 &&
-        isSpot064RailBlock(headerBlock)));
+        isSpot064RailBlock(headerBlock) &&
+        !isBrokenLwSiteRailFragment(headerBlock)));
+  if (
+    shell.includeHeader &&
+    ctx.spot064RailPartialReady &&
+    pageSiteTemplateAsm === SITE_TEMPLATE_SPOT064 &&
+    isBrokenLwSiteRailFragment(headerBlock)
+  ) {
+    emitLog(
+      onLog,
+      `«${pageMeta.file}» — зламаний lw-site-rail від моделі, підставляємо partials/site-rail.php.`
+    );
+    headerBlock = buildSpot064RailInclude(pageMeta.file);
+  }
   if (shell.includeHeader && !headerChromeOk) {
     emitLog(
       onLog,
@@ -7489,6 +7522,7 @@ ${bodyInner}
     chromeVariant: ctx.chromeVariant,
     pages: ctx.allPages || [],
     gatewayUrl: gwNormOpts.gatewayUrl,
+    useRailPartial: Boolean(ctx.spot064RailPartialReady),
   });
   const qa = runMultipageHtmlQa(finalHtml, {
     pages: ctx.allPages || [],
@@ -7521,14 +7555,19 @@ ${bodyInner}
   const aiCssDelta = ctx.strictEtalonLayout
     ? ""
     : enforceMainVisualRules(pageCssRaw, ctx.sitePalette);
+  const gamesBaseline = [pageCssRaw, aiCssDelta, etalonPageCss].some((s) =>
+    String(s || "").includes("#lw-games")
+  )
+    ? ""
+    : `\n\n${buildGamesBlockBaselineCss()}`;
   const pageCssOut =
     ctx.strictEtalonLayout && etalonPageCss
-      ? etalonPageCss
+      ? `${mergeEtalonPageCss(etalonPageCss, aiCssDelta)}${gamesBaseline}`
       : dualTplStyles && etalonPageCss
-      ? mergeEtalonPageCss(etalonPageCss, aiCssDelta)
+      ? `${mergeEtalonPageCss(etalonPageCss, aiCssDelta)}${gamesBaseline}`
       : `${aiCssDelta}${
           useTemplateChrome
-            ? premiumPageCss
+            ? `${premiumPageCss}${gamesBaseline}`
             : `\n\n${buildGamesBlockBaselineCss()}\n\n${buildMainInteractBaselineCss()}\n\n${buildAiChromeBaselineCss()}${premiumPageCss}`
         }`;
   const runtimeJs = buildInteractionRuntime(
@@ -7929,6 +7968,12 @@ export async function buildMultipageSite({
   const structureSeed = `${siteSeed}|fp|${structureSalt}`;
   const structureFingerprint = `${structureSalt.slice(0, 8)}-${buildNonce.slice(0, 6)}`;
   const expectedFiles = pickExpectedMultipageFiles(structureSeed, pageCountInput);
+  if (expectedFiles.length < 2) {
+    emitLog(
+      onLog,
+      `Предупреждение: в сборке только ${expectedFiles.length} страница — для полноценного multipage выберите 2–4 в форме генератора (или смените пресет темы).`
+    );
+  }
   emitLog(
     onLog,
     `План страниц: ${expectedFiles.length} шт. (${expectedFiles.join(", ")})`
@@ -8548,11 +8593,15 @@ export async function buildMultipageSite({
     onLog,
     `Chrome: ${templateChromeEnabled ? "lw-шаблон" : "уникальный AI chrome"} (логотип ${logoSrcForBuild}${templateChromeEnabled ? `, скины h${chromeLayoutSkins.headerSkin}/f${chromeLayoutSkins.footerSkin}` : ""}); <header>=${chromeShell.includeHeader ? "да" : "нет"}, <footer>=${chromeShell.includeFooter ? "да" : "нет"}; gateway в шапке=${chromeContentOptions.headerShowGatewayCtas ? "да" : "нет"}`
   );
-  const chromeCss = getBrandChromeCss(chromeVariant, sitePalette, {
-    chromeMode: templateChromeEnabled ? "full" : "palette-only",
-    layoutSkins: chromeLayoutSkins,
-    cssDiversifyKey: `${structureSeed}|${buildNonce}|${safeName}`,
-  });
+  const chromeCss = [
+    getBrandChromeCss(chromeVariant, sitePalette, {
+      chromeMode: templateChromeEnabled ? "full" : "palette-only",
+      layoutSkins: chromeLayoutSkins,
+      cssDiversifyKey: `${structureSeed}|${buildNonce}|${safeName}`,
+    }),
+    buildGamesBlockBaselineCss(),
+    buildMainInteractBaselineCss(),
+  ].join("\n");
 
   emitLog(onLog, "Запись css/chrome.css…");
   await fs.writeFile(
@@ -8563,7 +8612,7 @@ export async function buildMultipageSite({
 
   const needsIgamingCss =
     (usesDualSiteTemplates() || strictEtalonLayout) &&
-    siteNeedsIgamingCss(pageTemplatePlan);
+    (siteNeedsIgamingCss(pageTemplatePlan) || usesPremiumIgamingLayout());
   const needsSiteShellCss =
     (usesDualSiteTemplates() || strictEtalonLayout) &&
     siteNeedsSiteShellCss(pageTemplatePlan);

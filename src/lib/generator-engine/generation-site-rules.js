@@ -39,7 +39,8 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - Изображения: max-width:100%; height:auto везде, кроме блока слотов (см. ниже).
 
 ИГРОВЫЕ ИЗОБРАЖЕНИЯ (загруженные фото = превью слотов):
-- Используй эти файлы ТОЛЬКО внутри #lw-games, сеток слотов и слайдеров/вкладок с превью игр — не в hero и не как полноэкранный фон.
+- Используй эти файлы ТОЛЬКО внутри #lw-games, сеток слотов и слайдеров/вкладок с превью игр — не в hero, не в .ig-hero-slider и не как полноэкранный фон.
+- Запрещено: блок ig-hero-slider / hero-carousel с <img src="./img/…webp"> — в первом экране только баннер/иллюстрация бренда или CSS, без превью слотов.
 - Допустимые пути (пример): ${slotLines}
 - В pageCss задай чёткие размеры превью, например:
   #lw-games img, [class*="games"] img { width:100%; max-width:168px; height:112px; min-height:112px; object-fit:cover; object-position:center; display:block; border-radius:10px; }

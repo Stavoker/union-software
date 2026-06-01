@@ -901,7 +901,16 @@ export function buildSiteTemplatePagePromptBlock({
 }
 
 export function siteNeedsIgamingCss(plan) {
-  return Object.values(plan || {}).some((t) => t === SITE_TEMPLATE_BET162);
+  return Object.values(plan || {}).some(
+    (t) => t === SITE_TEMPLATE_BET162 || t === SITE_TEMPLATE_SPOT064
+  );
+}
+
+/** Маркери premium-вёрстки (ig-hero, ig-section, …) — без css/igaming.css блоки «плоскі». */
+export function markupUsesIgamingComponents(html) {
+  return /\big-(hero|section|btn|chip|cta-banner|eyebrow|h[123]|stats|promo|vip)/i.test(
+    String(html || "")
+  );
 }
 
 export function siteNeedsSiteShellCss(plan) {

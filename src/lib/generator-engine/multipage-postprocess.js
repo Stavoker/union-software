@@ -273,6 +273,99 @@ export function normalizeGatewayHostCasingInHtml(html, gatewayUrl) {
   );
 }
 
+/** Видаляє зайві </a> без відповідного <a> (типовий артефакт LLM). */
+export function repairUnbalancedAnchorTags(html) {
+  const s = String(html || "");
+  if (!/<\/?a\b/i.test(s)) return s;
+  const tagRe = /<\/?a\b[^>]*>/gi;
+  let out = "";
+  let last = 0;
+  let open = 0;
+  let m;
+  while ((m = tagRe.exec(s)) !== null) {
+    out += s.slice(last, m.index);
+    const tag = m[0];
+    const isClose = /^<\//i.test(tag);
+    if (isClose) {
+      if (open > 0) {
+        out += tag;
+        open -= 1;
+      }
+    } else {
+      out += tag;
+      open += 1;
+    }
+    last = m.index + tag.length;
+  }
+  out += s.slice(last);
+  return out;
+}
+
+function spot064ActiveNavKey(pageFile) {
+  const f = String(pageFile || "").trim().toLowerCase();
+  if (f === "index.php" || f === "index.html") return "index";
+  return f.replace(/\.php$/i, "").replace(/[^a-z0-9_-]/gi, "") || "index";
+}
+
+export function isBrokenLwSiteRailFragment(fragment) {
+  const s = String(fragment || "");
+  if (!/<aside\b/i.test(s) || !/lw-site-rail/i.test(s)) return false;
+  if (/partials\/site-rail\.php/i.test(s)) return false;
+  if (/\{\{|\{%/.test(s)) return true;
+  if (/href=["']\s*["']/i.test(s)) return true;
+  if (/<span class="lw-site-rail__link-label">\s*<\/span>/i.test(s)) return true;
+  if (
+    /<a\b[^>]*class="[^"]*lw-site-rail__link[^"]*"[^>]*>\s*<span class="lw-site-rail__link-label">\s*<\/span>/i.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Підміняє зламаний inline rail на include partials/site-rail.php (як u-spot064). */
+export function ensureSpot064RailInclude(html, opts = {}) {
+  const s = String(html || "");
+  if (!opts.useRailPartial) return s;
+  if (/partials\/site-rail\.php/i.test(s)) return s;
+  const asideRe = /<aside\b[^>]*\blw-site-rail\b[\s\S]*?<\/aside>/i;
+  const m = s.match(asideRe);
+  if (!m || !isBrokenLwSiteRailFragment(m[0])) return s;
+  const key = spot064ActiveNavKey(opts.currentPageFile);
+  const inc = `<?php $lwActiveNav = '${key.replace(/'/g, "\\'")}'; include __DIR__ . '/partials/site-rail.php'; ?>`;
+  return s.replace(asideRe, inc);
+}
+
+/** Слот-превью поза #lw-games — компактні розміри (не hero 640×360). */
+export function capGamePreviewImagesOutsideLwGames(html) {
+  const s = String(html || "");
+  const mainM = s.match(/<main\b[\s\S]*?<\/main>/i);
+  if (!mainM) return s;
+  let main = mainM[0];
+  const gamesIdx = main.search(/\bid=["']lw-games["']/i);
+  let gamesEnd = -1;
+  if (gamesIdx >= 0) {
+    const close = main.indexOf("</section>", gamesIdx);
+    gamesEnd = close >= 0 ? close : main.length;
+  }
+  const capStyle =
+    "max-width:168px;height:112px;object-fit:cover;object-position:center;width:100%;display:block";
+  main = main.replace(/<img\b([^>]*)>/gi, (full, attrs, offset) => {
+    if (!/\bsrc=["']\.\/img\//i.test(attrs)) return full;
+    if (gamesIdx >= 0 && offset >= gamesIdx && offset < gamesEnd) return full;
+    if (/\bstyle=/i.test(attrs)) {
+      if (/max-width\s*:\s*168px/i.test(attrs)) return full;
+      return full.replace(
+        /\bstyle=(["'])([^"']*)\1/i,
+        (_, q, st) => `style=${q}${st};${capStyle}${q}`
+      );
+    }
+    return `<img${attrs} style="${capStyle}">`;
+  });
+  return s.replace(mainM[0], main);
+}
+
 export function repairMetaDescriptionInHtml(html) {
   const s = String(html || "");
   const descRe =
@@ -308,6 +401,23 @@ export function runMultipageHtmlQa(html, { pages, currentPageFile } = {}) {
 
   if (/cdn\.tailwindcss\.com/i.test(s)) {
     warnings.push("tailwind_cdn_present");
+  }
+
+  if (/<\/a>/i.test(s) && !/<a\b/i.test(s)) {
+    warnings.push("orphan_anchor_close");
+  }
+
+  const mainForImg = s.match(/<main\b[\s\S]*?<\/main>/i)?.[0] || "";
+  if (mainForImg) {
+    const gamesIdx = mainForImg.search(/\bid=["']lw-games["']/i);
+    const heroSlot = /ig-hero-slider[\s\S]{0,4000}?<img\b[^>]*\bsrc=["']\.\/img\//i.test(
+      gamesIdx >= 0 ? mainForImg.slice(0, gamesIdx) : mainForImg
+    );
+    if (heroSlot) warnings.push("slot_img_in_hero");
+  }
+
+  if (/\big-hero-premium\b/i.test(s) && !/igaming\.css/i.test(s)) {
+    warnings.push("missing_igaming_css");
   }
 
   const headerFooter = [
@@ -607,8 +717,12 @@ export function applyMultipageHtmlPostprocess(html, opts = {}) {
     chromeVariant,
     pages,
     gatewayUrl,
+    useRailPartial,
   } = opts;
 
+  out = repairUnbalancedAnchorTags(out);
+  out = ensureSpot064RailInclude(out, { currentPageFile, useRailPartial });
+  out = capGamePreviewImagesOutsideLwGames(out);
   out = normalizeGatewayHostCasingInHtml(out, gatewayUrl);
   out = rewriteChromeNavToPlan(out, {
     currentPageFile,
@@ -618,5 +732,6 @@ export function applyMultipageHtmlPostprocess(html, opts = {}) {
   });
   out = stripTailwindCdnFromHtml(out);
   out = repairMetaDescriptionInHtml(out);
+  out = repairUnbalancedAnchorTags(out);
   return out;
 }

@@ -194,6 +194,29 @@ a.ig-btn-ghost {
   color: var(--lw-accent) !important;
 }
 
+/* LLM alias for secondary CTA */
+.ig-btn-secondary,
+a.ig-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 26px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--lw-text) !important;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--lw-accent) 55%, transparent);
+  border-radius: var(--ig-radius-pill);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ig-btn-secondary:hover,
+a.ig-btn-secondary:hover {
+  background: color-mix(in srgb, var(--lw-accent) 12%, transparent);
+  border-color: var(--lw-accent);
+  color: var(--lw-accent) !important;
+}
+
 .ig-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
