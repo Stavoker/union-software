@@ -394,6 +394,21 @@ export async function markBuildJobDone(id, result) {
   job.status = "done";
   let mergedResult = result || null;
 
+  const qg = mergedResult?.qualityGate || mergedResult?.manifest?.qualityGate;
+  if (qg) {
+    if (qg.ok) {
+      appendBuildJobLog(
+        id,
+        `[qa] финальная проверка OK (предупреждений ${Number(qg.warningCount) || 0})`
+      );
+    } else {
+      appendBuildJobLog(
+        id,
+        `[qa] финальная проверка: ошибок ${Number(qg.errorCount) || 0} — см. .aurora_quality_gate.json в проекте`
+      );
+    }
+  }
+
   try {
     const { autoDeployBuildJobToHost } = await import(
       "@/lib/admin-seo/hostDomainFolders.js"

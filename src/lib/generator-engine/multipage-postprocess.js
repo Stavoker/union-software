@@ -12,6 +12,7 @@ const DEPLOY_SKIP_EXACT = new Set([
   ".aurora_multipage.json",
   ".aurora_site_meta.json",
   ".aurora_build_progress.json",
+  ".aurora_quality_gate.json",
   ".DS_Store",
 ]);
 
@@ -348,6 +349,256 @@ export function runMultipageHtmlQa(html, { pages, currentPageFile } = {}) {
 /**
  * Єдина пост-обробка HTML перед записом на диск.
  */
+function envBool(name) {
+  const v = String(process.env[name] || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function normalizePageFileList(pages) {
+  return (Array.isArray(pages) ? pages : [])
+    .map((p) => (typeof p === "string" ? p : p?.file))
+    .map((f) => String(f || "").trim())
+    .filter(Boolean);
+}
+
+function collectImgRefsFromHtml(html) {
+  const refs = [];
+  const s = String(html || "");
+  const re = /\b(?:src|href|content)=["'](\.\/img\/[^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    refs.push(
+      String(m[1] || "")
+        .replace(/^\.\/img\//i, "")
+        .split("?")[0]
+        .split("#")[0]
+        .trim()
+    );
+  }
+  return refs;
+}
+
+function collectCssJsRefsFromHtml(html) {
+  const css = [];
+  const js = [];
+  const s = String(html || "");
+  let m;
+  const cssRe = /<link\b[^>]*\bhref=(["'])([^"']+\.css)\1/gi;
+  while ((m = cssRe.exec(s)) !== null) {
+    if (!/^https?:/i.test(m[2])) css.push(m[2]);
+  }
+  const jsRe = /<script\b[^>]*\bsrc=(["'])([^"']+\.js)\1/gi;
+  while ((m = jsRe.exec(s)) !== null) {
+    if (!/^https?:/i.test(m[2])) js.push(m[2]);
+  }
+  return { css, js };
+}
+
+async function pathExists(p) {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Повна перевірка згенерованого сайту на диску (після всіх сторінок).
+ * @returns {Promise<{ ok: boolean, errors: string[], warnings: string[], pages: object[] }>}
+ */
+export async function runGeneratedSiteQualityGate(
+  outputDir,
+  { pages, baseUrl, chromeShell, onLog } = {}
+) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+  const root = String(outputDir || "").trim();
+  const pageFiles = normalizePageFileList(pages);
+  const planPages = pageFiles.map((file) => ({ file }));
+  const allowed = buildAllowedFileSet(planPages);
+  const errors = [];
+  const warnings = [];
+  const pageReports = [];
+
+  if (!pageFiles.length) {
+    errors.push("no_pages_in_plan");
+    return { ok: false, errors, warnings, pages: [] };
+  }
+
+  const requiredRoot = ["config.php", "robots.txt", "sitemap.xml"];
+  for (const name of requiredRoot) {
+    if (!(await pathExists(path.join(root, name)))) {
+      errors.push(`missing_root:${name}`);
+    }
+  }
+  if (!(await pathExists(path.join(root, "css", "chrome.css")))) {
+    warnings.push("missing_chrome_css");
+  }
+
+  let imgOnDisk = new Set();
+  const imgDir = path.join(root, "img");
+  if (await pathExists(imgDir)) {
+    const names = await fs.readdir(imgDir);
+    imgOnDisk = new Set(names.map((n) => n.toLowerCase()));
+    if (!imgOnDisk.has("logo.png") && !imgOnDisk.has("logo.svg")) {
+      warnings.push("img_logo_missing");
+    }
+  } else {
+    warnings.push("img_dir_missing");
+  }
+
+  for (let i = 0; i < pageFiles.length; i++) {
+    const file = pageFiles[i];
+    const fp = path.join(root, file);
+    const pageErrors = [];
+    const pageWarnings = [];
+
+    let html = "";
+    try {
+      const stat = await fs.stat(fp);
+      if (stat.size < 500) pageErrors.push("file_too_small");
+      html = await fs.readFile(fp, "utf8");
+    } catch {
+      pageErrors.push("file_missing");
+      pageReports.push({ file, ok: false, errors: pageErrors, warnings: pageWarnings });
+      errors.push(`${file}:file_missing`);
+      continue;
+    }
+
+    if (!/<!DOCTYPE\s+html/i.test(html) && !/<html\b/i.test(html)) {
+      pageWarnings.push("no_html_doctype");
+    }
+    if (!/<title\b[^>]*>[\s\S]*?<\/title>/i.test(html)) {
+      pageErrors.push("no_title");
+    }
+    if (!/<meta\b[^>]*\bname\s*=\s*["']description["']/i.test(html)) {
+      pageWarnings.push("no_meta_description");
+    }
+
+    const mainM = html.match(/<main\b[\s\S]*?<\/main>/i);
+    if (!mainM) {
+      pageErrors.push("no_main_block");
+    } else {
+      const mainText = mainM[0]
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (mainText.length < 60) pageErrors.push("main_empty");
+    }
+
+    if (chromeShell?.includeHeader !== false && !/<header\b/i.test(html)) {
+      pageWarnings.push("no_header");
+    }
+    if (chromeShell?.includeFooter !== false && !/<footer\b/i.test(html)) {
+      pageWarnings.push("no_footer");
+    }
+
+    const cssRel = `css/page-${i + 1}.css`;
+    const jsRel = `js/page-${i + 1}.js`;
+    if (!(await pathExists(path.join(root, cssRel)))) {
+      pageErrors.push("page_css_missing");
+    }
+    if (!(await pathExists(path.join(root, jsRel)))) {
+      pageWarnings.push("page_js_missing");
+    }
+
+    const assetRefs = collectCssJsRefsFromHtml(html);
+    for (const rel of assetRefs.css) {
+      const norm = rel.replace(/^\.\//, "");
+      if (!(await pathExists(path.join(root, norm)))) {
+        pageErrors.push(`broken_css:${norm}`);
+      }
+    }
+    for (const rel of assetRefs.js) {
+      const norm = rel.replace(/^\.\//, "");
+      if (!(await pathExists(path.join(root, norm)))) {
+        pageWarnings.push(`broken_js:${norm}`);
+      }
+    }
+
+    for (const imgName of collectImgRefsFromHtml(html)) {
+      if (!imgName) continue;
+      if (!imgOnDisk.has(imgName.toLowerCase())) {
+        pageErrors.push(`broken_img:${imgName}`);
+      }
+    }
+
+    const qa = runMultipageHtmlQa(html, { pages: planPages, currentPageFile: file });
+    for (const w of qa.warnings) {
+      if (w.startsWith("orphan_link")) pageErrors.push(w);
+      else pageWarnings.push(w);
+    }
+
+    if (/cdn\.tailwindcss\.com/i.test(html)) {
+      pageWarnings.push("tailwind_cdn");
+    }
+
+    const ok = pageErrors.length === 0;
+    pageReports.push({ file, ok, errors: pageErrors, warnings: pageWarnings });
+    for (const e of pageErrors) errors.push(`${file}:${e}`);
+    for (const w of pageWarnings) warnings.push(`${file}:${w}`);
+  }
+
+  try {
+    const sitemap = await fs.readFile(path.join(root, "sitemap.xml"), "utf8");
+    const locRe = /<loc>([^<]+)<\/loc>/gi;
+    let loc;
+    const sitemapFiles = new Set();
+    while ((loc = locRe.exec(sitemap)) !== null) {
+      const u = String(loc[1] || "").trim();
+      const file = canonicalPageFileFromHref(u.replace(/^https?:\/\/[^/]+/i, "") || u);
+      if (file) sitemapFiles.add(file);
+    }
+    for (const f of pageFiles.map((x) => x.toLowerCase())) {
+      if (!sitemapFiles.has(f) && f !== "index.php") {
+        warnings.push(`sitemap_missing:${f}`);
+      }
+    }
+    for (const sf of sitemapFiles) {
+      if (!allowed.has(sf)) warnings.push(`sitemap_orphan:${sf}`);
+    }
+  } catch {
+    /* sitemap already flagged */
+  }
+
+  const ok = errors.length === 0;
+  log(
+    ok
+      ? `[qa] сайт OK: ${pageFiles.length} стр., попереджень ${warnings.length}`
+      : `[qa] знайдено помилок ${errors.length}, попереджень ${warnings.length}`
+  );
+  if (errors.length) {
+    log(`[qa] errors: ${errors.slice(0, 15).join("; ")}${errors.length > 15 ? "…" : ""}`);
+  }
+  if (warnings.length) {
+    log(`[qa] warnings: ${warnings.slice(0, 10).join("; ")}${warnings.length > 10 ? "…" : ""}`);
+  }
+
+  const report = {
+    ok,
+    checkedAt: new Date().toISOString(),
+    baseUrl: String(baseUrl || "").trim(),
+    pageCount: pageFiles.length,
+    errorCount: errors.length,
+    warningCount: warnings.length,
+    errors: errors.slice(0, 80),
+    warnings: warnings.slice(0, 80),
+    pages: pageReports,
+  };
+
+  if (!ok && envBool("SOFTGEN_QA_FAIL_BUILD")) {
+    throw new Error(
+      `Quality gate: ${errors.slice(0, 6).join("; ")}${errors.length > 6 ? "…" : ""}`
+    );
+  }
+
+  return report;
+}
+
 export function applyMultipageHtmlPostprocess(html, opts = {}) {
   let out = String(html || "");
   const {

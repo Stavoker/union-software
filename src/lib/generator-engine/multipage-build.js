@@ -69,6 +69,7 @@ import {
 import {
   applyMultipageHtmlPostprocess,
   rewriteInternalLinksInMainToPlan,
+  runGeneratedSiteQualityGate,
   runMultipageHtmlQa,
 } from "@/lib/generator-engine/multipage-postprocess";
 import {
@@ -8925,6 +8926,37 @@ export async function buildMultipageSite({
   );
   await writeRobotsSitemap(outputDir, baseUrl, sitemapPaths);
 
+  ensureNotStopped();
+  emitLog(onLog, "Финальная проверка качества (файлы, ссылки, img, блоки)…");
+  let qualityGate = { ok: true, errors: [], warnings: [], pages: [] };
+  try {
+    qualityGate = await runGeneratedSiteQualityGate(outputDir, {
+      pages: results,
+      baseUrl,
+      chromeShell,
+      onLog,
+    });
+    await fs.writeFile(
+      path.join(outputDir, ".aurora_quality_gate.json"),
+      JSON.stringify(qualityGate, null, 2),
+      "utf8"
+    );
+    if (qualityGate.ok) {
+      emitLog(
+        onLog,
+        `QA сайта: пройдено (${results.length} стр., предупреждений ${qualityGate.warningCount || 0})`
+      );
+    } else {
+      emitLog(
+        onLog,
+        `QA сайта: есть ошибки (${qualityGate.errorCount || 0}) — см. .aurora_quality_gate.json и лог выше`
+      );
+    }
+  } catch (qaErr) {
+    emitLog(onLog, `QA сайта: прервано — ${String(qaErr?.message || qaErr).slice(0, 280)}`);
+    throw qaErr;
+  }
+
   const keyLine = `${claudeKey.trim()}\n`;
   await fs.writeFile(path.join(outputDir, ".claude_api_key"), keyLine, {
     encoding: "utf8",
@@ -8947,6 +8979,11 @@ export async function buildMultipageSite({
     generatedAt: new Date().toISOString(),
     model: ANTHROPIC_MODEL,
     chromeShell,
+    qualityGate: {
+      ok: Boolean(qualityGate?.ok),
+      errorCount: Number(qualityGate?.errorCount) || 0,
+      warningCount: Number(qualityGate?.warningCount) || 0,
+    },
   };
   await fs.writeFile(
     path.join(outputDir, ".aurora_multipage.json"),
@@ -8969,5 +9006,6 @@ export async function buildMultipageSite({
     pages: results,
     imageAssets: imageFiles,
     manifest,
+    qualityGate,
   };
 }
