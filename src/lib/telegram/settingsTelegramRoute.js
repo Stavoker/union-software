@@ -14,6 +14,7 @@ export async function GET() {
       ok: true,
       linked: chats.length > 0,
       chatCount: chats.length,
+      locales: chats.map((c) => c.locale),
     });
   } catch (e) {
     return NextResponse.json(

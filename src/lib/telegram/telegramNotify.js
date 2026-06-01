@@ -21,7 +21,8 @@ export async function notifyUserTelegram(userId, eventKey, data = {}) {
 
   const results = [];
   for (const { chatId, locale } of recipients) {
-    const text = eventText(locale, eventKey, data);
+    const loc = normalizeLocale(locale);
+    const text = eventText(loc, eventKey, data);
     if (!text) continue;
     try {
       const sent = await telegramSendMessage(chatId, text);

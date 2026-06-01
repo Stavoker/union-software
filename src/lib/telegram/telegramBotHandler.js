@@ -27,14 +27,25 @@ export async function handleTelegramUpdate(update) {
     const locale = normalizeLocale(cb.data.split(":")[1]);
     await telegramAnswerCallbackQuery(cb.id);
     if (chatId == null) return { ok: true };
+
+    const existing = await getSubscriberByChatId(chatId).catch(() => null);
+    const alreadyLinked =
+      existing?.onboarding_state === "linked" && Boolean(existing?.user_id);
+
     await upsertSubscriberRow(chatId, {
       username: cb.from?.username || null,
       first_name: cb.from?.first_name || null,
       locale,
-      onboarding_state: "await_code",
+      onboarding_state: alreadyLinked ? "linked" : "await_code",
       is_active: true,
       last_command: "lang",
+      ...(alreadyLinked ? { user_id: existing.user_id } : {}),
     });
+
+    if (alreadyLinked) {
+      await telegramSendMessage(chatId, botText(locale, "languageUpdated"));
+      return { ok: true };
+    }
     await telegramSendMessage(chatId, botText(locale, "awaitCode"));
     return { ok: true };
   }
@@ -62,7 +73,9 @@ export async function handleTelegramUpdate(update) {
     });
     const locale = normalizeLocale(sub?.locale);
     if (sub?.user_id && sub?.onboarding_state === "linked") {
-      await telegramSendMessage(chatId, botText(locale, "alreadyLinked"));
+      await telegramSendMessage(chatId, botText(locale, "alreadyLinked"), {
+        reply_markup: languageKeyboard(),
+      });
       return { ok: true };
     }
     await telegramSendMessage(chatId, botText(locale, "welcome"), {
