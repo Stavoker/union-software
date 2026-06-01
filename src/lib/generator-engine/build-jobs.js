@@ -339,20 +339,49 @@ async function persistTokenUsageForJob(job) {
   }
 }
 
+function buildJobDeployNotifyFields(job) {
+  const deploy = job?.result?.deploy;
+  const status = String(deploy?.status || "");
+  const domain = String(deploy?.domain || job?.payload?.plannedDeployDomain || "").trim();
+  const project = String(
+    job?.payload?.projectName || deploy?.projectName || job?.result?.projectName || "site"
+  ).trim();
+  const siteUrl = String(deploy?.siteUrl || (domain ? `https://${domain}/` : "")).trim();
+
+  let deployNoteKey = "";
+  let deployFailMessage = "";
+  if (status === "deployed" && domain) {
+    deployNoteKey = "";
+  } else if (status === "pending_no_slot") {
+    deployNoteKey = "deploy_no_slot";
+  } else if (status === "skipped_no_host") {
+    deployNoteKey = "deploy_no_host";
+  } else if (status === "failed") {
+    deployNoteKey = "deploy_failed";
+    deployFailMessage = String(deploy?.message || "error").slice(0, 120);
+  } else if (status) {
+    deployNoteKey = "deploy_other";
+    deployFailMessage = status;
+  }
+
+  return { project, domain, siteUrl, deployStatus: status, deployNoteKey, deployFailMessage };
+}
+
 async function notifyBuildJobTelegram(job, eventKey, extra = {}) {
   const userId = String(job?.payload?.userId || "").trim();
   if (!userId) return;
   try {
     const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
-    const project = String(job?.payload?.projectName || "site").trim();
     const pages = Array.isArray(job?.result?.pages)
       ? job.result.pages.length
       : job?.payload?.pageCount || "—";
+    const deployFields = buildJobDeployNotifyFields(job);
     await notifyUserTelegram(userId, eventKey, {
-      project,
+      ...deployFields,
       pages,
       mode: job?.result?.mode || "",
       error: String(extra.error || job?.error || "").slice(0, 280),
+      plannedDomain: String(job?.payload?.plannedDeployDomain || "").trim(),
     });
   } catch (e) {
     console.warn("[build-jobs][telegram]", e?.message || e);
@@ -377,6 +406,11 @@ export async function markBuildJobDone(id, result) {
       deploy,
     };
     if (deploy?.status === "deployed") {
+      const proj = String(job?.payload?.projectName || mergedResult?.projectName || "site").trim();
+      appendBuildJobLog(
+        id,
+        `[deploy] project ${proj} → ${deploy.domain} (${deploy.remotePath || deploy.siteUrl || ""})`
+      );
       appendBuildJobLog(
         id,
         `[deploy] site uploaded to ${deploy.domain} (${deploy.remotePath})`

@@ -39,16 +39,94 @@ const BOT = {
   },
 };
 
+const DEPLOY_NOTE = {
+  deploy_no_slot: {
+    uk: "деплой: немає вільної папки домену на хості",
+    en: "deploy: no free domain folder on host",
+    ru: "деплой: нет свободной папки домена на хосте",
+  },
+  deploy_no_host: {
+    uk: "деплой: SSH-хост не обрано",
+    en: "deploy: host not selected",
+    ru: "деплой: хост не выбран",
+  },
+  deploy_failed: {
+    uk: (d) => `деплой: помилка — ${d.deployFailMessage || "?"}`,
+    en: (d) => `deploy failed: ${d.deployFailMessage || "?"}`,
+    ru: (d) => `деплой: ошибка — ${d.deployFailMessage || "?"}`,
+  },
+  deploy_other: {
+    uk: (d) => `деплой: ${d.deployFailMessage || "?"}`,
+    en: (d) => `deploy: ${d.deployFailMessage || "?"}`,
+    ru: (d) => `деплой: ${d.deployFailMessage || "?"}`,
+  },
+};
+
+function deployNoteLine(locale, d) {
+  const key = String(d.deployNoteKey || "").trim();
+  if (!key) return "";
+  const loc = normalizeLocale(locale);
+  const pack = DEPLOY_NOTE[key];
+  if (!pack) return "";
+  const val = pack[loc] || pack.uk;
+  return typeof val === "function" ? val(d) : val;
+}
+
 const EVENTS = {
   generator_started: {
-    uk: (d) => `🚀 Генерація стартувала\n📁 ${d.project}\n📄 сторінок: ${d.pages}`,
-    en: (d) => `🚀 Generation started\n📁 ${d.project}\n📄 pages: ${d.pages}`,
-    ru: (d) => `🚀 Генерация запущена\n📁 ${d.project}\n📄 страниц: ${d.pages}`,
+    uk: (d) => {
+      const lines = [`🚀 Генерація стартувала`, `📁 ${d.project}`, `📄 сторінок: ${d.pages}`];
+      if (d.plannedDomain) lines.push(`🎯 домен (план): ${d.plannedDomain}`);
+      return lines.join("\n");
+    },
+    en: (d) => {
+      const lines = [`🚀 Generation started`, `📁 ${d.project}`, `📄 pages: ${d.pages}`];
+      if (d.plannedDomain) lines.push(`🎯 domain (planned): ${d.plannedDomain}`);
+      return lines.join("\n");
+    },
+    ru: (d) => {
+      const lines = [`🚀 Генерация запущена`, `📁 ${d.project}`, `📄 страниц: ${d.pages}`];
+      if (d.plannedDomain) lines.push(`🎯 домен (план): ${d.plannedDomain}`);
+      return lines.join("\n");
+    },
   },
   generator_done: {
-    uk: (d) => `✅ Сайт готовий\n📁 ${d.project}\n📄 ${d.pages} стор. · ${d.mode || "build"}`,
-    en: (d) => `✅ Site ready\n📁 ${d.project}\n📄 ${d.pages} pg · ${d.mode || "build"}`,
-    ru: (d) => `✅ Сайт готов\n📁 ${d.project}\n📄 ${d.pages} стр. · ${d.mode || "build"}`,
+    uk: (d) => {
+      const lines = [`✅ Сайт готовий`, `📄 ${d.pages} стор. · ${d.mode || "build"}`];
+      if (d.domain) {
+        lines.push(`📁 ${d.project} → 🔗 ${d.domain}`);
+        if (d.siteUrl) lines.push(`🌐 ${d.siteUrl}`);
+      } else {
+        lines.push(`📁 ${d.project}`);
+        const note = deployNoteLine("uk", d);
+        if (note) lines.push(`🖧 ${note}`);
+      }
+      return lines.join("\n");
+    },
+    en: (d) => {
+      const lines = [`✅ Site ready`, `📄 ${d.pages} pg · ${d.mode || "build"}`];
+      if (d.domain) {
+        lines.push(`📁 ${d.project} → 🔗 ${d.domain}`);
+        if (d.siteUrl) lines.push(`🌐 ${d.siteUrl}`);
+      } else {
+        lines.push(`📁 ${d.project}`);
+        const note = deployNoteLine("en", d);
+        if (note) lines.push(`🖧 ${note}`);
+      }
+      return lines.join("\n");
+    },
+    ru: (d) => {
+      const lines = [`✅ Сайт готов`, `📄 ${d.pages} стр. · ${d.mode || "build"}`];
+      if (d.domain) {
+        lines.push(`📁 ${d.project} → 🔗 ${d.domain}`);
+        if (d.siteUrl) lines.push(`🌐 ${d.siteUrl}`);
+      } else {
+        lines.push(`📁 ${d.project}`);
+        const note = deployNoteLine("ru", d);
+        if (note) lines.push(`🖧 ${note}`);
+      }
+      return lines.join("\n");
+    },
   },
   generator_error: {
     uk: (d) => `❌ Помилка генерації\n📁 ${d.project}\n⚠️ ${d.error}`,
