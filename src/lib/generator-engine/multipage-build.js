@@ -61,8 +61,10 @@ import {
   buildAnthropicRequestHeaders,
   describeClaudeKeyForBuildLog,
   formatAnthropicHttpError,
+  anthropicBaseUrlOverrideNote,
   getAnthropicMessagesUrl,
   isAcceptableClaudeApiKey,
+  isLoopbackAnthropicNetError,
 } from "@/lib/generator-llm-endpoint";
 import {
   isCrossBuildMemoryEnabled,
@@ -1323,6 +1325,12 @@ async function callClaudeOnly({
     );
   }
   emitLog(onLog, "LLM: Claude (тексты)");
+  const messagesUrl = getAnthropicMessagesUrl(key);
+  const baseOverrideNote = anthropicBaseUrlOverrideNote(key);
+  if (baseOverrideNote) {
+    emitLog(onLog, baseOverrideNote);
+  }
+  emitLog(onLog, `LLM endpoint: ${messagesUrl}`);
 
   const payload = JSON.stringify({
     model: ANTHROPIC_MODEL,
@@ -1344,7 +1352,7 @@ async function callClaudeOnly({
       let res;
       let rawText = "";
       try {
-        res = await fetch(getAnthropicMessagesUrl(), {
+        res = await fetch(messagesUrl, {
           method: "POST",
           headers: buildAnthropicRequestHeaders(key),
           body: payload,
@@ -1356,11 +1364,17 @@ async function callClaudeOnly({
         if (aborted) {
           throw new Error("Генерация остановлена пользователем.");
         }
-        lastErr = new Error(`Anthropic network error: ${e?.message || "unknown"}`);
+        const code = e?.cause?.code || e?.code || "";
+        const netHint = isLoopbackAnthropicNetError(messagesUrl, code, e)
+          ? " — перевірте, що проксі запущений локально, або очистіть ANTHROPIC_BASE_URL у Settings для прямого sk-ant-"
+          : "";
+        lastErr = new Error(
+          `Anthropic network error (${messagesUrl}): ${e?.message || "unknown"}${code ? ` [${code}]` : ""}${netHint}`
+        );
         if (attempt < maxAttempts) {
           emitLog(
             onLog,
-            `Anthropic retry ${attempt}/${maxAttempts - 1}: network error, ждём перед повтором`
+            `Anthropic retry ${attempt}/${maxAttempts - 1}: network error → ${messagesUrl}${code ? ` (${code})` : ""}`
           );
           await sleepMs(getRetryDelayMs(attempt));
           continue;
@@ -1369,7 +1383,7 @@ async function callClaudeOnly({
       }
 
       if (!res.ok) {
-        const msg = formatAnthropicHttpError(res.status, rawText);
+        const msg = formatAnthropicHttpError(res.status, rawText, key);
         const transient =
           res.status === 429 ||
           res.status === 529 ||

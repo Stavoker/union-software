@@ -44,7 +44,7 @@ function parsePairedKeysFromEnv() {
   const pairs = [];
   for (const row of claudeRows) {
     if (!isAcceptableClaudeApiKey(row.key)) {
-      const base = getAnthropicBaseUrl();
+      const base = getAnthropicBaseUrl(row.key);
       throw new Error(
         `${row.envKey}: недопустимый ключ (${maskKeyHint(row.key)}). ` +
           (base.includes("api.anthropic.com")
