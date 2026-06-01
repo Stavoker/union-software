@@ -727,12 +727,17 @@ export function DomainAutomationPanel() {
         </form>
 
         {activeRunMeta ? (
-          <div className={seoNoteLime}>
-            {t("status.activeRun")}{" "}
-            <button type="button" className={`${seoBtnGhost} ml-1 inline-flex`} onClick={clearActiveRun}>
+          <div
+            className={`${seoNoteLime} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4`}
+          >
+            <p className="min-w-0 flex-1 text-xs leading-relaxed">{t("status.activeRun")}</p>
+            <button
+              type="button"
+              className={`${seoBtnGhost} shrink-0 self-start sm:self-center`}
+              onClick={clearActiveRun}
+            >
               {t("status.clearRun")}
             </button>
-            .
           </div>
         ) : null}
 

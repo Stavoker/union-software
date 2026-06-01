@@ -175,6 +175,22 @@ function getBuildJobLocal(id) {
 /**
  * For polling from any instance: memory → disk → Redis.
  */
+export async function setBuildJobResult(id, result) {
+  const key = String(id || "").trim();
+  if (!key) return false;
+  let job = getBuildJobLocal(key);
+  if (!job) {
+    job = loadJobFromDisk(key) || (await loadJobRedis(key));
+    if (job) getJobsMap().set(key, job);
+  }
+  if (!job) return false;
+  job.result = result;
+  job.updatedAt = nowIso();
+  persistJobSync(job);
+  await saveJobRedis(job);
+  return true;
+}
+
 export async function getBuildJob(id) {
   const key = String(id || "").trim();
   if (!key) return null;
@@ -347,7 +363,50 @@ export async function markBuildJobDone(id, result) {
   const job = getBuildJobLocal(id);
   if (!job) return;
   job.status = "done";
-  job.result = result || null;
+  let mergedResult = result || null;
+
+  try {
+    const { autoDeployBuildJobToHost } = await import(
+      "@/lib/admin-seo/hostDomainFolders.js"
+    );
+    const deploy = await autoDeployBuildJobToHost(job, mergedResult, {
+      onLog: (msg) => appendBuildJobLog(id, msg),
+    });
+    mergedResult = {
+      ...(mergedResult && typeof mergedResult === "object" ? mergedResult : {}),
+      deploy,
+    };
+    if (deploy?.status === "deployed") {
+      appendBuildJobLog(
+        id,
+        `[deploy] site uploaded to ${deploy.domain} (${deploy.remotePath})`
+      );
+      if (deploy.stackReady === false && deploy.warning) {
+        appendBuildJobLog(id, `[deploy] WARNING: ${deploy.warning}`);
+      } else if (deploy.nginx?.smokeStatus) {
+        appendBuildJobLog(id, `[deploy] nginx smoke: ${deploy.nginx.smokeStatus}`);
+      }
+    } else if (deploy?.status === "pending_no_slot") {
+      appendBuildJobLog(
+        id,
+        "[deploy] no empty domain folders on host — purchase a domain or free a folder"
+      );
+    } else if (deploy?.status === "failed" && deploy?.message) {
+      appendBuildJobLog(id, `[deploy] failed: ${deploy.message}`);
+    }
+  } catch (e) {
+    const deploy = {
+      status: "failed",
+      message: e?.message || String(e),
+    };
+    mergedResult = {
+      ...(mergedResult && typeof mergedResult === "object" ? mergedResult : {}),
+      deploy,
+    };
+    appendBuildJobLog(id, `[deploy] failed: ${deploy.message}`);
+  }
+
+  job.result = mergedResult;
   job.updatedAt = nowIso();
   const prev = flushTimers.get(id);
   if (prev) clearTimeout(prev);

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function GeneratorPage() {
   const user = await getSessionUser();
-  let themePresets: { value: string; pageCount?: 3 | 4 }[] = [];
+  let themePresets: { value: string; pageCount?: 1 | 2 | 3 | 4 }[] = [];
   let defaultTheme = "";
 
   if (user?.id) {
@@ -30,7 +30,8 @@ export default async function GeneratorPage() {
         return [
           {
             value,
-            pageCount: pc === 3 || pc === 4 ? (pc as 3 | 4) : undefined,
+            pageCount:
+              pc >= 1 && pc <= 4 ? (Math.trunc(pc) as 1 | 2 | 3 | 4) : undefined,
           },
         ];
       });

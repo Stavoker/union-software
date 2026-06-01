@@ -10,7 +10,7 @@ export const maxDuration = 900;
 function clampMultipagePageCountTotal(raw: unknown) {
   const n = Math.trunc(Number(raw));
   if (!Number.isFinite(n)) return undefined;
-  return Math.min(4, Math.max(3, n));
+  return Math.min(4, Math.max(1, n));
 }
 
 /** Batch size cap: text + layout agents run per site; keep concurrency predictable. */
@@ -115,6 +115,54 @@ export async function POST(req: Request) {
 
   const pageCount = clampMultipagePageCountTotal(body.pageCount);
   const siteCount = clampSiteCount(body.siteCount);
+  const generationModeRaw = String(body.generationMode || "standard").trim();
+  const hostId = String(body.hostId || "").trim();
+  const siteUrlInputGlobal = String(body.siteUrl || "").trim();
+
+  let selectedHost: Awaited<
+    ReturnType<(typeof import("@/lib/admin-seo/hostsRepository"))["getHostById"]>
+  > = null;
+  let plannedDomains: string[] = [];
+
+  if (hostId) {
+    const { getHostById } = await import("@/lib/admin-seo/hostsRepository");
+    selectedHost = await getHostById(hostId, user.id);
+    if (!selectedHost) {
+      return NextResponse.json(
+        { ok: false, error: "Обраний SSH-хост не знайдено або неактивний." },
+        { status: 400 }
+      );
+    }
+    if (!String(selectedHost.sshPassword || "").trim()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "У обраного хоста не збережено SSH-пароль. Оновіть хост у Settings.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { listDomainFolderAvailabilityOnHost } = await import(
+      "@/lib/admin-seo/hostDomainFolders"
+    );
+    const folderScan = await listDomainFolderAvailabilityOnHost(selectedHost);
+    plannedDomains = folderScan.available.slice(0, siteCount);
+    if (plannedDomains.length < siteCount) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            siteCount <= 1
+              ? `На хості немає вільної папки домену (вільних: ${folderScan.available.length}). Спочатку придбайте домен через автоматизацію доменів.`
+              : `Потрібно ${siteCount} вільних папок доменів, знайдено ${folderScan.available.length}. Придбайте домени або звільніть папки на хості.`,
+          availableDomains: folderScan.available.length,
+          requiredDomains: siteCount,
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   const baseProjectName = String(body.projectName || "").trim();
   let safeBase: string;
@@ -163,13 +211,22 @@ export async function POST(req: Request) {
 
   const jobsOut: { jobId: string; projectName: string }[] = [];
 
-  for (const projectName of projectNames) {
-    const siteUrlInput = String(body.siteUrl || "").trim();
+  const { reserveEtalonAlternationIndices } = await import(
+    "@/src/lib/etalon-alternation.js"
+  );
+  const etalonAlternationBase = await reserveEtalonAlternationIndices(
+    projectNames.length
+  );
+
+  for (let i = 0; i < projectNames.length; i += 1) {
+    const projectName = projectNames[i];
+    const plannedDomain = plannedDomains[i] || "";
     const siteUrlForBuild =
-      siteUrlInput ||
+      siteUrlInputGlobal ||
+      (plannedDomain ? `https://${plannedDomain}` : "") ||
       `https://${projectName.replace(/[^a-z0-9._-]/gi, "-") || "project"}.generator.local`;
 
-    const jobId = await createBuildJob({
+    const jobPayload: Record<string, unknown> = {
       userId: user.id,
       projectName,
       windowId,
@@ -184,8 +241,21 @@ export async function POST(req: Request) {
       siteUrl: siteUrlForBuild,
       parentSiteUrl: body.parentSiteUrl,
       pageCount,
-      referenceTemplateMode: false,
-    });
+      referenceTemplateMode: true,
+      generationMode: generationModeRaw,
+      etalonAlternatingIndex: etalonAlternationBase + i,
+    };
+
+    if (hostId && selectedHost) {
+      jobPayload.hostId = hostId;
+      jobPayload.hostName = selectedHost.name;
+      jobPayload.projectsDir = selectedHost.projectsDir || "/var/www";
+      if (plannedDomain) {
+        jobPayload.plannedDeployDomain = plannedDomain;
+      }
+    }
+
+    const jobId = await createBuildJob(jobPayload);
 
     jobsOut.push({ jobId, projectName });
 

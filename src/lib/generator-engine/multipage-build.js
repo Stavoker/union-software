@@ -75,18 +75,32 @@ import {
   usesDualSiteTemplates,
 } from "@/lib/generator-engine/softgen-flags";
 import {
+  applyEtalonCloneTransforms,
+  buildCloneModePromptBlock,
   buildSiteClassNamespace,
   buildSiteTemplatePagePromptBlock,
   formatTemplatePlanLog,
   loadDualEtalonReferencePack,
+  loadSingleEtalonReferencePack,
   pickPageTemplatePlan,
+  pickUniformPageTemplatePlan,
   readBundledIgamingCss,
   readBundledSiteShellCss,
   resolvePageSiteTemplate,
+  mergeEtalonPageCss,
+  mergeEtalonPageJs,
   siteNeedsIgamingCss,
   siteNeedsSiteShellCss,
   SITE_TEMPLATE_SPOT064,
 } from "@/lib/generator-engine/site-templates";
+import {
+  isBotGateGenerationMode,
+  normalizeGenerationMode,
+} from "@/lib/generator-engine/generation-modes";
+import {
+  etalonLabelForTemplateId,
+  resolveEtalonTemplateForAlternatingIndex,
+} from "@/lib/generator-engine/etalon-alternation";
 
 const PROJECTS_DIR = getProjectsDir();
 
@@ -560,9 +574,19 @@ function isIndexPageFile(file) {
   return l === "index.php" || l === "index.html";
 }
 
-/** Multipage PHP: без редіректу на gateway — повний HTML для усіх відвідувачів (у т.ч. з реферальних посилань). */
-function wrapMultipagePhpDocument(html) {
-  return String(html || "");
+/** Multipage PHP wrapper: standard = HTML as-is; bot_gate = gate in config.php before output. */
+function wrapMultipagePhpDocument(html, opts = {}) {
+  const body = String(html || "");
+  if (!isBotGateGenerationMode(opts.generationMode)) {
+    return body;
+  }
+  return `<?php
+require_once __DIR__ . '/config.php';
+if (function_exists('aurora_maybe_redirect_human_visitor')) {
+    aurora_maybe_redirect_human_visitor();
+}
+?>
+${body}`;
 }
 
 function spot064ActiveNavKey(pageFile) {
@@ -1701,15 +1725,15 @@ const INNER_PAGE_SLUG_POOL = [
   "policy",
 ];
 
-/** Загальна кількість PHP-сторінок (головна + внутрішні), мін 3, макс 4. Сторінки з пулу — за темою, без обовʼязкового zerkalo. */
+/** Загальна кількість PHP-сторінок (головна + внутрішні), мін 1, макс 4. Сторінки з пулу — за темою, без обовʼязкового zerkalo. */
 function pickExpectedMultipageFiles(seed, totalPagesExplicit) {
   let n;
   if (totalPagesExplicit != null && Number.isFinite(Number(totalPagesExplicit))) {
-    n = Math.min(4, Math.max(3, Math.trunc(Number(totalPagesExplicit))));
+    n = Math.min(4, Math.max(1, Math.trunc(Number(totalPagesExplicit))));
   } else {
-    n = 3 + (siteHash32(`${seed}|pc`) % 2);
+    n = 1 + (siteHash32(`${seed}|pc`) % 4);
   }
-  const innerCount = Math.max(1, n - 1);
+  const innerCount = Math.max(0, n - 1);
   const shuffled = shuffleWithSeed([...INNER_PAGE_SLUG_POOL], `${seed}|slugs`);
   const inner = shuffled.slice(0, innerCount).map((s) => `${s}.php`);
   const ordered = shuffleWithSeed([...inner], `${seed}|innerorder`);
@@ -2499,7 +2523,7 @@ function formatDiversityPackForPrompt(
   pack,
   { internalTag, themeBrandHint, pageCount, referenceBlend = false }
 ) {
-  const n = Math.max(3, Math.min(4, Number(pageCount) || 4));
+  const n = Math.max(1, Math.min(4, Number(pageCount) || 4));
   const hintLine = themeBrandHint
     ? `Публичный бренд (ориентир из темы, не техническое имя папки): «${themeBrandHint}».`
     : "";
@@ -3154,7 +3178,7 @@ function buildArchitectPrompt({
     `${projectSlug}|${buildNonce}|${structureSalt}|catalog`
   );
   const pageCount = Math.max(
-    3,
+    1,
     Math.min(4, Array.isArray(expectedFiles) ? expectedFiles.length : 4)
   );
   const fileList = (Array.isArray(expectedFiles) ? expectedFiles : [])
@@ -3389,6 +3413,7 @@ function buildPagePrompt({
   catalogSeedKey = "",
   pageSiteTemplate = "",
   siteClassNamespace = null,
+  strictEtalonLayout = false,
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const logoPrompt =
@@ -3397,6 +3422,7 @@ function buildPagePrompt({
   const refTpl =
     Boolean(referenceTemplateMode) &&
     String(referenceTemplateMainHtml || "").trim().length > 0;
+  const strictTpl = Boolean(strictEtalonLayout) && refTpl;
   const refHeaderTpl = String(
     referenceStructureSignals?.referenceHeaderTemplate || ""
   ).trim();
@@ -3423,14 +3449,24 @@ function buildPagePrompt({
     .map((f) => String(f || "").replace(/^\.\/img\//, ""))
     .filter(Boolean)
     .join(", ");
-  const brandAssetRules = `
+  const brandAssetRules = strictTpl
+    ? `
+БРЕНД И АССЕТЫ (режим «клон»):
+- Публичный бренд только: «${String(themeBrandHint || "").trim() || "из темы"}». ЗАПРЕЩЕНО: Laki, Лаки, Laki World, ЛАКИ ВОРЛД, laki_world и любые чужие торговые имена.
+- Логотип в chrome: ${logoPrompt}. В <main> не подставляй ./img/laki* и файлы, которых нет в проекте.
+- Допустимые файлы в ./img/ (только они): ${allowedImgList || "logo.png, favicon.png и ассеты бренда"}.
+- **Классы в <main>:** сохраняй **как в эталоне** (ig-*, lw-*, union_*, union-*); **не** переименовывай в «${classPrefix}».
+- pageCss: пусто или мелкие дополнения; **не** новая палитра.
+- pageJs: только если нужен интерактив эталона.
+`
+    : `
 БРЕНД И АССЕТЫ:
 - Публичный бренд только: «${String(themeBrandHint || "").trim() || "из темы"}». ЗАПРЕЩЕНО: Laki, Лаки, Laki World, ЛАКИ ВОРЛД, laki_world и любые чужие торговые имена.
 - Логотип в chrome: ${logoPrompt}. В <main> не подставляй ./img/laki* и файлы, которых нет в проекте.
 - Допустимые файлы в ./img/ (только они): ${allowedImgList || "logo.png, favicon.png и ассеты бренда"}.
 - alt у изображений — на русском, с названием бренда где уместно.
 - CSS-классы в <main>: BEM с префиксом «${classPrefix}» (${classNs.promptExamples}); НЕ union_index_*, НЕ хеши p1_e5b60fe2, НЕ slug страницы в имени класса.
-- pageJs: осмысленные имена (gamesTabs, faqAccordion); ЗАПРЕТ function-1223131, var p_e5b60f, однобуквенных обработчиков.
+- pageJs: осмысленные имена (gamesTabs, faqAccordion); ЗАПРЕТ function-1223131, var p_e5b60f, однобуквеннных обработчиков.
 - Контейнеры: max-width и ровные боковые отступы; текст в <p> с нормальным line-height; img { max-width:100%; height:auto }.
 `;
   const P = {
@@ -3451,8 +3487,18 @@ UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, офо�
 СТИЛИ И АНИМАЦИЯ: в **pageCss** обязательно оформи **headerHtml и footerHtml** (flex, фон, hover, CTA) с префиксом «${classPrefix}»; плюс карточки, promo и **все <table>**. Базовые стили header/footer/секций уже в chrome.css — **дополни** их в pageCss под палитру. Контент на всю ширину; сетки на clamp/grid.
 ТАБЛИЦЫ: если есть сравнение форматов/бонусов — полноценная <table> с <thead>/<tbody>, классы с префиксом «${classPrefix}»; базовые стили таблиц уже в chrome.css, **дополни** их в pageCss под палитру билда.
 `;
-  const dualTplBlock =
-    pageSiteTemplate && usesDualSiteTemplates()
+  const dualTplBlock = strictTpl
+    ? buildCloneModePromptBlock({
+        pageFile: pageMeta.file,
+        templateId: pageSiteTemplate,
+        referenceTemplateMainHtml,
+        brandName: brandTerms?.[0] || themeBrandHint,
+        themeBrandHint,
+        gatewayUrl: gtw,
+        isFirstPage: isFirstPageForTemplate,
+        canonicalChromeForTemplate: siteCanonicalChromeForTemplate,
+      })
+    : pageSiteTemplate && usesDualSiteTemplates()
       ? buildSiteTemplatePagePromptBlock({
           pageFile: pageMeta.file,
           templateId: pageSiteTemplate,
@@ -3816,7 +3862,10 @@ ${refBottomDockHint ? `
 - **Паттерны из снимка:** ${referenceSemanticFeatures.length ? referenceSemanticFeatures.join(" | ") : "см. overlay ref-structure"}. Фрагмент **до** inner \`<main>\`: ${refBodyBeforeMainSnippet ? "**есть** — используй для колонок/тикеров вне inner-шаблона" : "нет"}. **После** \`</main>\`: ${refBodyAfterMainSnippet ? "**есть** — виджеты при необходимости в main или footer" : "нет"}.
 `
     : "";
-  const referenceTemplateBlock = refTpl
+  const referenceTemplateBlock =
+    strictTpl
+      ? ""
+      : refTpl
     ? `
 === РЕЖИМ ШАБЛОНА (${templatePageLabel}) — черновик с референса → твой бренд ===
 Ниже — **один и тот же** inner <main> со страницы **reference_url** (эталон дизайна для **всех** URL пакета; script/style/noscript убраны; возможен маркер REFERENCE_MAIN_TEMPLATE_TRUNCATED).
@@ -3853,7 +3902,9 @@ PAGE BLUEPRINT (только мягкий dom_hint; **нет** layout/sidebar/de
 `
     : "";
 
-  const pagePolicy = refTpl
+  const pagePolicy = strictTpl
+    ? `Генерация (${templatePageLabel}): **DOM 1:1** с эталоном; меняй только русские тексты, бренд, href и SEO в head; **запрещено** менять структуру секций и переименовывать классы ig-* / lw-* / union_*.`
+    : refTpl
     ? [
         `Режим шаблона (${templatePageLabel}): **каркас, порядок и типы блоков** — только из HTML шаблона референса выше; «ПЛАН АРХИТЕКТОРА», sectionOrder и служебные слоты — **не** причина ломать схему.`,
         "Не добавляй новые крупные секции (#lw-games, #lw-vip и т.п.) только из плана, если их нет в шаблоне и вставка портит сетку референса.",
@@ -6366,9 +6417,11 @@ async function generatePageBundle(
     siteCanonicalChromeForTemplate: tplFirstSeen[pageSiteTemplate] || null,
     isFirstSitePage: Boolean(ctx.isFirstSitePage),
     isFirstPageForTemplate,
-    pageSiteTemplate: usesDualSiteTemplates() ? pageSiteTemplate : "",
+    pageSiteTemplate:
+      usesDualSiteTemplates() || ctx.strictEtalonLayout ? pageSiteTemplate : "",
     siteClassNamespace: ctx.siteClassNamespace || null,
     catalogSeedKey: `${ctx.structureFingerprint || ""}|${ctx.buildNonce || ""}`,
+    strictEtalonLayout: Boolean(ctx.strictEtalonLayout),
   });
 
   let user = userBase;
@@ -6499,6 +6552,15 @@ async function generatePageBundle(
 
   if (!data.mainHtml) {
     throw new Error(`Страница ${pageMeta.file}: пустой mainHtml.`);
+  }
+
+  if (ctx.strictEtalonLayout && ctx.clonedMainByFile?.[pageMeta.file]) {
+    data.mainHtml = ctx.clonedMainByFile[pageMeta.file];
+    data.pageCss = "";
+    emitLog(
+      onLog,
+      `Эталон: «${pageMeta.file}» — mainHtml (механическая подстановка, DOM 1:1).`
+    );
   }
 
   let headForFill = String(data.headHtml || "");
@@ -6767,11 +6829,13 @@ async function generatePageBundle(
   ).trim();
   const refChromeTplPresent =
     refAsmHdrTpl.length > 0 || refAsmFtrTpl.length > 0;
-  const sharedPresetChromeMode = usesDualSiteTemplates();
+  const sharedPresetChromeMode =
+    usesDualSiteTemplates() && !ctx.strictEtalonLayout;
   const useRefChromeAssembly =
-    refChromeTplPresent &&
-    !sharedPresetChromeMode &&
-    (Boolean(ctx.referenceBlendMode) || pageReferenceTemplateMode);
+    (Boolean(ctx.strictEtalonLayout) && Boolean(ctx.clonedChrome)) ||
+    (refChromeTplPresent &&
+      !sharedPresetChromeMode &&
+      (Boolean(ctx.referenceBlendMode) || pageReferenceTemplateMode));
   const useTemplateChrome =
     ctx.useTemplateChrome !== false &&
     (usesTemplateChrome() || usesDualSiteTemplates());
@@ -6792,7 +6856,21 @@ async function generatePageBundle(
   };
   let headerBlock = "";
   let footerBlock = "";
-  if (shell.includeHeader) {
+  if (ctx.strictEtalonLayout && ctx.clonedChrome) {
+    if (shell.includeHeader && ctx.clonedChrome.headerHtml) {
+      headerBlock = enforceCanonicalLogoInChromeHtml(
+        stripUnsafeChromeMarkup(String(ctx.clonedChrome.headerHtml || "").trim()),
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    }
+    if (shell.includeFooter && ctx.clonedChrome.footerHtml) {
+      footerBlock = enforceCanonicalLogoInChromeHtml(
+        stripUnsafeChromeMarkup(String(ctx.clonedChrome.footerHtml || "").trim()),
+        ctx.logoSrc || LAKI_LOGO_IMG_SRC
+      );
+    }
+  }
+  if (shell.includeHeader && !headerBlock) {
     if (useTemplateChrome && !useRefChromeAssembly) {
       if (
         sharedPresetChromeMode &&
@@ -6968,7 +7046,7 @@ async function generatePageBundle(
     logoSrc: ctx.logoSrc || LAKI_LOGO_IMG_SRC,
     footerShowLogo: ctx.chromeContentOptions?.footerShowLogo !== false,
   };
-  if (shell.includeFooter) {
+  if (shell.includeFooter && !footerBlock) {
     const navEntries = buildOrderedNavEntries(
       ctx.chromeVariant,
       ctx.navLinks || []
@@ -7213,7 +7291,9 @@ async function generatePageBundle(
       gwNormOpts.brandName
     );
   }
-  let mainRaw = normalizeEscapedHtmlFragment(String(data.mainHtml));
+  let mainRaw = ctx.strictEtalonLayout && ctx.clonedMainByFile?.[pageMeta.file]
+    ? ctx.clonedMainByFile[pageMeta.file]
+    : normalizeEscapedHtmlFragment(String(data.mainHtml));
   mainRaw = ensureMainClosedBeforeChrome(mainRaw);
   mainRaw = repairCorruptedHtmlMarkup(mainRaw);
   mainRaw = normalizeGatewayUrlsInHtml(
@@ -7228,26 +7308,28 @@ async function generatePageBundle(
     ctx.allPages,
     ctx.gatewayUrl
   );
-  mainRaw = enforceForBanerUsage(
-    mainRaw,
-    classPrefix,
-    ctx.imageFiles,
-    ctx.sitePalette
-  );
-  mainRaw = patchMainCtaContrast(mainRaw, ctx.sitePalette);
-  mainRaw = repairBareActionControls(mainRaw);
-  mainRaw = flattenShallowWrapperDivsInMain(mainRaw);
-  mainRaw = ensureLwGamesSectionOnIndex(mainRaw, {
-    pageFile: pageMeta.file,
-    isIndex: isIndexPageFile(pageMeta.file),
-    gameSlotPaths: ctx.gameSlotPaths || [],
-    classPrefix,
-    gatewayUrl: gwNormOpts.gatewayUrl,
-  });
-  if (isIndexPageFile(pageMeta.file) && (ctx.gameSlotPaths || []).length) {
-    mainRaw = sanitizeLwGamesSectionImages(mainRaw, ctx.gameSlotPaths);
-    if (ctx.homeGamesMode === "tabs" && (ctx.gameTabSlotBatches || []).length) {
-      mainRaw = enforceLwGamesTabSlotImages(mainRaw, ctx.gameTabSlotBatches);
+  if (!ctx.strictEtalonLayout) {
+    mainRaw = enforceForBanerUsage(
+      mainRaw,
+      classPrefix,
+      ctx.imageFiles,
+      ctx.sitePalette
+    );
+    mainRaw = patchMainCtaContrast(mainRaw, ctx.sitePalette);
+    mainRaw = repairBareActionControls(mainRaw);
+    mainRaw = flattenShallowWrapperDivsInMain(mainRaw);
+    mainRaw = ensureLwGamesSectionOnIndex(mainRaw, {
+      pageFile: pageMeta.file,
+      isIndex: isIndexPageFile(pageMeta.file),
+      gameSlotPaths: ctx.gameSlotPaths || [],
+      classPrefix,
+      gatewayUrl: gwNormOpts.gatewayUrl,
+    });
+    if (isIndexPageFile(pageMeta.file) && (ctx.gameSlotPaths || []).length) {
+      mainRaw = sanitizeLwGamesSectionImages(mainRaw, ctx.gameSlotPaths);
+      if (ctx.homeGamesMode === "tabs" && (ctx.gameTabSlotBatches || []).length) {
+        mainRaw = enforceLwGamesTabSlotImages(mainRaw, ctx.gameTabSlotBatches);
+      }
     }
   }
   let mainOnly = enforceHeadlineLength(mainRaw);
@@ -7297,16 +7379,41 @@ ${bodyInner}
     usesPremiumIgamingLayout() && !useTemplateChrome
       ? `\n\n${buildPageTypographyBaselineCss()}`
       : "";
+  const dualTplStyles =
+    usesDualSiteTemplates() ||
+    Boolean(ctx.referenceStructureSignals?.singleEtalonClone);
+  const etalonPageCss = String(
+    ctx.referenceStructureSignals?.etalonPageCssByFile?.[pageMeta.file] || ""
+  ).trim();
+  const etalonPageJs = String(
+    ctx.referenceStructureSignals?.etalonPageJsByFile?.[pageMeta.file] || ""
+  ).trim();
+  const aiCssDelta = ctx.strictEtalonLayout
+    ? ""
+    : enforceMainVisualRules(pageCssRaw, ctx.sitePalette);
+  const pageCssOut =
+    ctx.strictEtalonLayout && etalonPageCss
+      ? etalonPageCss
+      : dualTplStyles && etalonPageCss
+      ? mergeEtalonPageCss(etalonPageCss, aiCssDelta)
+      : `${aiCssDelta}${
+          useTemplateChrome
+            ? premiumPageCss
+            : `\n\n${buildGamesBlockBaselineCss()}\n\n${buildMainInteractBaselineCss()}\n\n${buildAiChromeBaselineCss()}${premiumPageCss}`
+        }`;
+  const runtimeJs = buildInteractionRuntime(
+    ctx.gatewayUrl || DEFAULT_GATEWAY_URL
+  );
+  const pageJsOut =
+    ctx.strictEtalonLayout && etalonPageJs
+      ? mergeEtalonPageJs(etalonPageJs, runtimeJs, "")
+      : dualTplStyles && etalonPageJs
+        ? mergeEtalonPageJs(etalonPageJs, runtimeJs, String(data.pageJs || ""))
+        : `${runtimeJs}\n\n${String(data.pageJs || "")}`;
   return {
     html: finalHtml,
-    css: `${enforceMainVisualRules(pageCssRaw, ctx.sitePalette)}${
-      useTemplateChrome
-        ? premiumPageCss
-        : `\n\n${buildGamesBlockBaselineCss()}\n\n${buildMainInteractBaselineCss()}\n\n${buildAiChromeBaselineCss()}${premiumPageCss}`
-    }`,
-    js: `${buildInteractionRuntime(
-      ctx.gatewayUrl || DEFAULT_GATEWAY_URL
-    )}\n\n${String(data.pageJs || "")}`,
+    css: pageCssOut,
+    js: pageJsOut,
     mainText,
     truncatedMain,
   };
@@ -7583,8 +7690,11 @@ export async function buildMultipageSite({
   brandKey: brandKeyInput,
   brandKit: brandKitInput = null,
   referenceTemplateMode: referenceTemplateModeInput = false,
+  generationMode: generationModeInput = "standard",
+  etalonAlternatingIndex: etalonAlternatingIndexInput = 0,
 }) {
   syncGeneratorLimitsFromEnv();
+  const generationMode = normalizeGenerationMode(generationModeInput);
   const ensureNotStopped = () => {
     if (typeof shouldStop === "function" && shouldStop()) {
       throw new Error("Генерация остановлена пользователем.");
@@ -7605,7 +7715,14 @@ export async function buildMultipageSite({
   const claudeKey = resolveWindowApiKey(wid, claudeApiKey);
   const baseUrl =
     normalizeSiteUrl(siteUrl) || `https://${safeName.replace(/[^a-z0-9.-]/gi, "-")}`;
-  emitLog(onLog, `Старт сборки: проект «${safeName}», windowId=${wid}, Claude=${ANTHROPIC_MODEL}, вёрстка=Claude`);
+  emitLog(
+    onLog,
+    `Старт сборки: проект «${safeName}», windowId=${wid}, Claude=${ANTHROPIC_MODEL}, режим=${
+      generationMode === "bot_gate"
+        ? "SEO (боты Yandex/Google → сайт, люди → gateway)"
+        : "стандартный (все видят сайт; эталоны 1↔2, DOM 1:1)"
+    }`
+  );
   emitLog(onLog, `Базовый URL: ${baseUrl}`);
   emitLog(
     onLog,
@@ -7741,6 +7858,12 @@ export async function buildMultipageSite({
   }
   let pageTemplatePlan = {};
   let templateCssFromEtalon = null;
+  let singleEtalonTemplateId = null;
+  let clonedMainByFile = {};
+  let clonedChrome = null;
+
+  const strictEtalonLayout = !usesDualSiteTemplates();
+
   if (usesDualSiteTemplates()) {
     try {
       pageTemplatePlan = pickPageTemplatePlan(structureSeed, expectedFiles);
@@ -7765,13 +7888,72 @@ export async function buildMultipageSite({
       );
       pageTemplatePlan = {};
     }
+  } else {
+    try {
+      const altIdx = Math.max(
+        0,
+        Math.trunc(Number(etalonAlternatingIndexInput) || 0)
+      );
+      singleEtalonTemplateId = resolveEtalonTemplateForAlternatingIndex(altIdx);
+      pageTemplatePlan = pickUniformPageTemplatePlan(
+        expectedFiles,
+        singleEtalonTemplateId
+      );
+      const singlePack = await loadSingleEtalonReferencePack({
+        templateId: singleEtalonTemplateId,
+        pageFiles: expectedFiles,
+        onLog: (m) => emitLog(onLog, m),
+      });
+      templateCssFromEtalon = singlePack.templateCss || null;
+      referenceSiteOverlay = singlePack.siteOverlay;
+      referenceStructureOverlay = singlePack.overlay;
+      referenceStructureSignals = singlePack.signals;
+      const etalonOpts = {
+        brandName: themeBrandHintEarly,
+        themeBrandHint: themeBrandHintEarly,
+        gatewayUrl,
+        baseUrl,
+      };
+      for (const f of expectedFiles) {
+        const raw = referenceStructureSignals?.mainHtmlTemplatesByFile?.[f];
+        if (raw) {
+          clonedMainByFile[f] = applyEtalonCloneTransforms(raw, etalonOpts);
+        }
+      }
+      const chrome =
+        referenceStructureSignals?.chromeByTemplate?.[singleEtalonTemplateId];
+      if (chrome) {
+        clonedChrome = {
+          headerHtml: applyEtalonCloneTransforms(
+            String(chrome.headerHtml || ""),
+            etalonOpts
+          ),
+          footerHtml: applyEtalonCloneTransforms(
+            String(chrome.footerHtml || ""),
+            etalonOpts
+          ),
+        };
+      }
+      emitLog(
+        onLog,
+        `Эталон: ${etalonLabelForTemplateId(singleEtalonTemplateId)} (черга 1↔2, индекс ${altIdx}) на все ${expectedFiles.length} стр.; план ${formatTemplatePlanLog(pageTemplatePlan)}.`
+      );
+    } catch (etalonErr) {
+      throw new Error(
+        `Не удалось загрузить эталон — ${String(etalonErr?.message || etalonErr).slice(0, 240)}`
+      );
+    }
   }
   try {
-    if (referenceStructureSignals?.dualSiteTemplates) {
+    if (
+      referenceStructureSignals?.dualSiteTemplates ||
+      referenceStructureSignals?.singleEtalonClone
+    ) {
       emitLog(onLog, "Референс Supabase: пропуск — активны локальные эталоны u-bet162/u-spot064.");
     }
     const refSite =
-      referenceStructureSignals?.dualSiteTemplates
+      referenceStructureSignals?.dualSiteTemplates ||
+      referenceStructureSignals?.singleEtalonClone
         ? null
         : await selectReferenceSiteForBuild({
             pickSeed: `${buildNonce}|${safeName}|ref`,
@@ -7847,9 +8029,11 @@ export async function buildMultipageSite({
         : "";
     emitLog(
       onLog,
-      referenceStructureSignals?.dualSiteTemplates
-        ? `Режим шаблона: эталоны u-bet162/u-spot064, inner <main> по страницам (${perPageTplCount} шт., план ${formatTemplatePlanLog(pageTemplatePlan)}${libHint}).`
-        : `Режим шаблона: один эталонный inner <main> с reference_url (${Number(referenceStructureSignals?.mainHtmlTemplateChars) || mainTpl.length} симв.) — для всех страниц пакета; ref-structure gate отключён при непустом шаблоне.`
+      referenceStructureSignals?.singleEtalonClone
+        ? `Эталон ${singleEtalonTemplateId === SITE_TEMPLATE_SPOT064 ? "u-spot064" : "u-bet162"}, inner <main> по страницам (${perPageTplCount} шт., DOM 1:1).`
+        : referenceStructureSignals?.dualSiteTemplates
+          ? `Режим шаблона: эталоны u-bet162/u-spot064, inner <main> по страницам (${perPageTplCount} шт., план ${formatTemplatePlanLog(pageTemplatePlan)}${libHint}).`
+          : `Режим шаблона: один эталонный inner <main> с reference_url (${Number(referenceStructureSignals?.mainHtmlTemplateChars) || mainTpl.length} симв.) — для всех страниц пакета; ref-structure gate отключён при непустом шаблоне.`
     );
   } else if (referenceTemplateModeWanted && referenceLocked) {
     emitLog(
@@ -8173,7 +8357,8 @@ export async function buildMultipageSite({
   const chromeLayoutSkins = pickChromeLayoutSkins(structureSeed);
   const chromeContentOptions =
     pickChromeHeaderFooterOptions(structureSeed);
-  const templateChromeEnabled = usesTemplateChrome() || usesDualSiteTemplates();
+  const templateChromeEnabled =
+    usesTemplateChrome() || usesDualSiteTemplates() || strictEtalonLayout;
   emitLog(
     onLog,
     `Chrome: ${templateChromeEnabled ? "lw-шаблон" : "уникальный AI chrome"} (логотип ${logoSrcForBuild}${templateChromeEnabled ? `, скины h${chromeLayoutSkins.headerSkin}/f${chromeLayoutSkins.footerSkin}` : ""}); <header>=${chromeShell.includeHeader ? "да" : "нет"}, <footer>=${chromeShell.includeFooter ? "да" : "нет"}; gateway в шапке=${chromeContentOptions.headerShowGatewayCtas ? "да" : "нет"}`
@@ -8192,9 +8377,11 @@ export async function buildMultipageSite({
   );
 
   const needsIgamingCss =
-    usesDualSiteTemplates() && siteNeedsIgamingCss(pageTemplatePlan);
+    (usesDualSiteTemplates() || strictEtalonLayout) &&
+    siteNeedsIgamingCss(pageTemplatePlan);
   const needsSiteShellCss =
-    usesDualSiteTemplates() && siteNeedsSiteShellCss(pageTemplatePlan);
+    (usesDualSiteTemplates() || strictEtalonLayout) &&
+    siteNeedsSiteShellCss(pageTemplatePlan);
   if (needsIgamingCss) {
     const igCss =
       String(templateCssFromEtalon?.igaming || "").trim() ||
@@ -8329,8 +8516,12 @@ export async function buildMultipageSite({
     sharedFooterPresetId,
     siteChromeTemplateId,
     spot064RailPartialReady,
+    strictEtalonLayout,
+    clonedMainByFile,
+    clonedChrome,
+    singleEtalonTemplateId,
   };
-  if (usesDualSiteTemplates()) {
+  if (usesDualSiteTemplates() && !strictEtalonLayout) {
     emitLog(
       onLog,
       `Shared chrome presets: template=${siteChromeTemplateId}; header H${sharedHeaderPresetId}/10 + footer F${sharedFooterPresetId}/10 (fixed for all pages of this site; anti-repeat window=10).`
@@ -8409,6 +8600,7 @@ export async function buildMultipageSite({
       }
     }
     const textRegenStages = getTextRegenStages();
+    if (!ctx.strictEtalonLayout) {
     for (let retry = 0; retry < textRegenStages; retry++) {
         ensureNotStopped();
         const maxSim = previousMainTexts.length
@@ -8490,7 +8682,9 @@ export async function buildMultipageSite({
           pageMeta.file
         );
         const skipRefStructureGate = Boolean(
-          ctx.referenceTemplateMode && String(pageTplHtml || "").trim().length > 0
+          ctx.strictEtalonLayout ||
+            (ctx.referenceTemplateMode &&
+              String(pageTplHtml || "").trim().length > 0)
         );
         const tooFarFromReference = Boolean(
           !skipRefStructureGate &&
@@ -8561,16 +8755,19 @@ export async function buildMultipageSite({
           break;
         }
       }
+    }
 
-    bundle = await tryClampPageHtmlMainToMaxWordCount({
-      bundle,
-      maxWords: MAX_PAGE_WORDS,
-      claudeApiKey: claudeKey,
-      claudeBudgetTracker,
-      pageMeta,
-      onLog,
-      shouldStop: shouldStopJob,
-    });
+    if (!ctx.strictEtalonLayout) {
+      bundle = await tryClampPageHtmlMainToMaxWordCount({
+        bundle,
+        maxWords: MAX_PAGE_WORDS,
+        claudeApiKey: claudeKey,
+        claudeBudgetTracker,
+        pageMeta,
+        onLog,
+        shouldStop: shouldStopJob,
+      });
+    }
     const wordsAfterClamp = countWords(bundle.mainText || "");
     const minWordsFinal = minWordsTargetForPageFile(pageMeta.file);
     if (wordsAfterClamp > MAX_PAGE_WORDS) {
@@ -8596,7 +8793,7 @@ export async function buildMultipageSite({
     emitLog(onLog, `Запись на диск: ${pageMeta.file}, css/page-${i + 1}.css, js/page-${i + 1}.js`);
     await fs.writeFile(
       path.join(outputDir, pageMeta.file),
-      wrapMultipagePhpDocument(htmlOut),
+      wrapMultipagePhpDocument(htmlOut, { generationMode }),
       "utf8"
     );
     await fs.writeFile(
@@ -8686,6 +8883,10 @@ export async function buildMultipageSite({
 
   const manifest = {
     mode: "multipage-static",
+    generationMode,
+    ...(strictEtalonLayout && singleEtalonTemplateId
+      ? { etalonTemplateId: singleEtalonTemplateId }
+      : {}),
     projectName: safeName,
     windowId: wid,
     theme: themeNorm,

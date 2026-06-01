@@ -1,6 +1,7 @@
 import SftpClient from "ssh2-sftp-client";
-import { Client as SshClient } from "ssh2";
 import { assertSafeHostForRemotePath } from "./hostProjectCleanup.js";
+import { ensurePhpStackOnHost } from "./hostPhpStack.js";
+import { shellSingleQuote, sshExecCommand, sshUsesSudo } from "./hostSsh.js";
 
 function envBool(name) {
   const v = String(process.env[name] || "").trim().toLowerCase();
@@ -11,11 +12,6 @@ function envBool(name) {
 function nginxPhpEnabled() {
   const v = String(process.env.SUBDOMAIN_HOST_NGINX_PHP ?? "1").trim().toLowerCase();
   return v !== "0" && v !== "false" && v !== "no" && v !== "off";
-}
-
-/** Безпечне екранування для однолінійної команди в sh -c. */
-function shellSingleQuote(path) {
-  return `'${String(path).replace(/'/g, `'\"'\"'`)}'`;
 }
 
 /**
@@ -32,25 +28,10 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
     phpEnabled === true
       ? [
           `    location / {`,
-          `        try_files $uri $uri/ /html$uri /html$uri/ /index.php?$query_string;`,
+          `        try_files $uri $uri/ /index.php?$query_string;`,
           `    }`,
         ]
-      : [`    location / {`, `        try_files $uri $uri/ /html$uri /html$uri/ =404;`, `    }`];
-
-  const tryFilesRoot =
-    phpEnabled === true
-      ? [
-          `    location = / {`,
-          `        try_files /html/index.html /html/index.htm /html/index.php /index.html /index.htm /index.php;`,
-          `    }`,
-          ``,
-        ]
-      : [
-          `    location = / {`,
-          `        try_files /html/index.html /html/index.htm /index.html /index.htm =404;`,
-          `    }`,
-          ``,
-        ];
+      : [`    location / {`, `        try_files $uri $uri/ =404;`, `    }`];
 
   const phpBlock =
     phpEnabled === true && phpFastcgiPass
@@ -59,6 +40,7 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
           `    location ~ \\.php$ {`,
           `        include snippets/fastcgi-php.conf;`,
           `        fastcgi_pass ${phpFastcgiPass};`,
+          `        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;`,
           `    }`,
         ]
       : [];
@@ -81,7 +63,6 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
     `    ssl_certificate ${sslDir}/fullchain.pem;`,
     `    ssl_certificate_key ${sslDir}/privkey.pem;`,
     ``,
-    ...tryFilesRoot,
     ...tryFilesMain,
     ...phpBlock,
     `}`,
@@ -89,54 +70,198 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
   ].join("\n");
 }
 
-function sshExecCommand(host, user, password, command, port = 22) {
-  return new Promise((resolve, reject) => {
-    const conn = new SshClient();
-    const timer = setTimeout(() => {
-      conn.end();
-      reject(new Error("SSH exec timeout (60s)"));
-    }, 60000);
+/** HTTP-only vhost (поки немає SSL у ssl/); для згенерованих PHP-сайтів у корені домену. */
+function buildNginxHttpOnlySiteConfig(domain, rootDir, { phpEnabled, phpFastcgiPass }) {
+  const indexLine =
+    phpEnabled === true
+      ? `    index index.php index.html index.htm;`
+      : `    index index.html index.htm;`;
+  const tryFilesMain =
+    phpEnabled === true
+      ? [
+          `    location / {`,
+          `        try_files $uri $uri/ /index.php?$query_string;`,
+          `    }`,
+        ]
+      : [`    location / {`, `        try_files $uri $uri/ =404;`, `    }`];
+  const phpBlock =
+    phpEnabled === true && phpFastcgiPass
+      ? [
+          ``,
+          `    location ~ \\.php$ {`,
+          `        include snippets/fastcgi-php.conf;`,
+          `        fastcgi_pass ${phpFastcgiPass};`,
+          `        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;`,
+          `    }`,
+        ]
+      : [];
+  return [
+    `server {`,
+    `    listen 80;`,
+    `    listen [::]:80;`,
+    `    server_name ${domain};`,
+    `    root ${rootDir};`,
+    indexLine,
+    ``,
+    ...tryFilesMain,
+    ...phpBlock,
+    `}`,
+    ``,
+  ].join("\n");
+}
 
-    conn
-      .on("ready", () => {
-        conn.exec(command, { pty: false }, (err, stream) => {
-          if (err) {
-            clearTimeout(timer);
-            conn.end();
-            reject(err);
-            return;
-          }
-          let stdout = "";
-          let stderr = "";
-          stream.on("data", (d) => {
-            stdout += d.toString();
-          });
-          stream.stderr.on("data", (d) => {
-            stderr += d.toString();
-          });
-          stream.on("close", (code) => {
-            clearTimeout(timer);
-            conn.end();
-            if (code !== 0) {
-              reject(new Error(`SSH exit ${code}: ${(stderr || stdout).trim().slice(0, 500)}`));
-            } else {
-              resolve({ stdout, stderr });
-            }
-          });
-        });
-      })
-      .on("error", (e) => {
-        clearTimeout(timer);
-        reject(e);
-      })
-      .connect({
-        host,
-        port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 22,
-        username: user,
-        password: String(password || ""),
-        readyTimeout: 20000,
-      });
-  });
+function nginxConfigHasPhpBlock(nginxConf) {
+  const t = String(nginxConf || "");
+  return (
+    /location\s+~\s+\\?\.php\$/.test(t) &&
+    /fastcgi_pass\s+/.test(t) &&
+    /try_files\s+\$uri/.test(t) &&
+    /index\s+index\.php/.test(t)
+  );
+}
+
+/** Сокет PHP-FPM на VPS (env або перший /run/php/php*-fpm.sock). */
+async function detectPhpFpmSocketOnHost({ sshHost, sshUser, sshPassword, sshPort, onLog }) {
+  const fromEnv = String(process.env.SUBDOMAIN_HOST_PHP_FPM_SOCKET || "").trim();
+  if (fromEnv) {
+    const sock = fromEnv.startsWith("unix:") ? fromEnv : `unix:${fromEnv}`;
+    onLog?.(`[nginx] PHP-FPM socket from env: ${sock}`);
+    return sock;
+  }
+  const cmd =
+    "ls /run/php/php*-fpm.sock 2>/dev/null | head -n 1 || ls /var/run/php/php*-fpm.sock 2>/dev/null | head -n 1";
+  try {
+    const { stdout } = await sshExecCommand(sshHost, sshUser, sshPassword, cmd, sshPort);
+    const p = String(stdout || "")
+      .trim()
+      .split("\n")[0]
+      .trim();
+    if (p) {
+      const sock = p.startsWith("unix:") ? p : `unix:${p}`;
+      onLog?.(`[nginx] PHP-FPM socket detected: ${sock}`);
+      return sock;
+    }
+  } catch (e) {
+    onLog?.(`[nginx] PHP-FPM detect warning: ${String(e?.message || e).slice(0, 120)}`);
+  }
+  const fallback = "unix:/run/php/php8.1-fpm.sock";
+  onLog?.(`[nginx] PHP-FPM socket fallback: ${fallback}`);
+  return fallback;
+}
+
+async function verifyNginxVhostOnHost({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  confPath,
+  domain,
+  useHttps,
+}) {
+  const q = shellSingleQuote(confPath);
+  const { stdout } = await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    `grep -E 'fastcgi_pass|location ~ \\\\.php|try_files|index index.php' ${q} | wc -l`,
+    sshPort
+  );
+  const hits = parseInt(String(stdout || "").trim(), 10);
+  if (!Number.isFinite(hits) || hits < 4) {
+    throw new Error(`nginx vhost incomplete (grep hits=${hits || 0}, need PHP block)`);
+  }
+
+  const scheme = useHttps ? "https" : "http";
+  const port = useHttps ? "443" : "80";
+  const curlCmd = `curl -sI -k --resolve ${shellSingleQuote(`${domain}:${port}:127.0.0.1`)} ${scheme}://${domain}/ | head -n 1`;
+  const { stdout: curlOut } = await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    curlCmd,
+    sshPort
+  );
+  const statusLine = String(curlOut || "").trim();
+  if (/ 403 /.test(statusLine)) {
+    throw new Error(`smoke test got 403 — PHP likely not wired (${statusLine})`);
+  }
+  if (!/^HTTP\/\d/i.test(statusLine)) {
+    throw new Error(`smoke test failed: ${statusLine || "empty response"}`);
+  }
+
+  const curlPhpCmd = `curl -sI -k --resolve ${shellSingleQuote(`${domain}:${port}:127.0.0.1`)} ${scheme}://${domain}/index.php | head -n 15`;
+  const { stdout: phpHead } = await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    curlPhpCmd,
+    sshPort
+  );
+  const phpHeaders = String(phpHead || "").toLowerCase();
+  if (/content-type:\s*application\/octet-stream/.test(phpHeaders)) {
+    throw new Error(
+      "index.php served as static file (octet-stream) — PHP-FPM not connected to nginx"
+    );
+  }
+  if (!/content-type:\s*text\/html/.test(phpHeaders) && !/x-powered-by:\s*php/.test(phpHeaders)) {
+    throw new Error(`index.php response not HTML/PHP (${phpHead.trim().slice(0, 200)})`);
+  }
+
+  return { smokeStatus: statusLine };
+}
+
+function resolveNginxDeployPaths(projectsBaseDir, domain) {
+  const normalized = assertSafeHostForRemotePath(domain);
+  const base = String(projectsBaseDir || "/var/www").trim().replace(/\/+$/, "") || "/var/www";
+  const remoteProjectDir = `${base}/${normalized}`;
+  const sslDir = `${remoteProjectDir}/ssl`;
+  const confName = `${normalized}.conf`;
+  const sitesAvail = (
+    String(process.env.SUBDOMAIN_HOST_NGINX_SITES_AVAILABLE || "").trim() ||
+    "/etc/nginx/sites-available"
+  ).replace(/\/+$/, "");
+  const sitesEn = (
+    String(process.env.SUBDOMAIN_HOST_NGINX_SITES_ENABLED || "").trim() ||
+    "/etc/nginx/sites-enabled"
+  ).replace(/\/+$/, "");
+  const reloadCmd =
+    String(process.env.SUBDOMAIN_HOST_NGINX_RELOAD_CMD || "").trim() ||
+    "nginx -t && systemctl reload nginx";
+  return {
+    normalized,
+    remoteProjectDir,
+    sslDir,
+    confPath: `${sitesAvail}/${confName}`,
+    linkPath: `${sitesEn}/${confName}`,
+    reloadCmd,
+  };
+}
+
+async function publishNginxConfigOnHost({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  nginxConf,
+  confPath,
+  linkPath,
+  reloadCmd,
+}) {
+  const body = String(nginxConf || "");
+  const b64 = Buffer.from(body, "utf8").toString("base64");
+  const prefix = sshUsesSudo() ? "sudo " : "";
+  const writeCmd = `echo ${shellSingleQuote(b64)} | base64 -d | ${prefix}tee ${shellSingleQuote(confPath)} > /dev/null`;
+  const lnCmd = `${prefix}ln -sf ${shellSingleQuote(confPath)} ${shellSingleQuote(linkPath)}`;
+  const reload = String(reloadCmd || "nginx -t && systemctl reload nginx").trim();
+  const reloadParts = reload.split("&&").map((p) => p.trim()).filter(Boolean);
+  const reloadCmdFinal = reloadParts.map((p) => `${prefix}${p}`).join(" && ");
+  await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    `${writeCmd} && ${lnCmd} && ${reloadCmdFinal}`,
+    sshPort
+  );
 }
 
 /**
@@ -162,7 +287,6 @@ export async function deploySslCertificateToHost({
     return { skipped: true, ok: false, reason: "SUBDOMAIN_HOST_SSL_DEPLOY not set" };
   }
 
-  const normalized = assertSafeHostForRemotePath(domain);
   const cert = String(certificatePem || "").trim();
   const key = String(privateKeyPem || "").trim();
   if (!cert || !key) {
@@ -175,23 +299,13 @@ export async function deploySslCertificateToHost({
   const sshPort = Number(sshPortInput || process.env.SUBDOMAIN_HOST_PORT || 22);
   const projectsBaseDir =
     String(projectsBaseDirInput || process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() || "/var/www";
-  const sitesAvail = (String(process.env.SUBDOMAIN_HOST_NGINX_SITES_AVAILABLE || "").trim() || "/etc/nginx/sites-available").replace(
-    /\/+$/,
-    ""
-  );
-  const sitesEn = (String(process.env.SUBDOMAIN_HOST_NGINX_SITES_ENABLED || "").trim() || "/etc/nginx/sites-enabled").replace(/\/+$/, "");
-  const reloadCmd =
-    String(process.env.SUBDOMAIN_HOST_NGINX_RELOAD_CMD || "").trim() || "nginx -t && systemctl reload nginx";
 
   if (!sshHost || !sshUser || !sshPassword) {
     return { ok: false, skipped: false, warning: "SUBDOMAIN_HOST_IP / USER / PASSWORD missing" };
   }
 
-  const remoteProjectDir = `${projectsBaseDir.replace(/\/+$/, "")}/${normalized}`;
-  const sslDir = `${remoteProjectDir}/ssl`;
-  const confName = `${normalized}.conf`;
-  const confPath = `${sitesAvail}/${confName}`;
-  const linkPath = `${sitesEn}/${confName}`;
+  const { normalized, remoteProjectDir, sslDir, confPath, linkPath, reloadCmd } =
+    resolveNginxDeployPaths(projectsBaseDir, domain);
 
   const sftp = new SftpClient();
   try {
@@ -206,15 +320,6 @@ export async function deploySslCertificateToHost({
     await sftp.put(Buffer.from(cert, "utf8"), `${sslDir}/fullchain.pem`);
     await sftp.put(Buffer.from(key, "utf8"), `${sslDir}/privkey.pem`);
     await sftp.chmod(`${sslDir}/privkey.pem`, 0o600).catch(() => {});
-
-    const phpOn = nginxPhpEnabled();
-    const phpSock =
-      String(process.env.SUBDOMAIN_HOST_PHP_FPM_SOCKET || "").trim() || "unix:/run/php/php8.1-fpm.sock";
-    const nginxConf = buildNginxSiteConfig(normalized, remoteProjectDir, sslDir, {
-      phpEnabled: phpOn,
-      phpFastcgiPass: phpOn ? phpSock : "",
-    });
-    await sftp.put(Buffer.from(nginxConf, "utf8"), confPath);
   } catch (e) {
     return {
       ok: false,
@@ -228,15 +333,153 @@ export async function deploySslCertificateToHost({
     await sftp.end().catch(() => {});
   }
 
+  return syncNginxVhostForDomain({
+    domain,
+    deployHostIp: sshHost,
+    sshUser,
+    sshPassword,
+    sshPort,
+    projectsBaseDir,
+    mode: "https",
+  });
+}
+
+/**
+ * Після SFTP-деплою генератора: vhost nginx для домену (SSL з ssl/ або HTTP-only).
+ * Не вимагає SUBDOMAIN_HOST_SSL_DEPLOY — потрібно, щоб index.php відкривався в браузері.
+ */
+export async function syncNginxVhostForDomain({
+  domain,
+  deployHostIp,
+  sshUser: sshUserInput,
+  sshPassword: sshPasswordInput,
+  sshPort: sshPortInput,
+  projectsBaseDir: projectsBaseDirInput,
+  mode = "auto",
+  onLog,
+}) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+
+  const sshHost = String(deployHostIp || process.env.SUBDOMAIN_HOST_IP || "").trim();
+  const sshUser = String(sshUserInput || process.env.SUBDOMAIN_HOST_USER || "").trim();
+  const sshPassword = String(sshPasswordInput || process.env.SUBDOMAIN_HOST_PASSWORD || "");
+  const sshPort = Number(sshPortInput || process.env.SUBDOMAIN_HOST_PORT || 22);
+  const projectsBaseDir =
+    String(projectsBaseDirInput || process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() || "/var/www";
+
+  if (!sshHost || !sshUser || !sshPassword) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "ssh_credentials_missing",
+      warning: "SSH host/user/password missing for nginx sync",
+    };
+  }
+
+  const { normalized, remoteProjectDir, sslDir, confPath, linkPath, reloadCmd } =
+    resolveNginxDeployPaths(projectsBaseDir, domain);
+
+  const phpOn = nginxPhpEnabled();
+  let phpSock = "";
+  if (phpOn) {
+    const stack = await ensurePhpStackOnHost({
+      deployHostIp: sshHost,
+      sshUser,
+      sshPassword,
+      sshPort,
+      onLog: log,
+    });
+    if (!stack.ok && !stack.skipped) {
+      return {
+        ok: false,
+        skipped: false,
+        warning: stack.warning || "PHP stack setup failed on host",
+        remoteProjectDir,
+      };
+    }
+    phpSock =
+      String(stack.phpFpmSocket || "").trim() ||
+      (await detectPhpFpmSocketOnHost({
+        sshHost,
+        sshUser,
+        sshPassword,
+        sshPort,
+        onLog: log,
+      }));
+  }
+  const phpOpts = { phpEnabled: phpOn, phpFastcgiPass: phpOn ? phpSock : "" };
+
+  let useHttps = mode === "https";
+  if (mode === "auto" || mode === "http") {
+    const sftp = new SftpClient();
+    try {
+      await sftp.connect({
+        host: sshHost,
+        port: Number.isFinite(sshPort) && sshPort > 0 ? sshPort : 22,
+        username: sshUser,
+        password: sshPassword,
+        readyTimeout: 20000,
+      });
+      const hasCert = (await sftp.exists(`${sslDir}/fullchain.pem`)) === "-";
+      const hasKey = (await sftp.exists(`${sslDir}/privkey.pem`)) === "-";
+      useHttps = hasCert && hasKey;
+    } catch (e) {
+      return {
+        ok: false,
+        skipped: false,
+        warning: `nginx precheck failed: ${e?.message || String(e)}`,
+        remoteProjectDir,
+      };
+    } finally {
+      await sftp.end().catch(() => {});
+    }
+  }
+
+  if (mode === "https" && !useHttps) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "ssl_certs_missing",
+      warning: `No fullchain.pem/privkey.pem in ${sslDir}`,
+      remoteProjectDir,
+      sslDir,
+    };
+  }
+
+  const nginxConf = useHttps
+    ? buildNginxSiteConfig(normalized, remoteProjectDir, sslDir, phpOpts)
+    : buildNginxHttpOnlySiteConfig(normalized, remoteProjectDir, phpOpts);
+
+  if (phpOn && !nginxConfigHasPhpBlock(nginxConf)) {
+    return {
+      ok: false,
+      skipped: false,
+      warning: "Generated nginx config is missing PHP fastcgi block",
+      remoteProjectDir,
+    };
+  }
+
   try {
-    const ln = `ln -sf ${shellSingleQuote(confPath)} ${shellSingleQuote(linkPath)}`;
-    await sshExecCommand(sshHost, sshUser, sshPassword, ln, sshPort);
-    await sshExecCommand(sshHost, sshUser, sshPassword, reloadCmd, sshPort);
+    await publishNginxConfigOnHost({
+      sshHost,
+      sshUser,
+      sshPassword,
+      sshPort,
+      nginxConf,
+      confPath,
+      linkPath,
+      reloadCmd,
+    });
+    log(
+      `[nginx] ${normalized}: vhost ${useHttps ? "https" : "http-only"} → ${confPath}, reload ok`
+    );
   } catch (e) {
     return {
       ok: false,
       skipped: false,
-      warning: `nginx symlink/reload failed: ${e?.message || String(e)}`,
+      warning: `nginx publish failed: ${e?.message || String(e)}`,
       remoteProjectDir,
       sslDir,
       nginxConfPath: confPath,
@@ -244,13 +487,55 @@ export async function deploySslCertificateToHost({
     };
   }
 
+  let smokeStatus = "";
+  try {
+    const smoke = await verifyNginxVhostOnHost({
+      sshHost,
+      sshUser,
+      sshPassword,
+      sshPort,
+      confPath,
+      domain: normalized,
+      useHttps,
+    });
+    smokeStatus = smoke.smokeStatus || "";
+    log(`[nginx] smoke test ${normalized}: ${smokeStatus}`);
+  } catch (e) {
+    return {
+      ok: false,
+      skipped: false,
+      warning: `nginx verify failed: ${e?.message || String(e)}`,
+      remoteProjectDir,
+      sslDir,
+      nginxConfPath: confPath,
+      nginxLinkPath: linkPath,
+      phpFpmSocket: phpSock,
+    };
+  }
+
   return {
     ok: true,
     skipped: false,
+    https: useHttps,
     remoteProjectDir,
     sslDir,
     nginxConfPath: confPath,
     nginxLinkPath: linkPath,
     nginxReloaded: true,
+    phpFpmSocket: phpSock,
+    smokeStatus,
+    verified: true,
   };
+}
+
+/** Каталоги 755, файли 644 — інакше www-data/nginx не читає дерево після SFTP. */
+export async function fixDeployedSitePermissions(opts) {
+  const { fixRemoteTreePermissions } = await import("./hostPhpStack.js");
+  return fixRemoteTreePermissions({
+    deployHostIp: opts.deployHostIp,
+    sshUser: opts.sshUser,
+    sshPassword: opts.sshPassword,
+    sshPort: opts.sshPort,
+    remoteProjectDir: opts.remoteProjectDir,
+  });
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { Rocket, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Rocket, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { seoBtnPrimary } from "@/shared/components/seo/seo-ui";
+import { Link } from "@/i18n/navigation";
+import { seoBtnPrimary, seoInput, seoNoteLime } from "@/shared/components/seo/seo-ui";
 import { GeneratorOrb } from "./generator-orb";
 
 const POLL_MS = 1500;
@@ -53,9 +54,13 @@ const FALLBACK_THEME_PRESETS = [
   "мобильное казино",
 ];
 
+export type GeneratorPageCount = 1 | 2 | 3 | 4;
+
+export type GeneratorGenerationMode = "standard" | "bot_gate";
+
 export type GeneratorThemePreset = {
   value: string;
-  pageCount?: 3 | 4;
+  pageCount?: GeneratorPageCount;
 };
 
 /** `u-` + English word + exactly 3 digits (folder-safe, matches random slug button). */
@@ -112,6 +117,22 @@ function sanitizeProjectBase(name: string) {
   return safe || "";
 }
 
+type DeployInfo = {
+  status?: string;
+  domain?: string;
+  remotePath?: string;
+  siteUrl?: string;
+  message?: string;
+};
+
+type HostOption = {
+  id: string;
+  name: string | null;
+  hostIp: string | null;
+  projectsDir: string | null;
+  hasPassword?: boolean;
+};
+
 type JobRow = {
   jobId: string;
   projectName: string;
@@ -120,6 +141,9 @@ type JobRow = {
   logTail: string[];
   error: string;
   progressPercent: number;
+  deploy?: DeployInfo | null;
+  hostId?: string;
+  uploading?: boolean;
 };
 
 type GeneratorWorkbenchProps = {
@@ -138,17 +162,46 @@ export function GeneratorWorkbench({
       ? themePresets
       : FALLBACK_THEME_PRESETS.map((value) => ({ value }));
 
-  const initialTheme =
-    defaultTheme.trim() ||
-    resolvedPresets[0]?.value ||
-    FALLBACK_THEME_PRESETS[0] ||
-    "";
+  const mainTheme = defaultTheme.trim();
+
+  /** Основна тема бренду завжди в списку, далі — теми з БД. */
+  const themeSelectOptions = useMemo(() => {
+    const options: GeneratorThemePreset[] = [];
+    const seen = new Set<string>();
+    if (mainTheme) {
+      options.push({ value: mainTheme });
+      seen.add(mainTheme);
+    }
+    for (const preset of resolvedPresets) {
+      const value = String(preset.value || "").trim();
+      if (!value || seen.has(value)) continue;
+      options.push(preset);
+      seen.add(value);
+    }
+    if (!options.length) {
+      return FALLBACK_THEME_PRESETS.map((value) => ({ value })) as GeneratorThemePreset[];
+    }
+    return options;
+  }, [mainTheme, resolvedPresets]);
+
+  const initialTheme = mainTheme || themeSelectOptions[0]?.value || FALLBACK_THEME_PRESETS[0] || "";
 
   const [projectName, setProjectName] = useState(() => randomProjectSlug());
   const [theme, setTheme] = useState(initialTheme);
-  const [pageCount, setPageCount] = useState<3 | 4>(4);
+  const [pageCount, setPageCount] = useState<GeneratorPageCount>(4);
+  const [generationMode, setGenerationMode] = useState<GeneratorGenerationMode>("standard");
   const [siteCount, setSiteCount] = useState(1);
   const [siteUrl, setSiteUrl] = useState("");
+  const [hosts, setHosts] = useState<HostOption[]>([]);
+  const [hostsLoading, setHostsLoading] = useState(true);
+  const [selectedHostId, setSelectedHostId] = useState("");
+  const [domainScan, setDomainScan] = useState<{
+    available: string[];
+    occupied: string[];
+    projectsBaseDir: string;
+    warning: string | null;
+  } | null>(null);
+  const [domainScanLoading, setDomainScanLoading] = useState(false);
 
   const [starting, setStarting] = useState(false);
   const [resuming, setResuming] = useState(true);
@@ -165,6 +218,72 @@ export function GeneratorWorkbench({
   useEffect(() => {
     setDismissedJobIds(readDismissedJobIds());
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setHostsLoading(true);
+      try {
+        const res = await fetch("/api/generator/hosts", { credentials: "include", cache: "no-store" });
+        const data = (await res.json()) as { ok?: boolean; hosts?: HostOption[] };
+        if (!mounted || !res.ok || !data.ok) return;
+        const list = Array.isArray(data.hosts) ? data.hosts : [];
+        setHosts(list);
+        if (list.length === 1) {
+          setSelectedHostId(String(list[0].id || ""));
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (mounted) setHostsLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const hostId = String(selectedHostId || "").trim();
+    if (!hostId) {
+      setDomainScan(null);
+      return;
+    }
+    let mounted = true;
+    setDomainScanLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/generator/hosts/${encodeURIComponent(hostId)}/domains`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          available?: string[];
+          occupied?: string[];
+          projectsBaseDir?: string;
+          warning?: string | null;
+        };
+        if (!mounted || !res.ok || !data.ok) {
+          if (mounted) setDomainScan(null);
+          return;
+        }
+        setDomainScan({
+          available: Array.isArray(data.available) ? data.available : [],
+          occupied: Array.isArray(data.occupied) ? data.occupied : [],
+          projectsBaseDir: String(data.projectsBaseDir || "/var/www"),
+          warning: data.warning ? String(data.warning) : null,
+        });
+      } catch {
+        if (mounted) setDomainScan(null);
+      } finally {
+        if (mounted) setDomainScanLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedHostId]);
 
   useEffect(() => {
     if (!jobs.length) return;
@@ -198,6 +317,8 @@ export function GeneratorWorkbench({
               error: j.error || "",
               progressPercent:
                 typeof j.progressPercent === "number" ? j.progressPercent : 0,
+              deploy: (j as { deploy?: DeployInfo | null }).deploy ?? null,
+              hostId: (j as { hostId?: string }).hostId,
             }))
           );
         }
@@ -223,6 +344,7 @@ export function GeneratorWorkbench({
         status?: string;
         error?: string;
         progressPercent?: number;
+        deploy?: DeployInfo | null;
       };
       if (!data.ok || !Array.isArray(data.logs)) return;
       const lines = data.logs;
@@ -246,6 +368,7 @@ export function GeneratorWorkbench({
             status: st,
             progressPercent: pct,
             error: data.error || j.error,
+            deploy: data.deploy ?? j.deploy ?? null,
           };
         })
       );
@@ -283,8 +406,10 @@ export function GeneratorWorkbench({
           projectName,
           theme,
           pageCount,
+          generationMode,
           siteUrl: siteUrl.trim() || undefined,
           siteCount,
+          hostId: selectedHostId.trim() || undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -304,6 +429,8 @@ export function GeneratorWorkbench({
           logTail: [],
           error: "",
           progressPercent: 0,
+          deploy: null,
+          hostId: selectedHostId.trim() || undefined,
         }))
       );
     } catch (e) {
@@ -322,6 +449,85 @@ export function GeneratorWorkbench({
       });
     } catch {
       /* ignore */
+    }
+  }
+
+  async function uploadJobToHost(job: JobRow) {
+    const hostId = String(job.hostId || selectedHostId || "").trim();
+    if (!hostId) {
+      setError(t("deployHostRequired"));
+      return;
+    }
+    setJobs((prev) =>
+      prev.map((j) => (j.jobId === job.jobId ? { ...j, uploading: true } : j))
+    );
+    try {
+      const res = await fetch("/api/generator/deploy", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: job.jobId,
+          projectName: job.projectName,
+          hostId,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        deploy?: DeployInfo;
+        error?: string;
+        details?: string;
+      };
+      const deploy = data.deploy ?? null;
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.jobId === job.jobId
+            ? {
+                ...j,
+                uploading: false,
+                deploy: deploy || {
+                  status: "failed",
+                  message: data.details || data.error || "Deploy failed",
+                },
+              }
+            : j
+        )
+      );
+      if (selectedHostId) {
+        const scanRes = await fetch(
+          `/api/generator/hosts/${encodeURIComponent(selectedHostId)}/domains`,
+          { credentials: "include", cache: "no-store" }
+        );
+        const scanData = (await scanRes.json()) as {
+          ok?: boolean;
+          available?: string[];
+          occupied?: string[];
+          projectsBaseDir?: string;
+        };
+        if (scanRes.ok && scanData.ok) {
+          setDomainScan({
+            available: Array.isArray(scanData.available) ? scanData.available : [],
+            occupied: Array.isArray(scanData.occupied) ? scanData.occupied : [],
+            projectsBaseDir: String(scanData.projectsBaseDir || "/var/www"),
+            warning: null,
+          });
+        }
+      }
+    } catch (e) {
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.jobId === job.jobId
+            ? {
+                ...j,
+                uploading: false,
+                deploy: {
+                  status: "failed",
+                  message: e instanceof Error ? e.message : String(e),
+                },
+              }
+            : j
+        )
+      );
     }
   }
 
@@ -381,21 +587,18 @@ export function GeneratorWorkbench({
 
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-union-muted">{t("theme")}</span>
-              {resolvedPresets.length > 0 ? (
+              {themeSelectOptions.length > 0 ? (
                 <select
                   value={theme}
                   onChange={(e) => {
                     const next = e.target.value;
                     setTheme(next);
-                    const match = resolvedPresets.find((p) => p.value === next);
+                    const match = themeSelectOptions.find((p) => p.value === next);
                     if (match?.pageCount) setPageCount(match.pageCount);
                   }}
                   className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
                 >
-                  {!resolvedPresets.some((p) => p.value === theme) && theme ? (
-                    <option value={theme}>{theme}</option>
-                  ) : null}
-                  {resolvedPresets.map((p) => (
+                  {themeSelectOptions.map((p) => (
                     <option key={p.value} value={p.value}>
                       {p.value}
                     </option>
@@ -407,7 +610,7 @@ export function GeneratorWorkbench({
                   onChange={(e) => {
                     const next = e.target.value;
                     setTheme(next);
-                    const match = resolvedPresets.find((p) => p.value === next);
+                    const match = themeSelectOptions.find((p) => p.value === next);
                     if (match?.pageCount) setPageCount(match.pageCount);
                   }}
                   className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
@@ -419,9 +622,14 @@ export function GeneratorWorkbench({
               <span className="text-xs font-medium text-union-muted">{t("pageCount")}</span>
               <select
                 value={pageCount}
-                onChange={(e) => setPageCount(Number(e.target.value) === 3 ? 3 : 4)}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (n >= 1 && n <= 4) setPageCount(n as GeneratorPageCount);
+                }}
                 className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2"
               >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
                 <option value={3}>3</option>
                 <option value={4}>4</option>
               </select>
@@ -442,15 +650,124 @@ export function GeneratorWorkbench({
               </select>
             </label>
 
-            <label className="block space-y-1.5 md:col-span-2">
-              <span className="text-xs font-medium text-union-muted">{t("siteUrl")}</span>
-              <input
-                value={siteUrl}
-                onChange={(e) => setSiteUrl(e.target.value)}
-                className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring placeholder:text-union-muted focus:ring-2"
-                placeholder="https://example.com"
-              />
-            </label>
+            <fieldset className="block space-y-2 md:col-span-2">
+              <legend className="text-xs font-medium text-union-muted">{t("generationMode")}</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(
+                  [
+                    {
+                      id: "standard" as const,
+                      title: t("generationModeStandardTitle"),
+                      desc: t("generationModeStandardDesc"),
+                    },
+                    {
+                      id: "bot_gate" as const,
+                      title: t("generationModeBotGateTitle"),
+                      desc: t("generationModeBotGateDesc"),
+                    },
+                  ] as const
+                ).map((mode) => {
+                  const selected = generationMode === mode.id;
+                  return (
+                    <label
+                      key={mode.id}
+                      className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                        selected
+                          ? "border-[#d1fe17]/55 bg-[#d1fe17]/[0.07] ring-1 ring-[#d1fe17]/35"
+                          : "border-union-border bg-union-bg/80 hover:border-white/20"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="generationMode"
+                        value={mode.id}
+                        checked={selected}
+                        onChange={() => setGenerationMode(mode.id)}
+                        className="sr-only"
+                      />
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                          selected
+                            ? "border-[#d1fe17] bg-[#d1fe17]"
+                            : "border-union-border bg-transparent"
+                        }`}
+                        aria-hidden
+                      >
+                        {selected ? (
+                          <span className="h-2 w-2 rounded-full bg-black" />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 space-y-1">
+                        <span className="block text-sm font-medium text-union-text">{mode.title}</span>
+                        <span className="block text-xs leading-relaxed text-union-muted">{mode.desc}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <div className="grid min-w-0 gap-5 md:col-span-2 md:grid-cols-2 md:items-start">
+              <label className="block min-w-0 space-y-1.5">
+                <span className="text-xs font-medium text-union-muted">
+                  {t("deployHost")}{" "}
+                  <span className="font-normal text-union-muted/80">({t("deployHostOptional")})</span>
+                </span>
+                {hostsLoading ? (
+                  <p className="text-sm text-union-muted">{t("deployHostScanning")}</p>
+                ) : hosts.length === 0 ? (
+                  <p className="text-sm text-union-muted">
+                    {t("deployHostNoHosts")}{" "}
+                    <Link href="/dashboard/settings" className="text-[#d1fe17] underline-offset-2 hover:underline">
+                      {t("deployHostSettingsLink")}
+                    </Link>
+                  </p>
+                ) : (
+                  <select
+                    value={selectedHostId}
+                    onChange={(e) => setSelectedHostId(e.target.value)}
+                    className={`${seoInput} w-full`}
+                  >
+                    <option value="">{t("deployHostPlaceholder")}</option>
+                    {hosts.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name || h.hostIp}
+                        {h.hostIp ? ` (${h.hostIp})` : ""}
+                        {!h.hasPassword ? " — no password" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedHostId && domainScan ? (
+                  <div className="space-y-1 pt-1 text-xs text-union-muted">
+                    <p>{t("deployHostPath", { path: domainScan.projectsBaseDir })}</p>
+                    <p className="font-medium text-[#D1FE17]">
+                      {t("deployHostAvailable", { count: domainScan.available.length })}
+                      {" · "}
+                      {t("deployHostOccupied", { count: domainScan.occupied.length })}
+                    </p>
+                    {domainScan.warning ? <p className="text-amber-200/90">{domainScan.warning}</p> : null}
+                  </div>
+                ) : null}
+                {selectedHostId && domainScanLoading ? (
+                  <p className="text-xs text-union-muted">{t("deployHostScanning")}</p>
+                ) : null}
+              </label>
+
+              <label className="block min-w-0 space-y-1.5">
+                <span className="text-xs font-medium text-union-muted">
+                  {t("siteUrl")}{" "}
+                  <span className="font-normal text-union-muted/80">({t("siteUrlOptional")})</span>
+                </span>
+                <input
+                  value={siteUrl}
+                  onChange={(e) => setSiteUrl(e.target.value)}
+                  className={`${seoInput} w-full`}
+                  placeholder="https://example.com"
+                />
+                <p className="text-xs leading-relaxed text-union-muted">{t("siteUrlHint")}</p>
+              </label>
+            </div>
           </div>
 
           {error ? (
@@ -489,6 +806,17 @@ export function GeneratorWorkbench({
                 : null;
               const canStop = !TERMINAL.has(job.status);
               const canDismiss = TERMINAL.has(job.status);
+              const deploy = job.deploy;
+              const deployStatus = String(deploy?.status || "");
+              const deployPending =
+                done &&
+                deployStatus !== "deployed" &&
+                (deployStatus === "pending_no_slot" ||
+                  deployStatus === "failed" ||
+                  !deployStatus ||
+                  (deployStatus === "skipped_no_host" && Boolean(selectedHostId)));
+              const deployOk = deployStatus === "deployed" && deploy?.domain;
+              const showUploadBtn = done && deployPending && !job.uploading;
 
               return (
                 <div
@@ -532,6 +860,33 @@ export function GeneratorWorkbench({
                     />
                   </div>
 
+                  {done && deployStatus === "pending_no_slot" ? (
+                    <p className={`${seoNoteLime} mt-4 text-xs`}>{t("deployPending")}</p>
+                  ) : null}
+                  {done && deployStatus === "failed" && deploy?.message ? (
+                    <p className={`${seoNoteLime} mt-4 text-xs`}>
+                      {t("deployFailed", { message: deploy.message })}
+                    </p>
+                  ) : null}
+                  {deployOk ? (
+                    <p className="mt-4 text-xs text-[#d1fe17]">
+                      {t("deployDone", { domain: deploy.domain || "" })}
+                      {deploy.siteUrl ? (
+                        <>
+                          {" "}
+                          <a
+                            href={deploy.siteUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline underline-offset-2"
+                          >
+                            {t("deployOpenSite")}
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+
                   <div className="mt-4 flex flex-wrap gap-2">
                     {downloadZip ? (
                       <a
@@ -540,6 +895,17 @@ export function GeneratorWorkbench({
                       >
                         {t("downloadZip")}
                       </a>
+                    ) : null}
+                    {showUploadBtn ? (
+                      <button
+                        type="button"
+                        disabled={job.uploading}
+                        onClick={() => void uploadJobToHost(job)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#d1fe17] px-4 py-2 text-xs font-medium text-[#d1fe17] transition-opacity hover:opacity-90 disabled:opacity-40"
+                      >
+                        <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        {job.uploading ? t("uploadingToHost") : t("uploadToHost")}
+                      </button>
                     ) : null}
                     {canStop ? (
                       <button

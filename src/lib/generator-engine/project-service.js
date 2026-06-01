@@ -214,6 +214,8 @@ export async function buildProject(opts) {
       brandKey: opts.brandKey,
       brandKit: opts.brandKit || null,
       referenceTemplateMode: Boolean(opts.referenceTemplateMode),
+      generationMode: opts.generationMode,
+      etalonAlternatingIndex: opts.etalonAlternatingIndex,
     });
     // buildMultipageSite очищает outputDir в начале — meta из /jobs/start удаляется.
     // Записываем снова, чтобы в ZIP и /api/projects/list был subdomainBrand для auto-script.

@@ -30,6 +30,7 @@ export function UserHostsSettingsPanel() {
   const [hostFormPassword, setHostFormPassword] = useState("");
   const [hostFormPort, setHostFormPort] = useState("22");
   const [hostFormProjectsDir, setHostFormProjectsDir] = useState("/var/www");
+  const [provisioningId, setProvisioningId] = useState("");
 
   function resetHostForm() {
     setHostFormName("");
@@ -99,6 +100,37 @@ export function UserHostsSettingsPanel() {
     }
   }
 
+  async function provisionHost(hostId) {
+    const id = String(hostId || "").trim();
+    if (!id || saving || provisioningId) return;
+    setProvisioningId(id);
+    setToast({ message: t("provisionRunning"), lime: true });
+    try {
+      const response = await fetch("/api/settings/hosts/provision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const payload = await readJsonSafe(response);
+      if (!response.ok || !payload?.ok) {
+        const tail = Array.isArray(payload?.logs) ? payload.logs.slice(-3).join(" ") : "";
+        throw new Error(
+          payload?.details || payload?.error || tail || t("provisionFailed")
+        );
+      }
+      const sites = payload?.provision?.sites || [];
+      const okCount = sites.filter((s) => s?.ok).length;
+      setToast({
+        message: t("provisionDone", { ok: okCount, total: sites.length }),
+        lime: true,
+      });
+    } catch (e) {
+      setToast({ message: String(e?.message || t("provisionFailed")), lime: true });
+    } finally {
+      setProvisioningId("");
+    }
+  }
+
   async function deleteHost(hostId) {
     const id = String(hostId || "").trim();
     if (!id || saving) return;
@@ -163,16 +195,26 @@ export function UserHostsSettingsPanel() {
                     {host.projectsDir ? ` · ${host.projectsDir}` : ""}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={seoBtnGhost}
-                  onClick={() => deleteHost(host.id)}
-                  disabled={saving}
-                  aria-label={t("delete")}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                  <span className="sr-only">{t("delete")}</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className={seoBtnLimeOutline}
+                    onClick={() => provisionHost(host.id)}
+                    disabled={saving || Boolean(provisioningId) || !host.hasPassword}
+                  >
+                    {provisioningId === host.id ? t("provisionRunning") : t("provisionPhp")}
+                  </button>
+                  <button
+                    type="button"
+                    className={seoBtnGhost}
+                    onClick={() => deleteHost(host.id)}
+                    disabled={saving || Boolean(provisioningId)}
+                    aria-label={t("delete")}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                    <span className="sr-only">{t("delete")}</span>
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

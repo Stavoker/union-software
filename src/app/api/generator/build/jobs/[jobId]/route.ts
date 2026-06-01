@@ -51,13 +51,23 @@ export async function GET(
 
   const progressPercent = computeProgressPercent(job.status, progress);
 
+  const result =
+    job.status === "done" && job.result && typeof job.result === "object"
+      ? job.result
+      : null;
+  const deploy =
+    result && typeof result === "object" && "deploy" in result
+      ? (result as { deploy?: unknown }).deploy
+      : null;
+
   return NextResponse.json({
     ok: true,
     jobId: job.id,
     status: job.status,
     logs,
     cursor: nextCursor,
-    result: job.status === "done" ? job.result : null,
+    result,
+    deploy,
     error:
       job.status === "error" || job.status === "cancelled" ? job.error : "",
     progress,

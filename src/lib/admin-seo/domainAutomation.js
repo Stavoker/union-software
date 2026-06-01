@@ -1,4 +1,5 @@
 import dns from "dns/promises";
+import { fetchWithRetry } from "./fetchRetry.js";
 import { resolveZomroAuthToken } from "./zomroAuth.js";
 import { addMasterDomainZomroDnsmgr } from "./zomroDnsmgr.js";
 import { issueLetsEncryptCertificateDns01Spaceship } from "./sslLetsEncryptSpaceship.js";
@@ -35,22 +36,6 @@ async function readJsonSafe(response) {
       raw: text,
     };
   }
-}
-
-async function fetchWithRetry(url, options, { retries = 2, retryDelayMs = 1200, label = "request" } = {}) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
-    try {
-      return await fetch(url, options);
-    } catch (e) {
-      lastError = e;
-      if (attempt > retries) {
-        break;
-      }
-      await new Promise((r) => setTimeout(r, retryDelayMs));
-    }
-  }
-  throw new Error(`${label}: network fetch failed (${lastError?.message || "unknown"})`);
 }
 
 function normalizeDomainLabel(value) {

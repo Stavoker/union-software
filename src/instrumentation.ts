@@ -1,6 +1,6 @@
 /**
  * Запускається один раз при старті Node-сервера (до обробки запитів).
- * Дефолты генератора Union: эталоны u-bet162/u-spot064, шаблон inner-main по страницам.
+ * Дефолты генератора Union: один эталон u-bet162 или u-spot064 на білд, DOM 1:1, inner-main по страницам.
  * Якщо в `.env` явно задано SOFTGEN_* — ці значення не перезаписуємо.
  */
 export async function register() {
@@ -13,7 +13,7 @@ export async function register() {
     process.env.SOFTGEN_REFERENCE_TEMPLATE_MODE = "1";
   }
   if (typeof process.env.SOFTGEN_DUAL_SITE_TEMPLATES === "undefined") {
-    process.env.SOFTGEN_DUAL_SITE_TEMPLATES = "1";
+    process.env.SOFTGEN_DUAL_SITE_TEMPLATES = "0";
   }
   if (typeof process.env.SOFTGEN_QUALITY_REGEN_ENABLED === "undefined") {
     process.env.SOFTGEN_QUALITY_REGEN_ENABLED = "1";

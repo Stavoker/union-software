@@ -4,7 +4,7 @@
  *
  * **Варіант B:** дефолти для `SOFTGEN_REQUIRE_REFERENCE_STRUCTURE` і
  * `SOFTGEN_REFERENCE_TEMPLATE_MODE` задаються в `src/instrumentation.ts`, якщо env порожні.
- * Старт job у API примусово передає `referenceTemplateMode: false`.
+ * Старт job у API передає `referenceTemplateMode: true` (эталоны u-bet162 / u-spot064).
  */
 export const GENERATOR_SOURCE_REPO = "soft-generator-new-v2" as const;
 

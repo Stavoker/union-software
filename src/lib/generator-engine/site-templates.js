@@ -44,13 +44,76 @@ function bundledEtalonRoot(templateId) {
   );
 }
 
+function defaultDesktopEtalonRoot(templateId) {
+  const home = String(process.env.HOME || process.env.USERPROFILE || "").trim();
+  if (!home) return "";
+  const folder =
+    templateId === SITE_TEMPLATE_SPOT064 ? "u-spot064" : "u-bet162";
+  return path.join(home, "Desktop", folder);
+}
+
 export function resolveEtalonRoot(templateId) {
   const envKey =
     templateId === SITE_TEMPLATE_SPOT064
       ? "SOFTGEN_ETALON_SPOT064_PATH"
       : "SOFTGEN_ETALON_BET162_PATH";
   const override = String(process.env[envKey] || "").trim();
-  return override || bundledEtalonRoot(templateId);
+  if (override) return override;
+  const desktop = defaultDesktopEtalonRoot(templateId);
+  if (desktop && fs.existsSync(desktop)) return desktop;
+  return bundledEtalonRoot(templateId);
+}
+
+/** Сторінка еталона → css/page-N.css (як у u-bet162 / u-spot064). */
+export const ETALON_PAGE_CSS_BY_FILE = {
+  "index.php": "css/page-1.css",
+  "payments.php": "css/page-2.css",
+  "games.php": "css/page-3.css",
+  "zerkalo.php": "css/page-4.css",
+};
+
+export const ETALON_PAGE_JS_BY_FILE = {
+  "index.php": "js/page-1.js",
+  "payments.php": "js/page-2.js",
+  "games.php": "js/page-3.js",
+  "zerkalo.php": "js/page-4.js",
+};
+
+export function resolveEtalonPageCssAssetPath(pageFile) {
+  const canonical = resolveEtalonSourcePageFile(pageFile);
+  return ETALON_PAGE_CSS_BY_FILE[canonical] || "css/page-1.css";
+}
+
+export function resolveEtalonPageJsAssetPath(pageFile) {
+  const canonical = resolveEtalonSourcePageFile(pageFile);
+  return ETALON_PAGE_JS_BY_FILE[canonical] || "js/page-1.js";
+}
+
+export function readEtalonPageCssFromBundle(bundle, pageFile) {
+  const rel = resolveEtalonPageCssAssetPath(pageFile);
+  return String(getBundleAsset(bundle, rel) || "").trim();
+}
+
+export function readEtalonPageJsFromBundle(bundle, pageFile) {
+  const rel = resolveEtalonPageJsAssetPath(pageFile);
+  return String(getBundleAsset(bundle, rel) || "").trim();
+}
+
+/** Еталонний CSS + дрібні AI-дельти (BEM-префікс), без заміни базової палітри. */
+export function mergeEtalonPageCss(etalonCss, aiCss) {
+  const base = String(etalonCss || "").trim();
+  const delta = String(aiCss || "").trim();
+  if (!base) return delta;
+  if (!delta) return base;
+  return `${base}\n\n/* --- build overrides (BEM prefix / copy) --- */\n${delta}`;
+}
+
+export function mergeEtalonPageJs(etalonJs, runtimeJs, aiJs) {
+  const base = String(etalonJs || "").trim();
+  const runtime = String(runtimeJs || "").trim();
+  const ai = String(aiJs || "").trim();
+  const parts = [base, runtime, ai].filter(Boolean);
+  return parts.join("\n\n");
 }
 
 function classifyAssetPath(relPath) {
@@ -201,6 +264,98 @@ export function pickPageTemplatePlan(seed, pageFiles) {
     plan[f] = seq[i] || SITE_TEMPLATE_BET162;
   });
   return plan;
+}
+
+/** Черга 1 через 1: парні індекси → bet162, непарні → spot064. */
+export function pickEtalonByAlternatingIndex(index = 0) {
+  const n = Math.max(0, Math.trunc(Number(index) || 0));
+  return n % 2 === 0 ? SITE_TEMPLATE_BET162 : SITE_TEMPLATE_SPOT064;
+}
+
+/** Один еталон на весь білд (без змішування bet162 + spot064 на одному сайті). */
+export function pickSingleEtalonTemplateId(seed, forcedTemplateId = "") {
+  const forced = String(forcedTemplateId || "").trim().toLowerCase();
+  if (forced === SITE_TEMPLATE_BET162 || forced === "bet162" || forced === "u-bet162") {
+    return SITE_TEMPLATE_BET162;
+  }
+  if (forced === SITE_TEMPLATE_SPOT064 || forced === "spot064" || forced === "u-spot064") {
+    return SITE_TEMPLATE_SPOT064;
+  }
+  const fromEnv = String(process.env.SOFTGEN_ETALON_TEMPLATE || "")
+    .trim()
+    .toLowerCase();
+  if (fromEnv === "bet162" || fromEnv === SITE_TEMPLATE_BET162) {
+    return SITE_TEMPLATE_BET162;
+  }
+  if (fromEnv === "spot064" || fromEnv === SITE_TEMPLATE_SPOT064) {
+    return SITE_TEMPLATE_SPOT064;
+  }
+  return tplHash32(`${seed}|single-etalon`) % 2 === 0
+    ? SITE_TEMPLATE_BET162
+    : SITE_TEMPLATE_SPOT064;
+}
+
+export function pickUniformPageTemplatePlan(pageFiles, templateId) {
+  const tpl =
+    templateId === SITE_TEMPLATE_SPOT064 ? SITE_TEMPLATE_SPOT064 : SITE_TEMPLATE_BET162;
+  const plan = {};
+  for (const f of orderedPageFiles(pageFiles)) {
+    plan[f] = tpl;
+  }
+  return plan;
+}
+
+const ETALON_BRAND_PLACEHOLDERS = [
+  "Union",
+  "Laki",
+  "Лаки",
+  "Laki World",
+  "ЛАКИ ВОРЛД",
+  "ЛАКИ",
+  "u-bet162",
+  "u-spot064",
+];
+
+/**
+ * Механічна адаптація HTML еталона: бренд, gateway, baseUrl; класи ig-* / lw-* / union_* не чіпаємо.
+ */
+export function applyEtalonCloneTransforms(html, opts = {}) {
+  let out = String(html || "");
+  const brand = String(opts.brandName || opts.themeBrandHint || "Казино").trim();
+  const gtw = String(opts.gatewayUrl || "").trim();
+  const base = String(opts.baseUrl || "").trim().replace(/\/+$/, "");
+
+  if (gtw) {
+    out = out.replace(/https?:\/\/[^\s"'<>]+/gi, (url) => {
+      const u = String(url || "");
+      if (/gateway|signup|affiliate|faff=/i.test(u)) return gtw;
+      return u;
+    });
+  }
+  if (base) {
+    out = out.replace(
+      /https?:\/\/[a-z0-9][a-z0-9.-]*\.(generator\.local|local)(\/[^\s"'<>]*)?/gi,
+      `${base}$2`
+    );
+    out = out.replace(/https?:\/\/u-[a-z0-9-]+\.[a-z0-9.-]+(\/[^\s"'<>]*)?/gi, `${base}$1`);
+  }
+  out = out.replace(
+    /\shref="(?!https?:|#|mailto:|tel:|\.\/)([a-z0-9][a-z0-9._-]*\.php[^"]*)"/gi,
+    ' href="./$1"'
+  );
+  out = out.replace(
+    /\shref='(?!https?:|#|mailto:|tel:|\.\/)([a-z0-9][a-z0-9._-]*\.php[^']*)'/gi,
+    " href='./$1'"
+  );
+
+  if (brand) {
+    const brandEsc = brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    for (const old of ETALON_BRAND_PLACEHOLDERS) {
+      if (old.toLowerCase() === brand.toLowerCase()) continue;
+      out = out.replace(new RegExp(old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), brand);
+    }
+  }
+  return out;
 }
 
 export function formatTemplatePlanLog(plan) {
@@ -430,9 +585,26 @@ export async function loadDualEtalonReferencePack(opts) {
     readEtalonPageHtmlFromBundle(bundles[SITE_TEMPLATE_SPOT064], "index.php")
   );
 
+  const etalonPageCssByFile = {};
+  const etalonPageJsByFile = {};
+  for (const file of pageFiles) {
+    const tpl = plan[file] || SITE_TEMPLATE_BET162;
+    const sourceFile = resolveEtalonSourcePageFile(file);
+    etalonPageCssByFile[file] = readEtalonPageCssFromBundle(
+      bundles[tpl],
+      sourceFile
+    );
+    etalonPageJsByFile[file] = readEtalonPageJsFromBundle(
+      bundles[tpl],
+      sourceFile
+    );
+  }
+
   const signals = {
     dualSiteTemplates: true,
     etalonSource: "supabase",
+    etalonPageCssByFile,
+    etalonPageJsByFile,
     pageTemplateByFile,
     mainHtmlTemplatesByFile,
     mainHtmlTemplateSourceByFile,
@@ -479,6 +651,193 @@ export async function loadDualEtalonReferencePack(opts) {
   };
 }
 
+/**
+ * Один еталон на весь білд (режим «клон»): без змішування bet162 + spot064.
+ * @param {{
+ *   templateId: string;
+ *   pageFiles: string[];
+ *   onLog?: (msg: string) => void;
+ *   supabaseUrl?: string;
+ *   serviceKey?: string;
+ * }} opts
+ */
+export async function loadSingleEtalonReferencePack(opts) {
+  const templateId =
+    opts.templateId === SITE_TEMPLATE_SPOT064
+      ? SITE_TEMPLATE_SPOT064
+      : SITE_TEMPLATE_BET162;
+  const pageFiles = orderedPageFiles(opts.pageFiles || []);
+  const onLog = opts.onLog;
+  const fetchOpts = {
+    supabaseUrl: opts.supabaseUrl,
+    serviceKey: opts.serviceKey,
+    onLog,
+  };
+
+  const bundle = await getSiteTemplateBundle(templateId, fetchOpts);
+  const plan = pickUniformPageTemplatePlan(pageFiles, templateId);
+  const mainHtmlTemplateLibrary = {
+    [templateId]: collectMainTemplatesFromBundle(bundle),
+  };
+  const chromeByTemplate = {
+    [templateId]: loadTemplateChromeSignals(templateId, bundle),
+  };
+
+  const mainHtmlTemplatesByFile = {};
+  const mainHtmlTemplateSourceByFile = {};
+  for (const file of pageFiles) {
+    const picked = pickMainTemplateForBuildPage(
+      mainHtmlTemplateLibrary,
+      file,
+      templateId
+    );
+    if (picked.main) {
+      mainHtmlTemplatesByFile[file] = picked.main;
+      mainHtmlTemplateSourceByFile[file] = picked.source;
+    }
+  }
+
+  const libCount = Object.keys(mainHtmlTemplateLibrary[templateId] || {}).length;
+  const assigned = Object.keys(mainHtmlTemplatesByFile).length;
+  const firstMain = mainHtmlTemplatesByFile[pageFiles[0]] || "";
+  const indexMain = mainHtmlTemplatesByFile["index.php"] || firstMain;
+  const indexHtml = readEtalonPageHtmlFromBundle(bundle, "index.php");
+  const sectionRoleSequence = extractSectionRoleSequenceForSimilarity(indexMain);
+  const layoutFeatures = detectLayoutFeaturesForSimilarity(indexHtml);
+
+  const etalonPageCssByFile = {};
+  const etalonPageJsByFile = {};
+  for (const file of pageFiles) {
+    const sourceFile = resolveEtalonSourcePageFile(file);
+    etalonPageCssByFile[file] = readEtalonPageCssFromBundle(bundle, sourceFile);
+    etalonPageJsByFile[file] = readEtalonPageJsFromBundle(bundle, sourceFile);
+  }
+
+  const chrome = chromeByTemplate[templateId] || {};
+  const signals = {
+    singleEtalonClone: true,
+    singleEtalonTemplateId: templateId,
+    dualSiteTemplates: false,
+    etalonSource: "supabase",
+    etalonPageCssByFile,
+    etalonPageJsByFile,
+    pageTemplateByFile: plan,
+    mainHtmlTemplatesByFile,
+    mainHtmlTemplateSourceByFile,
+    mainHtmlTemplateLibrary,
+    mainHtmlTemplateLibraryCounts: {
+      bet162:
+        templateId === SITE_TEMPLATE_BET162 ? libCount : 0,
+      spot064:
+        templateId === SITE_TEMPLATE_SPOT064 ? libCount : 0,
+    },
+    chromeByTemplate,
+    mainHtmlTemplate: indexMain,
+    mainHtmlTemplateChars: indexMain.length,
+    sectionRoleSequence,
+    layoutFeatures,
+    referenceLayoutLeftRailHint: templateId === SITE_TEMPLATE_SPOT064,
+    referenceHeaderTemplate: chrome.headerHtml || "",
+    referenceFooterTemplate: chrome.footerHtml || "",
+    referenceRailTemplate:
+      templateId === SITE_TEMPLATE_SPOT064 ? chrome.headerHtml || "" : "",
+    referenceRichFooterTemplate:
+      templateId === SITE_TEMPLATE_SPOT064 ? chrome.footerHtml || "" : "",
+  };
+
+  const tplLabel = templateId === SITE_TEMPLATE_SPOT064 ? "u-spot064" : "u-bet162";
+  const overlay = `
+ГЕНЕРАЦИЯ — один эталон **${tplLabel}** (${templateId}) на **все** URL пакета.
+- **DOM 1:1** с эталоном: порядок секций, вложенность, классы **ig-***, **lw-***, **union_*** — **не переименовывать**.
+- **pageCss** — только мелкие дополнения (опечатки, 1–2 правила под бренд); **запрещена** новая палитра и переписывание сетки.
+- **Не смешивать** с другим эталоном (bet162 + spot064 на одном сайте запрещены).
+`.trim();
+
+  const siteOverlay = `Референс-сайт: ${tplLabel} (${templateId}), один шаблон на билд.`;
+
+  onLog?.(
+    `Эталон ${tplLabel}: main-шаблонов в библиотеке ${libCount}; назначено ${assigned}/${pageFiles.length}; bundle size ${bundle.size}.`
+  );
+
+  const templateCss = {
+    igaming:
+      templateId === SITE_TEMPLATE_BET162
+        ? getBundleAsset(bundle, "css/igaming.css")
+        : "",
+    siteShell:
+      templateId === SITE_TEMPLATE_SPOT064
+        ? getBundleAsset(bundle, "css/site-shell.css")
+        : "",
+  };
+
+  return {
+    signals,
+    overlay,
+    siteOverlay,
+    templateId,
+    templateCss,
+  };
+}
+
+export function buildCloneModePromptBlock({
+  pageFile,
+  templateId,
+  referenceTemplateMainHtml = "",
+  brandName = "",
+  themeBrandHint = "",
+  gatewayUrl = "",
+  isFirstPage = false,
+  canonicalChromeForTemplate = null,
+}) {
+  const tplLabel = templateId === SITE_TEMPLATE_SPOT064 ? "u-spot064" : "u-bet162";
+  const brand = String(brandName || themeBrandHint || "бренд").trim();
+  const gtw = String(gatewayUrl || "").trim();
+  const mainTpl = String(referenceTemplateMainHtml || "").trim();
+  const lines = [
+    `=== ЭТАЛОН (${pageFile}) — ${tplLabel} ===`,
+    "**DOM 1:1 с эталоном**; **запрещено** менять структуру секций, порядок блоков и вложенность.",
+    "**Классы:** сохраняй **все** как в шаблоне: `ig-*`, `lw-*`, `union_*`, `union-*` — **не** переименовывай в BEM-префикс билда и **не** подставляй хеши p1_e5b60f.",
+    `**Тексты:** русский; публичный бренд «${brand}»; убери чужие бренды (Laki, Union и т.п.) из видимого текста.`,
+    gtw
+      ? `**Ссылки:** внутренние — только \`./\` + файлы пакета; gateway **${gtw}** — только CTA регистрации/входа и превью слотов в игровом блоке, как в эталоне.`
+      : "**Ссылки:** внутренние — только `./` + файлы пакета.",
+    "**pageCss:** пустая строка или **до ~40 строк** мелких дополнений (читаемость, один отступ); **запрещено** задавать новую палитру, переписывать цвета/радиусы/сетку с нуля.",
+    "**pageJs:** только если нужен для интерактива эталона; не добавляй лишний JS.",
+    "**mainHtml:** верни **тот же** inner `<main>`, что в шаблоне ниже, с минимальными правками (тексты, бренд, href, alt, title в head — отдельно).",
+  ];
+  if (templateId === SITE_TEMPLATE_SPOT064) {
+    lines.push(
+      "- **headerHtml:** `<aside class=\"lw-site-rail\">` как в эталоне (не дублируй верхний `<header>`).",
+      "- **footerHtml:** `<footer class=\"lw-footer-rich\">` как в эталоне.",
+      "- Сборщик: `body.has-lw-rail`, main в `.lw-site-col`."
+    );
+  } else {
+    lines.push(
+      "- **headerHtml:** `<header>` эталона bet162.",
+      "- **footerHtml:** `<footer>` эталона bet162."
+    );
+  }
+  if (!isFirstPage && canonicalChromeForTemplate) {
+    const h = String(canonicalChromeForTemplate.headerHtml || "").trim();
+    const f = String(canonicalChromeForTemplate.footerHtml || "").trim();
+    if (h || f) {
+      lines.push(
+        "SITE CHROME: **тот же** headerHtml/footerHtml, что на первой странице этого эталона.",
+        h ? `Эталон header/rail:\n${h.slice(0, 6000)}` : "",
+        f ? `Эталон footer:\n${f.slice(0, 6000)}` : ""
+      );
+    }
+  }
+  if (mainTpl) {
+    lines.push(
+      "--- ШАБЛОН inner <main> (копируй структуру 1:1) ---",
+      mainTpl,
+      "--- конец шаблона ---"
+    );
+  }
+  return `\n${lines.filter(Boolean).join("\n")}\n`;
+}
+
 export async function readBundledIgamingCss(opts = {}) {
   const bundle = await getSiteTemplateBundle(SITE_TEMPLATE_BET162, opts);
   return getBundleAsset(bundle, "css/igaming.css");
@@ -501,7 +860,9 @@ export function buildSiteTemplatePagePromptBlock({
   const tplNum = TEMPLATE_LABEL[templateId] || "1";
   const lines = [
     `ШАБЛОН СТРАНИЦЫ ${pageFile}: вариант **${tplNum}** (${templateId === SITE_TEMPLATE_SPOT064 ? "левый rail + rich footer" : "шапка сверху + igaming"}).`,
-    `CSS-классы в <main>: BEM с префиксом «${ns}» (примеры: ${examples}). Запрещены: union_index_*, ig_* (кроме утилит lw-games/#lw-games), хеши p1_e5b60f, page slug в имени класса.`,
+    `CSS-классы в <main>: BEM с префиксом «${ns}» (примеры: ${examples}). Запрещены: union_index_*, хеши p1_e5b60f, page slug в имени класса.`,
+    "СТИЛИ (обязательно): палитра, отступы, карточки, hero, таблицы — **как в эталоне** (css/igaming.css, css/site-shell.css, css/page-N.css копируются сборщиком). В **pageCss** — только доп. правила под **новые** классы с префиксом билда; **не** переписывай цвета/радиусы/сетку с нуля.",
+    "ВЕРСТКА: слегка варьируй порядок/обёртки секций и тексты; сохраняй тип макета (rail, hero, таблицы, карусели) как в inner <main> эталона.",
   ];
   if (templateId === SITE_TEMPLATE_SPOT064) {
     lines.push(
@@ -514,7 +875,7 @@ export function buildSiteTemplatePagePromptBlock({
     lines.push(
       "- **headerHtml**: полный <header> с горизонтальным меню и CTA (как премиум iGaming).",
       "- **footerHtml**: компактный <footer> с ссылками и копирайтом.",
-      "- Опирайся на структуру секций эталона; стили секций — в pageCss + css/igaming.css."
+      "- Опирайся на структуру секций эталона; базовые стили секций уже в css/igaming.css + css/page-N.css — в pageCss только алиасы под новый BEM-префикс."
     );
   }
   if (!isFirstPage && canonicalChromeForTemplate) {

@@ -3,6 +3,9 @@
  * Fallback на файловую систему при SOFTGEN_ETALON_SOURCE=filesystem|auto.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 const TEMPLATES_TABLE = "generation_site_templates";
 const ASSETS_TABLE = "generation_site_template_assets";
 
@@ -166,6 +169,21 @@ export function setSiteTemplateBundleCache(slug, bundle) {
  * }} [opts]
  * @returns {Promise<Map<string, { content: string; kind: string }>>}
  */
+function filesystemEtalonPathForSlug(slug) {
+  const key =
+    String(slug || "").trim() === "spot064"
+      ? "SOFTGEN_ETALON_SPOT064_PATH"
+      : "SOFTGEN_ETALON_BET162_PATH";
+  const fromEnv = String(process.env[key] || "").trim();
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+  const home = String(process.env.HOME || process.env.USERPROFILE || "").trim();
+  if (!home) return "";
+  const folder =
+    String(slug || "").trim() === "spot064" ? "u-spot064" : "u-bet162";
+  const desktop = path.join(home, "Desktop", folder);
+  return fs.existsSync(desktop) ? desktop : "";
+}
+
 export async function resolveSiteTemplateBundle(slug, opts = {}) {
   const templateSlug = String(slug || "").trim();
   if (!templateSlug) return new Map();
@@ -176,6 +194,22 @@ export async function resolveSiteTemplateBundle(slug, opts = {}) {
 
   const mode = resolveEtalonSourceMode();
   let bundle = new Map();
+
+  const fsPath = filesystemEtalonPathForSlug(templateSlug);
+  if (
+    fsPath &&
+    mode !== "supabase" &&
+    typeof opts.loadFilesystemFallback === "function"
+  ) {
+    opts.onLog?.(
+      `Эталон «${templateSlug}»: ${fsPath} (SOFTGEN_ETALON_*_PATH).`
+    );
+    bundle = opts.loadFilesystemFallback(templateSlug);
+    if (bundle.size > 0) {
+      bundleCache.set(templateSlug, bundle);
+      return bundle;
+    }
+  }
 
   if (mode !== "filesystem") {
     try {
