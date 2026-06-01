@@ -122,8 +122,30 @@ async function authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex, { author
 function resolveRequiredNsCount(totalCount, minAuthoritativeNsReady) {
   const total = Number(totalCount) || 0;
   const minRaw = Number(minAuthoritativeNsReady);
-  if (!Number.isFinite(minRaw) || minRaw <= 0) return total;
+  if (!Number.isFinite(minRaw) || minRaw <= 0) {
+    return total > 0 ? total : 1;
+  }
   return Math.max(1, Math.min(total, Math.floor(minRaw)));
+}
+
+/** Let's Encrypt resolves via public DNS; без NS у батьківській зоні буде NXDOMAIN на _acme-challenge. */
+async function assertPublicZoneDelegation(zoneApex, logTag) {
+  const zone = String(zoneApex || "").trim().toLowerCase();
+  try {
+    const ns = await dns.resolveNs(zone);
+    if (!ns.length) {
+      throw new Error("empty NS set");
+    }
+    if (logTag) {
+      console.info(`${logTag} public delegation OK (${ns.length} NS): ${ns.slice(0, 4).join(", ")}`);
+    }
+    return ns;
+  } catch (e) {
+    const msg = e?.message || String(e);
+    throw new Error(
+      `SSL: зона ${zone} ще не видна в публічному DNS (${msg}). Дочекайтесь NS у реєстраторі (dig NS ${zone} +short). Поки делегування немає, Let's Encrypt отримає NXDOMAIN на _acme-challenge — сертифікат не видасться.`
+    );
+  }
 }
 
 async function waitForTxtPropagation(
@@ -260,13 +282,16 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
         minAuthoritativeNsReady: Number(minAuthoritativeNsReady) || 0,
         authoritativeNsFallback,
       });
+      await assertPublicZoneDelegation(zoneApex, logTag);
       const settleDelay = Number(dnsPostPropagationDelayMs) || 0;
       if (settleDelay > 0) {
         console.info(`${logTag} post-TXT settle delay ${settleDelay}ms (LE validation will follow)`);
         await new Promise((r) => setTimeout(r, settleDelay));
         console.info(`${logTag} post-TXT settle delay done`);
       }
-      const recheck = await authoritativeNsTxtDigestStatus(fqdn, digest, zoneApex);
+      const recheck = await authoritativeNsTxtDigestStatus(fqdn, digest, zoneApex, {
+        authoritativeNsFallback,
+      });
       const requiredRecheck = resolveRequiredNsCount(recheck.totalCount, Number(minAuthoritativeNsReady) || 0);
       const recheckOk = recheck.okCount >= requiredRecheck;
       console.info(
