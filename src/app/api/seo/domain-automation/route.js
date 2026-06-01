@@ -188,7 +188,7 @@ export async function POST(request) {
       try {
         const oneResult = await automateDomainProvisioning(
           buildProvisioningOptions(oneBody, deployTarget, creds, userEnv, {
-            sslAsync: oneBody?.sslAsync ?? false,
+            sslAsync: (oneBody?.sslAsync ?? body?.sslAsync) !== false,
             onSslRetry: async ({ attempt, errorMessage, nextRetryMs, domain }) => {
               const raw = Number(process.env.SSL_ASYNC_PROGRESS_EVERY_ATTEMPTS);
               const notifyEvery = Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 2;

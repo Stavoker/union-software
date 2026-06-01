@@ -522,7 +522,7 @@ export async function automateDomainProvisioning(input) {
       const configuredTimeout =
         Number.isFinite(sslDelegationWaitTimeoutMs) && sslDelegationWaitTimeoutMs > 0 ? sslDelegationWaitTimeoutMs : 600000;
       const syncCapRaw = Number(process.env.SSL_DELEGATION_SYNC_WAIT_CAP_MS);
-      const syncCapMs = Number.isFinite(syncCapRaw) && syncCapRaw > 0 ? syncCapRaw : 90000;
+      const syncCapMs = Number.isFinite(syncCapRaw) && syncCapRaw > 0 ? syncCapRaw : 300000;
       const waited = await waitForDelegationNsReady(fullDomain, {
         timeoutMs: Math.min(configuredTimeout, syncCapMs),
         pollMs: Number.isFinite(sslDelegationWaitPollMs) && sslDelegationWaitPollMs > 0 ? sslDelegationWaitPollMs : 10000,
@@ -574,6 +574,8 @@ export async function automateDomainProvisioning(input) {
             txtCreateFunc: zomroDnsmgrTxtCreateFunc,
             txtDeleteFunc: zomroDnsmgrTxtDeleteFunc,
             authoritativeNsFallback: zomroNsFallback,
+            delegationWaitTimeoutMs: sslDelegationWaitTimeoutMs,
+            delegationWaitPollMs: sslDelegationWaitPollMs,
           })
       : () =>
           issueLetsEncryptCertificateDns01Spaceship({

@@ -129,23 +129,44 @@ function resolveRequiredNsCount(totalCount, minAuthoritativeNsReady) {
 }
 
 /** Let's Encrypt resolves via public DNS; без NS у батьківській зоні буде NXDOMAIN на _acme-challenge. */
-async function assertPublicZoneDelegation(zoneApex, logTag) {
+async function waitForPublicZoneDelegation(
+  zoneApex,
+  logTag,
+  { timeoutMs = 600000, pollMs = 10000 } = {}
+) {
   const zone = String(zoneApex || "").trim().toLowerCase();
-  try {
-    const ns = await dns.resolveNs(zone);
-    if (!ns.length) {
-      throw new Error("empty NS set");
+  const startedAt = Date.now();
+  let lastErr = "";
+  let poll = 0;
+  let lastLogAt = 0;
+  while (Date.now() - startedAt < timeoutMs) {
+    poll += 1;
+    try {
+      const ns = await dns.resolveNs(zone);
+      if (ns.length) {
+        if (logTag) {
+          console.info(
+            `${logTag} public delegation OK (${ns.length} NS) after +${Math.round((Date.now() - startedAt) / 1000)}s: ${ns.slice(0, 4).join(", ")}`
+          );
+        }
+        return ns;
+      }
+      lastErr = "empty NS set";
+    } catch (e) {
+      lastErr = e?.message || String(e);
     }
-    if (logTag) {
-      console.info(`${logTag} public delegation OK (${ns.length} NS): ${ns.slice(0, 4).join(", ")}`);
+    const elapsed = Date.now() - startedAt;
+    if (logTag && (poll === 1 || elapsed - lastLogAt >= 30000)) {
+      lastLogAt = elapsed;
+      console.info(
+        `${logTag} waiting public NS delegation (+${Math.round(elapsed / 1000)}s / ${Math.round(timeoutMs / 1000)}s): ${lastErr}`
+      );
     }
-    return ns;
-  } catch (e) {
-    const msg = e?.message || String(e);
-    throw new Error(
-      `SSL: зона ${zone} ще не видна в публічному DNS (${msg}). Дочекайтесь NS у реєстраторі (dig NS ${zone} +short). Поки делегування немає, Let's Encrypt отримає NXDOMAIN на _acme-challenge — сертифікат не видасться.`
-    );
+    await new Promise((r) => setTimeout(r, pollMs));
   }
+  throw new Error(
+    `SSL: зона ${zone} ще не видна в публічному DNS після ${Math.round(timeoutMs / 1000)}s (${lastErr || "timeout"}). Дочекайтесь NS у реєстраторі (dig NS ${zone} +short).`
+  );
 }
 
 async function waitForTxtPropagation(
@@ -212,6 +233,8 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
   txtDeleteFunc = "domain.record.delete",
   /** When public resolveNs(apex) is ENOTFOUND (new domain), query these NS directly (e.g. Zomro from automation form). */
   authoritativeNsFallback = [],
+  delegationWaitTimeoutMs = 600000,
+  delegationWaitPollMs = 10000,
 }) {
   if (!zoneApex || !email || !dnsmgrUrl || !zomroUsername || !zomroPassword) {
     throw new Error("SSL(Zomro dnsmgr): required zoneApex/email/dnsmgrUrl/zomroUsername/zomroPassword");
@@ -219,6 +242,11 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
 
   const logTag = `[ssl-zomro-dnsmgr][${String(zoneApex).trim().toLowerCase()}]`;
   console.info(`${logTag} starting ACME DNS-01 (staging=${!!useStaging})`);
+
+  await waitForPublicZoneDelegation(zoneApex, logTag, {
+    timeoutMs: Number(delegationWaitTimeoutMs) || 600000,
+    pollMs: Number(delegationWaitPollMs) || 10000,
+  });
 
   const accountKey = await acme.crypto.createPrivateRsaKey();
   const client = new acme.Client({
@@ -282,7 +310,6 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
         minAuthoritativeNsReady: Number(minAuthoritativeNsReady) || 0,
         authoritativeNsFallback,
       });
-      await assertPublicZoneDelegation(zoneApex, logTag);
       const settleDelay = Number(dnsPostPropagationDelayMs) || 0;
       if (settleDelay > 0) {
         console.info(`${logTag} post-TXT settle delay ${settleDelay}ms (LE validation will follow)`);
