@@ -123,6 +123,93 @@ async function resolveDeployTarget(body, creds, userId) {
   };
 }
 
+/** Після фонового SSL — PEM у /var/www/<domain>/ssl/ + nginx vhost (single і batch). */
+function scheduleSslAsyncHostDeploy({
+  sslTask,
+  result,
+  deployTarget,
+  creds,
+  userId,
+  userEnv,
+  requestSummary,
+}) {
+  const sslDomain = result?.domain || requestSummary?.domainLabel || "domain";
+  console.info(`[domain-automation] SSL background task scheduled for ${sslDomain}`);
+  sslTask
+    .then(async (sslResult) =>
+      withUserIntegrationEnv(userEnv, async () => {
+        console.info(`[domain-automation] SSL background task completed for ${sslDomain}`);
+        const steps = Array.isArray(result.steps) ? [...result.steps] : [];
+        const idx = steps.findIndex((s) => s?.id === "spaceship-ssl-letsencrypt-dns01");
+        const prevSsl = idx >= 0 ? steps[idx] : null;
+        const certPem = sslResult?.certificatePem && String(sslResult.certificatePem).trim();
+        const sslStep = {
+          id: "spaceship-ssl-letsencrypt-dns01",
+          ok: !!certPem,
+          pending: false,
+          provider: prevSsl?.provider || "spaceship",
+          staging: !!sslResult?.staging,
+          challengeRecords: sslResult?.challengeRecords || [],
+          certificatePem: sslResult?.certificatePem || "",
+          privateKeyPem: sslResult?.privateKeyPem || "",
+        };
+        if (idx >= 0) {
+          steps[idx] = sslStep;
+        } else {
+          steps.push(sslStep);
+        }
+        if (certPem) {
+          try {
+            const deploy = await deploySslCertificateToHost({
+              domain: result.domain,
+              certificatePem: sslResult.certificatePem,
+              privateKeyPem: sslResult.privateKeyPem,
+              deployHostIp: deployTarget.deployHostIp || result?.hostIp || creds.hostIpFallback,
+              sshUser: deployTarget.deploySshUser,
+              sshPassword: deployTarget.deploySshPassword,
+              sshPort: deployTarget.deploySshPort,
+              projectsBaseDir:
+                deployTarget.projectsDir || creds.projectsDirFallback || "/var/www",
+            });
+            steps.push({
+              id: "host-nginx-ssl-deploy",
+              ok: deploy.skipped ? true : !!deploy.ok,
+              skipped: !!deploy.skipped,
+              reason: deploy.reason || null,
+              warning: deploy.warning || null,
+              remoteProjectDir: deploy.remoteProjectDir || null,
+              sslDir: deploy.sslDir || null,
+              nginxConfPath: deploy.nginxConfPath || null,
+              nginxLinkPath: deploy.nginxLinkPath || null,
+              nginxReloaded: !!deploy.nginxReloaded,
+            });
+            console.info(
+              `[domain-automation][${sslDomain}] host nginx/ssl deploy: ${deploy.skipped ? "skipped" : deploy.ok ? "ok" : "failed"}${deploy.sslDir ? ` → ${deploy.sslDir}` : ""}`
+            );
+          } catch (e) {
+            steps.push({
+              id: "host-nginx-ssl-deploy",
+              ok: false,
+              warning: e?.message || String(e),
+            });
+            console.warn(`[domain-automation][${sslDomain}] host nginx/ssl deploy error:`, e?.message || e);
+          }
+        }
+        const completedResult = { ...result, steps };
+        if (result?.domain) {
+          await registerDomainInSeoDashboard(userId, result.domain);
+        }
+        void sendUserDomainTelegramEvents({
+          userId,
+          ok: true,
+          result: completedResult,
+          requestSummary: { ...requestSummary, sslAsyncCompletion: true },
+        }).catch((e) => console.error("[domain-automation][telegram] ssl-complete:", e));
+      })
+    )
+    .catch((e) => console.error(`[domain-automation][ssl-async] worker failed for ${sslDomain}:`, e));
+}
+
 export async function POST(request) {
   const session = await requireSeoSession();
   if (session.errorResponse) {
@@ -179,6 +266,7 @@ export async function POST(request) {
     const startedAt = Date.now();
     const results = [];
     const failures = [];
+    const sslFollowUps = [];
     for (let i = 0; i < domainEntries.length; i += 1) {
       const entry = domainEntries[i];
       const oneBody = { ...body, domainLabel: entry.domainLabel, zone: entry.zone };
@@ -199,8 +287,15 @@ export async function POST(request) {
             },
           })
         );
-        if (oneResult?.__sslAsyncTask) {
+        const sslTask = oneResult?.__sslAsyncTask;
+        if (sslTask) {
           delete oneResult.__sslAsyncTask;
+          sslFollowUps.push({
+            sslTask,
+            result: oneResult,
+            deployTarget,
+            oneRequestSummary,
+          });
         }
         void sendUserDomainTelegramEvents({
           userId: session.userId,
@@ -237,6 +332,17 @@ export async function POST(request) {
           partialResult,
         });
       }
+    }
+    for (const follow of sslFollowUps) {
+      scheduleSslAsyncHostDeploy({
+        sslTask: follow.sslTask,
+        result: follow.result,
+        deployTarget: follow.deployTarget,
+        creds,
+        userId: session.userId,
+        userEnv,
+        requestSummary: follow.oneRequestSummary,
+      });
     }
     return NextResponse.json({
       ok: failures.length === 0,
@@ -284,83 +390,15 @@ export async function POST(request) {
     }).catch((e) => console.error("[domain-automation][telegram]", e));
 
     if (sslTask) {
-      const sslDomain = result?.domain || requestSummary?.domainLabel || "domain";
-      console.info(`[domain-automation] SSL background task scheduled for ${sslDomain}`);
-      sslTask
-        .then(async (sslResult) =>
-          withUserIntegrationEnv(userEnv, async () => {
-          console.info(`[domain-automation] SSL background task completed for ${sslDomain}`);
-          const steps = Array.isArray(result.steps) ? [...result.steps] : [];
-          const idx = steps.findIndex((s) => s?.id === "spaceship-ssl-letsencrypt-dns01");
-          const prevSsl = idx >= 0 ? steps[idx] : null;
-          const certPem = sslResult?.certificatePem && String(sslResult.certificatePem).trim();
-          const sslStep = {
-            id: "spaceship-ssl-letsencrypt-dns01",
-            ok: !!certPem,
-            pending: false,
-            provider: prevSsl?.provider || "spaceship",
-            staging: !!sslResult?.staging,
-            challengeRecords: sslResult?.challengeRecords || [],
-            certificatePem: sslResult?.certificatePem || "",
-            privateKeyPem: sslResult?.privateKeyPem || "",
-          };
-          if (idx >= 0) {
-            steps[idx] = sslStep;
-          } else {
-            steps.push(sslStep);
-          }
-          if (certPem) {
-            try {
-              const deploy = await deploySslCertificateToHost({
-                domain: result.domain,
-                certificatePem: sslResult.certificatePem,
-                privateKeyPem: sslResult.privateKeyPem,
-                deployHostIp: deployTarget.deployHostIp || result?.hostIp || creds.hostIpFallback,
-                sshUser: deployTarget.deploySshUser,
-                sshPassword: deployTarget.deploySshPassword,
-                sshPort: deployTarget.deploySshPort,
-                projectsBaseDir:
-                  deployTarget.projectsDir ||
-                  creds.projectsDirFallback ||
-                  "/var/www",
-              });
-              steps.push({
-                id: "host-nginx-ssl-deploy",
-                ok: deploy.skipped ? true : !!deploy.ok,
-                skipped: !!deploy.skipped,
-                reason: deploy.reason || null,
-                warning: deploy.warning || null,
-                remoteProjectDir: deploy.remoteProjectDir || null,
-                sslDir: deploy.sslDir || null,
-                nginxConfPath: deploy.nginxConfPath || null,
-                nginxLinkPath: deploy.nginxLinkPath || null,
-                nginxReloaded: !!deploy.nginxReloaded,
-              });
-              console.info(
-                `[domain-automation] host nginx/ssl deploy: ${deploy.skipped ? "skipped" : deploy.ok ? "ok" : "failed"}`
-              );
-            } catch (e) {
-              steps.push({
-                id: "host-nginx-ssl-deploy",
-                ok: false,
-                warning: e?.message || String(e),
-              });
-              console.warn(`[domain-automation] host nginx/ssl deploy error:`, e?.message || e);
-            }
-          }
-          const completedResult = { ...result, steps };
-          if (result?.domain) {
-            await registerDomainInSeoDashboard(session.userId, result.domain);
-          }
-          void sendUserDomainTelegramEvents({
-            userId: session.userId,
-            ok: true,
-            result: completedResult,
-            requestSummary: { ...requestSummary, sslAsyncCompletion: true },
-          }).catch((e) => console.error("[domain-automation][telegram] ssl-complete:", e));
-          })
-        )
-        .catch((e) => console.error("[domain-automation][ssl-async] worker failed:", e));
+      scheduleSslAsyncHostDeploy({
+        sslTask,
+        result,
+        deployTarget,
+        creds,
+        userId: session.userId,
+        userEnv,
+        requestSummary,
+      });
     }
 
     return NextResponse.json(result);
