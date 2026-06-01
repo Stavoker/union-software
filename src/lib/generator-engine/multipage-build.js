@@ -67,6 +67,11 @@ import {
   isLoopbackAnthropicNetError,
 } from "@/lib/generator-llm-endpoint";
 import {
+  applyMultipageHtmlPostprocess,
+  rewriteInternalLinksInMainToPlan,
+  runMultipageHtmlQa,
+} from "@/lib/generator-engine/multipage-postprocess";
+import {
   isCrossBuildMemoryEnabled,
   isFreeGenerationMode,
   isPromptRegenEnabled,
@@ -3257,6 +3262,7 @@ ${referenceBlendPreamble}
 - Корень JSON: только brandName и pages.
 - Для каждой страницы: file, role, title, description, contentAngle, tone, **layoutVariant**, **sectionOrder**, **mainComponents**, **structuralArchetypeIds** (см. блок «КАРКАС КАЖДОЙ СТРАНИЦЫ» выше).
 - Поле **role** (короткая строка для меню и плана): только **русский** язык, 2–7 слов; **запрещены** латинские слуги вроде onboarding/reviews/payments как единственный текст; **запрещены** варианты названий через «/» (например «X / Y»). Для зеркала — смысл «рабочее зеркало», «доступ», без дублирования бренда латиницей и кириллицей через слэш.
+- **Меню и внутренние ссылки:** только файлы из списка «Файлы страниц» (${fileList}). Не планируй и не упоминай games.php, payments.php, zerkalo.php и другие URL, если их **нет** в этом списке. role/title каждой страницы должны соответствовать её file (для vip.php — VIP, не «платежи»).
 - Без jsonLd, без комментариев, без лишних полей.
 - Если среди файлов есть zerkalo.php/mirror.php — только про зеркало/доступ; иначе каждая страница раскрывает свой аспект темы.
 - title/description не дублировать между страницами.
@@ -3428,8 +3434,13 @@ function buildPagePrompt({
   pageSiteTemplate = "",
   siteClassNamespace = null,
   strictEtalonLayout = false,
+  allPages = [],
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
+  const allowedPageFiles = (Array.isArray(allPages) ? allPages : [])
+    .map((p) => String(p?.file || "").trim())
+    .filter(Boolean)
+    .join(", ");
   const logoPrompt =
     String(logoSrcForPrompt || LAKI_LOGO_IMG_SRC).trim() || LAKI_LOGO_IMG_SRC;
   const refBlend = Boolean(referenceBlendMode);
@@ -3892,7 +3903,8 @@ ${refDocContextBlock}${referenceTemplateShellLayoutBlock}
 - Язык и смысл: **русский**; публичный бренд «${brandPrimary}» и имя из темы «${String(themeBrandHint || "").trim() || "см. выше"}»; убери из видимого текста чужие бренды и «хвосты» домена референса.
 - **Классы:** новые и заменяемые в <main> — с префиксом «${classPrefix}»; стили — в **pageCss** (не подключай внешние CSS референса).
 - **Картинки:** только \`./img/...\` из пула билда; внешние \`src\`/\`srcset\` — убери или замени заглушкой/релевантным файлом из списков в user.
-- **Ссылки:** внутренние — только \`./\` + файлы этого сайта. **Не** ставь **${gtw}** на чипы каталога (Слоты / Live / …), вкладки разделов и карточки **вне** #lw-games — только \`./index.php\` и другие файлы пакета. Шлюз **${gtw}** — только внутри **#lw-games** у превью слота и для явных CTA «Регистрация/Вход» в шапке по правилам chrome.
+- **Ссылки:** внутренние — только \`./\` + файлы этого сайта (${allowedPageFiles || "см. план"}). **Запрещены** games.php, payments.php, zerkalo.php и любые URL, которых **нет** в этом списке. **Не** ставь **${gtw}** на чипы каталога (Слоты / Live / …), вкладки разделов и карточки **вне** #lw-games. Шлюз **${gtw}** — только внутри **#lw-games** у превью слота и для явных CTA «Регистрация/Вход» в шапке по правилам chrome.
+- **Согласованность:** смысл и классы <main> должны соответствовать file «${pageMeta.file}» и role «${String(pageMeta.role || "").trim()}» (не подставляй чужой тип страницы, например payments_* на vip.php).
 - Сохрани **порядок и вложенность** блоков шаблона (включая сайдбары). План архитектора и sectionOrder **не** важнее шаблона — **не** перестраивай DOM под «фиксированные» слоты. **#lw-games** / **#lw-vip** — см. отдельные блоки выше: по умолчанию **не** добавляй ради плана.
 
 --- ШАБЛОН (inner HTML <main> референса) ---
@@ -6436,6 +6448,7 @@ async function generatePageBundle(
     siteClassNamespace: ctx.siteClassNamespace || null,
     catalogSeedKey: `${ctx.structureFingerprint || ""}|${ctx.buildNonce || ""}`,
     strictEtalonLayout: Boolean(ctx.strictEtalonLayout),
+    allPages: ctx.allPages || [],
   });
 
   let user = userBase;
@@ -7322,6 +7335,11 @@ async function generatePageBundle(
     ctx.allPages,
     ctx.gatewayUrl
   );
+  mainRaw = rewriteInternalLinksInMainToPlan(
+    mainRaw,
+    ctx.allPages,
+    pageMeta.file
+  );
   if (!ctx.strictEtalonLayout) {
     mainRaw = enforceForBanerUsage(
       mainRaw,
@@ -7383,7 +7401,24 @@ ${bodyInner}
 </body>
 </html>`;
 
-  const finalHtml = ensureFaviconInHead(rewriteAssetPaths(withChrome));
+  let finalHtml = ensureFaviconInHead(rewriteAssetPaths(withChrome));
+  finalHtml = applyMultipageHtmlPostprocess(finalHtml, {
+    currentPageFile: pageMeta.file,
+    navLinks: ctx.navLinks || [],
+    chromeVariant: ctx.chromeVariant,
+    pages: ctx.allPages || [],
+    gatewayUrl: gwNormOpts.gatewayUrl,
+  });
+  const qa = runMultipageHtmlQa(finalHtml, {
+    pages: ctx.allPages || [],
+    currentPageFile: pageMeta.file,
+  });
+  if (!qa.ok && typeof onLog === "function") {
+    emitLog(
+      onLog,
+      `QA «${pageMeta.file}»: ${qa.warnings.slice(0, 6).join(", ")} (авто-исправление nav/links применено)`
+    );
+  }
 
   emitLog(onLog, `LLM: «${pageMeta.file}» — ответ получен, сборка файлов страницы`);
   const mainText = htmlToPlainText(mainOnly);
@@ -7660,6 +7695,7 @@ export async function buildPromptPreview({
     gatewayUrl: previewGatewayUrl,
     logoSrcForPrompt: LAKI_LOGO_IMG_SRC,
     useTemplateChrome: usesTemplateChrome(),
+    allPages: pages,
   });
 
   let pagePrompt = pagePromptBase;

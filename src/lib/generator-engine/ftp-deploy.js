@@ -102,8 +102,11 @@ async function deployViaSftp({
     });
 
     await client.mkdir(remotePath, true);
-    await client.uploadDir(localPath, remotePath);
-    log.push(`uploadDir ${localPath} -> ${remotePath}`);
+    const { uploadProjectDirFiltered } = await import(
+      "@/lib/generator-engine/multipage-postprocess.js"
+    );
+    await uploadProjectDirFiltered(client, localPath, remotePath);
+    log.push(`upload (filtered) ${localPath} -> ${remotePath}`);
     await client.end();
     return {
       ok: true,

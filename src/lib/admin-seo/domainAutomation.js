@@ -7,6 +7,7 @@ import { issueLetsEncryptCertificateDns01Spaceship } from "./sslLetsEncryptSpace
 import { issueLetsEncryptCertificateDns01ZomroDnsmgr } from "./sslLetsEncryptZomroDnsmgr.js";
 import { createHostProjectDirectory } from "./hostProjectCleanup.js";
 import { deploySslCertificateToHost } from "./hostNginxSslDeploy.js";
+import { ensurePhpNginxForDeployedDomain } from "./hostDomainFolders.js";
 
 const SPACESHIP_BASE_URL = "https://spaceship.dev/api/v1";
 const ZOMRO_BASE_URL = "https://api.zomro.com/";
@@ -677,6 +678,25 @@ export async function automateDomainProvisioning(input) {
               sshPort: deploySshPort,
               projectsBaseDir: deployProjectsBaseDir,
             });
+            let stackReady = undefined;
+            if (!deploy.skipped && deploy.ok) {
+              try {
+                const host = {
+                  hostIp: deployHostIp,
+                  sshUser: deploySshUser,
+                  sshPassword: deploySshPassword,
+                  sshPort: deploySshPort,
+                  projectsDir: deployProjectsBaseDir,
+                };
+                const stackResult = await ensurePhpNginxForDeployedDomain({
+                  host,
+                  domain: fullDomain,
+                });
+                stackReady = stackResult.stackReady;
+              } catch {
+                stackReady = false;
+              }
+            }
             steps.push({
               id: "host-nginx-ssl-deploy",
               ok: deploy.skipped ? true : !!deploy.ok,
@@ -688,6 +708,7 @@ export async function automateDomainProvisioning(input) {
               nginxConfPath: deploy.nginxConfPath || null,
               nginxLinkPath: deploy.nginxLinkPath || null,
               nginxReloaded: !!deploy.nginxReloaded,
+              stackReady,
             });
           } catch (e) {
             steps.push({

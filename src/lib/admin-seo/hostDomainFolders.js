@@ -166,44 +166,40 @@ export async function deployGeneratedSiteToDomainFolder({
     if (!isDomainFolderAvailable(entries)) {
       throw new Error(`Domain folder is not empty: ${normalizedDomain}`);
     }
-    await sftp.uploadDir(localPath, remotePath);
-    log(`[deploy] uploadDir ${localPath} -> ${remotePath}`);
+    const { uploadProjectDirFiltered } = await import(
+      "@/lib/generator-engine/multipage-postprocess.js"
+    );
+    await uploadProjectDirFiltered(sftp, localPath, remotePath);
+    log(`[deploy] upload (filtered) ${localPath} -> ${remotePath}`);
   });
 
-  try {
-    await fixDeployedSitePermissions({
-      deployHostIp: host?.hostIp,
-      sshUser: host?.sshUser,
-      sshPassword: host?.sshPassword,
-      sshPort: host?.sshPort,
-      remoteProjectDir: remotePath,
-    });
-    log(`[deploy] permissions 755/644 on ${remotePath}`);
-  } catch (permErr) {
-    log(`[deploy] permissions warning: ${String(permErr?.message || permErr).slice(0, 200)}`);
-  }
-
   let nginx = null;
+  let stackWarning = undefined;
   try {
-    nginx = await syncNginxVhostForDomain({
+    let ensured = await ensurePhpNginxForDeployedDomain({
+      host,
       domain: normalizedDomain,
-      deployHostIp: host?.hostIp,
-      sshUser: host?.sshUser,
-      sshPassword: host?.sshPassword,
-      sshPort: host?.sshPort,
-      projectsBaseDir,
-      mode: "auto",
       onLog: log,
     });
-    if (nginx.ok && nginx.verified) {
+    if (!ensured.stackReady) {
+      log(`[deploy] PHP/nginx stack not ready — retry once`);
+      ensured = await ensurePhpNginxForDeployedDomain({
+        host,
+        domain: normalizedDomain,
+        onLog: log,
+      });
+    }
+    nginx = ensured.nginx || null;
+    stackWarning = ensured.warning;
+    if (nginx?.ok && nginx?.verified) {
       log(
         `[deploy] nginx ok (${nginx.https ? "https" : "http-only"}, PHP ${nginx.phpFpmSocket || "?"}): ${nginx.smokeStatus || "smoke ok"} → ${nginx.nginxConfPath || "?"}`
       );
-    } else if (nginx.ok) {
+    } else if (nginx?.ok) {
       log(
         `[deploy] nginx vhost written (${nginx.https ? "https" : "http-only"}) but verify incomplete — перевірте ${nginx.nginxConfPath || "vhost"}`
       );
-    } else if (nginx.skipped) {
+    } else if (nginx?.skipped) {
       log(
         `[deploy] nginx skipped: ${nginx.reason || nginx.warning || "unknown"} — покладіть ssl/fullchain.pem+privkey.pem у ssl/ або запустіть автоматизацію домену`
       );
@@ -212,8 +208,8 @@ export async function deployGeneratedSiteToDomainFolder({
         `[deploy] nginx FAILED: ${nginx.warning || "unknown"} — сайт на диску, але в браузері може бути 403; виправте vhost вручну або повторіть «Завантажити на хост»`
       );
     }
-  } catch (nginxErr) {
-    log(`[deploy] nginx error: ${String(nginxErr?.message || nginxErr).slice(0, 240)}`);
+  } catch (stackErr) {
+    log(`[deploy] PHP/nginx error: ${String(stackErr?.message || stackErr).slice(0, 240)}`);
   }
 
   const nginxOk = Boolean(nginx?.ok && nginx?.verified);
@@ -235,8 +231,8 @@ export async function deployGeneratedSiteToDomainFolder({
     stackReady: nginxOk,
     warning:
       nginx && !nginxOk && !nginx.skipped
-        ? String(nginx.warning || "nginx vhost not verified")
-        : undefined,
+        ? String(nginx.warning || stackWarning || "nginx vhost not verified")
+        : stackWarning,
   };
 }
 
@@ -323,6 +319,27 @@ export async function provisionHostPhpStack({ host, onLog }) {
     sites,
     phpFpmSocket: stack.phpFpmSocket,
   };
+}
+
+/**
+ * PHP-FPM + права + nginx vhost для задеплоєного домену.
+ * @param {{ host: object, domain: string, onLog?: (msg: string) => void }} opts
+ */
+export async function ensurePhpNginxForDeployedDomain({ host, domain, onLog }) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+
+  const stack = await ensurePhpStackOnHost({
+    deployHostIp: host?.hostIp,
+    sshUser: host?.sshUser,
+    sshPassword: host?.sshPassword,
+    sshPort: host?.sshPort,
+    onLog: log,
+  });
+
+  const repair = await repairDeployedSiteStack({ host, domain, onLog: log });
+  return { ...repair, stack };
 }
 
 /**

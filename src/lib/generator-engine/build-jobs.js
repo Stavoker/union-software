@@ -398,9 +398,36 @@ export async function markBuildJobDone(id, result) {
     const { autoDeployBuildJobToHost } = await import(
       "@/lib/admin-seo/hostDomainFolders.js"
     );
-    const deploy = await autoDeployBuildJobToHost(job, mergedResult, {
+    let deploy = await autoDeployBuildJobToHost(job, mergedResult, {
       onLog: (msg) => appendBuildJobLog(id, msg),
     });
+    if (deploy?.status === "deployed" && deploy.stackReady === false) {
+      try {
+        const { ensurePhpNginxForDeployedDomain } = await import(
+          "@/lib/admin-seo/hostDomainFolders.js"
+        );
+        const { getHostById } = await import("@/lib/admin-seo/hostsRepository.js");
+        const hostId = String(job?.payload?.hostId || "").trim();
+        const userId = String(job?.payload?.userId || "").trim();
+        const host = await getHostById(hostId, userId);
+        if (host && deploy.domain) {
+          appendBuildJobLog(id, "[deploy] retry PHP+nginx stack");
+          const retry = await ensurePhpNginxForDeployedDomain({
+            host,
+            domain: deploy.domain,
+            onLog: (msg) => appendBuildJobLog(id, msg),
+          });
+          deploy = {
+            ...deploy,
+            stackReady: retry.stackReady,
+            nginx: retry.nginx,
+            warning: retry.warning,
+          };
+        }
+      } catch (e) {
+        appendBuildJobLog(id, `[deploy] stack retry failed: ${e?.message || e}`);
+      }
+    }
     mergedResult = {
       ...(mergedResult && typeof mergedResult === "object" ? mergedResult : {}),
       deploy,
