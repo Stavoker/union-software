@@ -65,6 +65,31 @@ const EVENTS = {
     en: (d) => `🌐 Domain: started\n🔗 ${d.domain}${d.skipPurchase ? "\n⏭ skip purchase" : ""}`,
     ru: (d) => `🌐 Домен: старт\n🔗 ${d.domain}${d.skipPurchase ? "\n⏭ без покупки" : ""}`,
   },
+  domain_purchased: {
+    uk: (d) => `✅ Куплено\n🔗 ${d.domain}`,
+    en: (d) => `✅ Purchased\n🔗 ${d.domain}`,
+    ru: (d) => `✅ Куплено\n🔗 ${d.domain}`,
+  },
+  domain_dns_ns: {
+    uk: (d) => `📡 NS оновлено (Spaceship)\n🔗 ${d.domain}`,
+    en: (d) => `📡 Nameservers updated\n🔗 ${d.domain}`,
+    ru: (d) => `📡 NS обновлены\n🔗 ${d.domain}`,
+  },
+  domain_dns_ready: {
+    uk: (d) => `🧩 DNS Zomro (dnsmgr)\n🔗 ${d.domain}`,
+    en: (d) => `🧩 Zomro DNS ready\n🔗 ${d.domain}`,
+    ru: (d) => `🧩 DNS Zomro готов\n🔗 ${d.domain}`,
+  },
+  domain_ssl_pending: {
+    uk: (d) => `⏳ SSL у фоні\n🔗 ${d.domain}\n(делегування DNS → Let's Encrypt)`,
+    en: (d) => `⏳ SSL in background\n🔗 ${d.domain}\n(DNS delegation → Let's Encrypt)`,
+    ru: (d) => `⏳ SSL в фоне\n🔗 ${d.domain}\n(делегирование DNS → Let's Encrypt)`,
+  },
+  domain_ssl_retry: {
+    uk: (d) => `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
+    en: (d) => `🔄 SSL retry #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
+    ru: (d) => `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
+  },
   domain_ssl_ok: {
     uk: (d) => `🔒 SSL підтверджено\n🔗 ${d.domain}`,
     en: (d) => `🔒 SSL issued\n🔗 ${d.domain}`,

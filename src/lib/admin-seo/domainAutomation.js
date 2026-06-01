@@ -1,5 +1,6 @@
 import dns from "dns/promises";
 import { fetchWithRetry } from "./fetchRetry.js";
+import { resolveNsBestEffort } from "./publicDns.js";
 import { resolveZomroAuthToken } from "./zomroAuth.js";
 import { addMasterDomainZomroDnsmgr } from "./zomroDnsmgr.js";
 import { issueLetsEncryptCertificateDns01Spaceship } from "./sslLetsEncryptSpaceship.js";
@@ -152,12 +153,8 @@ async function resolveCurrentDelegationNs(zoneApex) {
   if (!z) {
     return [];
   }
-  try {
-    const hosts = await dns.resolveNs(z);
-    return hosts.map((h) => String(h || "").trim().toLowerCase()).filter(Boolean);
-  } catch {
-    return [];
-  }
+  const { ns } = await resolveNsBestEffort(z);
+  return ns;
 }
 
 async function waitForDelegationNsReady(zoneApex, { timeoutMs = 600000, pollMs = 10000 } = {}) {
@@ -178,11 +175,25 @@ function delegationLooksLikeZomro(nsHosts) {
   return Array.isArray(nsHosts) && nsHosts.some((h) => h.includes("zomro"));
 }
 
+async function emitDomainStep(input, domain, step) {
+  const id = step?.id || "step";
+  const status = step?.pending ? "pending" : step?.skipped ? "skipped" : step?.ok ? "ok" : "fail";
+  console.info(`[domain-automation][${domain}] ${id}: ${status}`);
+  if (typeof input?.onStep === "function") {
+    try {
+      await input.onStep({ domain, step });
+    } catch (e) {
+      console.warn(`[domain-automation][${domain}] onStep(${id}) failed:`, e?.message || e);
+    }
+  }
+}
+
 export async function automateDomainProvisioning(input) {
   const domainLabel = normalizeDomainLabel(input?.domainLabel);
   const zone = normalizeZone(input?.zone);
   const nameservers = normalizeNameservers(input?.nameservers);
   const fullDomain = `${domainLabel}.${zone}`;
+  console.info(`[domain-automation][${fullDomain}] provisioning started (skipPurchase=${!!input?.skipPurchase})`);
 
   const apiKey = String(input?.spaceshipApiKey || "").trim();
   const apiSecret = String(input?.spaceshipApiSecret || "").trim();
@@ -324,9 +335,13 @@ export async function automateDomainProvisioning(input) {
         throw new Error("Spaceship purchase accepted but operation id is missing");
       }
       const operationResult = await waitForSpaceshipOperation(operationId, apiKey, apiSecret);
-      steps.push({ id: "spaceship-purchase", ok: true, asyncOperationId: operationId, details: operationResult });
+      const purchaseStep = { id: "spaceship-purchase", ok: true, asyncOperationId: operationId, details: operationResult };
+      steps.push(purchaseStep);
+      await emitDomainStep(input, fullDomain, purchaseStep);
     } else if (purchaseResponse.response.ok) {
-      steps.push({ id: "spaceship-purchase", ok: true, details: purchaseResponse.payload });
+      const purchaseStep = { id: "spaceship-purchase", ok: true, details: purchaseResponse.payload };
+      steps.push(purchaseStep);
+      await emitDomainStep(input, fullDomain, purchaseStep);
     } else {
       throw new Error(
         purchaseResponse.payload?.detail || purchaseResponse.payload?.message || "Failed to purchase domain in Spaceship"
@@ -347,7 +362,9 @@ export async function automateDomainProvisioning(input) {
       nameserverResponse.payload?.detail || nameserverResponse.payload?.message || "Failed to update Spaceship nameservers"
     );
   }
-  steps.push({ id: "spaceship-nameservers", ok: true, details: nameserverResponse.payload });
+  const nsStep = { id: "spaceship-nameservers", ok: true, details: nameserverResponse.payload };
+  steps.push(nsStep);
+  await emitDomainStep(input, fullDomain, nsStep);
 
   if (zomroDnsmgrEnabled) {
     if (!zomroDnsmgrUrl) {
@@ -591,7 +608,7 @@ export async function automateDomainProvisioning(input) {
           });
 
     if (sslAsync) {
-      steps.push({
+      const sslPendingStep = {
         id: "spaceship-ssl-letsencrypt-dns01",
         ok: false,
         pending: true,
@@ -602,7 +619,9 @@ export async function automateDomainProvisioning(input) {
           sslUseZomroDnsmgr
             ? "SSL у фоні: DNS-01 через Zomro dnsmgr (делегування вже на Zomro NS)"
             : "SSL background job started; waiting for DNS propagation/validation",
-      });
+      };
+      steps.push(sslPendingStep);
+      await emitDomainStep(input, fullDomain, sslPendingStep);
       sslAsyncTask = (async () => {
         const logPrefix = `[ssl-async][${fullDomain}][${sslProviderLabel}]`;
         console.info(`${logPrefix} background job started`);

@@ -1,6 +1,7 @@
 import { createRequire } from "module";
 import dns from "dns/promises";
 import { Resolver } from "dns";
+import { resolveNsBestEffort } from "./publicDns.js";
 import { upsertDnsmgrTxtRecord, deleteAllDnsmgrTxtRecordsForName } from "./zomroDnsmgr.js";
 
 const require = createRequire(import.meta.url);
@@ -141,20 +142,16 @@ async function waitForPublicZoneDelegation(
   let lastLogAt = 0;
   while (Date.now() - startedAt < timeoutMs) {
     poll += 1;
-    try {
-      const ns = await dns.resolveNs(zone);
-      if (ns.length) {
-        if (logTag) {
-          console.info(
-            `${logTag} public delegation OK (${ns.length} NS) after +${Math.round((Date.now() - startedAt) / 1000)}s: ${ns.slice(0, 4).join(", ")}`
-          );
-        }
-        return ns;
+    const resolved = await resolveNsBestEffort(zone);
+    if (resolved.ns.length) {
+      if (logTag) {
+        console.info(
+          `${logTag} public delegation OK (${resolved.ns.length} NS, ${resolved.source}) after +${Math.round((Date.now() - startedAt) / 1000)}s: ${resolved.ns.slice(0, 4).join(", ")}`
+        );
       }
-      lastErr = "empty NS set";
-    } catch (e) {
-      lastErr = e?.message || String(e);
+      return resolved.ns;
     }
+    lastErr = resolved.error || "empty NS set";
     const elapsed = Date.now() - startedAt;
     if (logTag && (poll === 1 || elapsed - lastLogAt >= 30000)) {
       lastLogAt = elapsed;

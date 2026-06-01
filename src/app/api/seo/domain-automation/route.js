@@ -11,10 +11,44 @@ import {
 import { automateDomainProvisioning } from "@/lib/admin-seo/domainAutomation";
 import { deploySslCertificateToHost } from "@/lib/admin-seo/hostNginxSslDeploy";
 import { requireSeoSession } from "@/lib/admin-seo/seoApiAuth";
-import { sendSslProgressTelegramUpdate } from "@/lib/admin-seo/telegramDomainAutomation";
 import { sendUserDomainTelegramEvents } from "@/lib/telegram/telegramDomainNotify";
 import { getHostById } from "@/lib/admin-seo/hostsRepository";
 import { upsertSeoDomainForUser } from "@/lib/admin-seo/seoDomainsRepository";
+
+const STEP_TELEGRAM_EVENTS = {
+  "spaceship-purchase": "domain_purchased",
+  "spaceship-nameservers": "domain_dns_ns",
+  "zomro-dnsmgr-panel-domain": "domain_dns_ready",
+};
+
+function buildDomainStepTelegramHandler(userId) {
+  return async ({ domain, step }) => {
+    const uid = String(userId || "").trim();
+    if (!uid || !step) return;
+    if (step.id === "spaceship-ssl-letsencrypt-dns01" && step.pending) {
+      const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
+      await notifyUserTelegram(uid, "domain_ssl_pending", { domain }).catch(() => {});
+      return;
+    }
+    const eventKey = STEP_TELEGRAM_EVENTS[step.id];
+    if (!eventKey || !step.ok) return;
+    const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
+    await notifyUserTelegram(uid, eventKey, { domain }).catch(() => {});
+  };
+}
+
+function buildSslRetryTelegramHandler(userId) {
+  return async ({ attempt, errorMessage, domain }) => {
+    const uid = String(userId || "").trim();
+    if (!uid) return;
+    const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
+    await notifyUserTelegram(uid, "domain_ssl_retry", {
+      domain,
+      attempt: attempt || 1,
+      reason: String(errorMessage || "").slice(0, 220),
+    }).catch(() => {});
+  };
+}
 
 async function registerDomainInSeoDashboard(userId, domain) {
   const d = String(domain || "").trim().toLowerCase();
@@ -277,14 +311,8 @@ export async function POST(request) {
         const oneResult = await automateDomainProvisioning(
           buildProvisioningOptions(oneBody, deployTarget, creds, userEnv, {
             sslAsync: (oneBody?.sslAsync ?? body?.sslAsync) !== false,
-            onSslRetry: async ({ attempt, errorMessage, nextRetryMs, domain }) => {
-              const raw = Number(process.env.SSL_ASYNC_PROGRESS_EVERY_ATTEMPTS);
-              const notifyEvery = Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 2;
-              const shouldNotify = attempt === 1 || attempt % notifyEvery === 0;
-              if (shouldNotify) {
-                await sendSslProgressTelegramUpdate({ domain, attempt, errorMessage, nextRetryMs }).catch(() => {});
-              }
-            },
+            onStep: buildDomainStepTelegramHandler(session.userId),
+            onSslRetry: buildSslRetryTelegramHandler(session.userId),
           })
         );
         const sslTask = oneResult?.__sslAsyncTask;
@@ -363,14 +391,8 @@ export async function POST(request) {
     const result = await automateDomainProvisioning(
       buildProvisioningOptions(body, deployTarget, creds, userEnv, {
         sslAsync: body?.sslAsync ?? true,
-        onSslRetry: async ({ attempt, errorMessage, nextRetryMs, domain }) => {
-          const raw = Number(process.env.SSL_ASYNC_PROGRESS_EVERY_ATTEMPTS);
-          const notifyEvery = Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 2;
-          const shouldNotify = attempt === 1 || attempt % notifyEvery === 0;
-          if (shouldNotify) {
-            await sendSslProgressTelegramUpdate({ domain, attempt, errorMessage, nextRetryMs }).catch(() => {});
-          }
-        },
+        onStep: buildDomainStepTelegramHandler(session.userId),
+        onSslRetry: buildSslRetryTelegramHandler(session.userId),
       })
     );
     const sslTask = result?.__sslAsyncTask || null;
