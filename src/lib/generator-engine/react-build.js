@@ -264,19 +264,55 @@ function normalizePagesPlan(rawPages, expectedFiles) {
   });
 }
 
+async function hasViteInNodeModules(reactSrcDir) {
+  try {
+    await fs.access(path.join(reactSrcDir, "node_modules", "vite", "package.json"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Child process env for Vite build; cap heap for 512MB Render instances. */
+function reactBuildChildEnv() {
+  const mbRaw = Number(process.env.SOFTGEN_REACT_NODE_MAX_MB);
+  const mb = Number.isFinite(mbRaw) && mbRaw >= 128
+    ? Math.min(512, Math.trunc(mbRaw))
+    : 280;
+  const memFlag = `--max-old-space-size=${mb}`;
+  const base = String(process.env.NODE_OPTIONS || "").trim();
+  return {
+    ...process.env,
+    NODE_OPTIONS: base ? `${base} ${memFlag}` : memFlag,
+  };
+}
+
 async function runNpmBuild(reactSrcDir, onLog) {
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  emitLog(onLog, "React Lab: npm install…");
-  await execFileAsync(npmCmd, ["install", "--no-audit", "--no-fund"], {
-    cwd: reactSrcDir,
-    env: { ...process.env, NODE_ENV: "production" },
-    maxBuffer: 20 * 1024 * 1024,
-    timeout: 600000,
-  });
-  emitLog(onLog, "React Lab: npm run build…");
+  const childEnv = reactBuildChildEnv();
+  const preinstalled = await hasViteInNodeModules(reactSrcDir);
+  if (!preinstalled) {
+    emitLog(onLog, "React Lab: npm install (немає node_modules у шаблоні)…");
+    await execFileAsync(
+      npmCmd,
+      ["install", "--no-audit", "--no-fund", "--include=dev"],
+      {
+        cwd: reactSrcDir,
+        env: childEnv,
+        maxBuffer: 20 * 1024 * 1024,
+        timeout: 600000,
+      }
+    );
+  } else {
+    emitLog(
+      onLog,
+      "React Lab: node_modules з шаблону — npm install пропущено (економія RAM на Render)"
+    );
+  }
+  emitLog(onLog, "React Lab: vite build…");
   await execFileAsync(npmCmd, ["run", "build"], {
     cwd: reactSrcDir,
-    env: { ...process.env, NODE_ENV: "production" },
+    env: childEnv,
     maxBuffer: 20 * 1024 * 1024,
     timeout: 600000,
   });
@@ -447,6 +483,10 @@ export async function buildReactSite({
   emitLog(
     onLog,
     `React Lab: старт «${safeName}», windowId=${wid}, Claude=${ANTHROPIC_MODEL}, режим=${generationMode}`
+  );
+  emitLog(
+    onLog,
+    "React Lab RAM: npm install пропускається, якщо node_modules є в шаблоні (prepare:react-lab при деплої). Для 512MB: SOFTGEN_REACT_NODE_MAX_MB=280, 1 сторінка, без паралельних job."
   );
   emitLog(onLog, `Ключи: Claude (${describeClaudeKeyForBuildLog(claudeKey)})`);
   ensureNotStopped();

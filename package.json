@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "dev:webpack": "next dev --webpack",
-    "build": "next build",
+    "prepare:react-lab": "npm ci --no-audit --no-fund --prefix assets/react-lab-template",
+    "build": "npm run prepare:react-lab && next build",
     "start": "next start",
     "lint": "eslint"
   },
