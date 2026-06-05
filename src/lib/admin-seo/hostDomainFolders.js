@@ -132,6 +132,9 @@ export async function listDomainFolderAvailabilityOnHost(host) {
  * @param {string} opts.projectName
  * @param {string} [opts.userId]
  * @param {(msg: string) => void} [opts.onLog]
+ * @param {string} [opts.stack] php | react
+ * @param {string} [opts.generationMode] standard | bot_gate
+ * @param {string} [opts.vhostMode] php | spa | auto
  */
 export async function deployGeneratedSiteToDomainFolder({
   host,
@@ -139,6 +142,9 @@ export async function deployGeneratedSiteToDomainFolder({
   projectName,
   userId,
   onLog,
+  stack,
+  generationMode,
+  vhostMode,
 }) {
   const normalizedDomain = String(domain || "").trim().toLowerCase();
   const slug = String(projectName || "").trim();
@@ -176,24 +182,31 @@ export async function deployGeneratedSiteToDomainFolder({
   let nginx = null;
   let stackWarning = undefined;
   try {
-    let ensured = await ensurePhpNginxForDeployedDomain({
+    let ensured = await ensureNginxForDeployedDomain({
       host,
       domain: normalizedDomain,
+      stack,
+      generationMode,
+      vhostMode,
       onLog: log,
     });
     if (!ensured.stackReady) {
-      log(`[deploy] PHP/nginx stack not ready — retry once`);
-      ensured = await ensurePhpNginxForDeployedDomain({
+      log(`[deploy] nginx stack not ready — retry once`);
+      ensured = await ensureNginxForDeployedDomain({
         host,
         domain: normalizedDomain,
+        stack,
+        generationMode,
+        vhostMode,
         onLog: log,
       });
     }
     nginx = ensured.nginx || null;
     stackWarning = ensured.warning;
     if (nginx?.ok && nginx?.verified) {
+      const modeLabel = nginx.vhostMode === "spa" ? "SPA static" : `PHP ${nginx.phpFpmSocket || "?"}`;
       log(
-        `[deploy] nginx ok (${nginx.https ? "https" : "http-only"}, PHP ${nginx.phpFpmSocket || "?"}): ${nginx.smokeStatus || "smoke ok"} → ${nginx.nginxConfPath || "?"}`
+        `[deploy] nginx ok (${nginx.https ? "https" : "http-only"}, ${modeLabel}): ${nginx.smokeStatus || "smoke ok"} → ${nginx.nginxConfPath || "?"}`
       );
     } else if (nginx?.ok) {
       log(
@@ -326,20 +339,59 @@ export async function provisionHostPhpStack({ host, onLog }) {
  * @param {{ host: object, domain: string, onLog?: (msg: string) => void }} opts
  */
 export async function ensurePhpNginxForDeployedDomain({ host, domain, onLog }) {
+  return ensureNginxForDeployedDomain({
+    host,
+    domain,
+    vhostMode: "php",
+    onLog,
+  });
+}
+
+/**
+ * nginx vhost для задеплоєного домену (PHP або React SPA static).
+ * @param {{ host: object, domain: string, stack?: string, generationMode?: string, vhostMode?: string, onLog?: (msg: string) => void }} opts
+ */
+export async function ensureNginxForDeployedDomain({
+  host,
+  domain,
+  stack,
+  generationMode,
+  vhostMode,
+  onLog,
+}) {
   const log = (msg) => {
     if (typeof onLog === "function") onLog(msg);
   };
 
-  const stack = await ensurePhpStackOnHost({
-    deployHostIp: host?.hostIp,
-    sshUser: host?.sshUser,
-    sshPassword: host?.sshPassword,
-    sshPort: host?.sshPort,
+  const { resolveDeployVhostMode, normalizeVhostMode, VHOST_MODE_SPA } = await import(
+    "@/src/lib/deploy-vhost.js"
+  );
+  const modeInput = normalizeVhostMode(vhostMode || "auto");
+  const resolved =
+    modeInput === "auto"
+      ? resolveDeployVhostMode({ stack, generationMode })
+      : modeInput;
+
+  let phpStack = null;
+  if (resolved !== VHOST_MODE_SPA) {
+    phpStack = await ensurePhpStackOnHost({
+      deployHostIp: host?.hostIp,
+      sshUser: host?.sshUser,
+      sshPassword: host?.sshPassword,
+      sshPort: host?.sshPort,
+      onLog: log,
+    });
+  } else {
+    log("[deploy] React SPA — пропускаємо PHP-FPM install");
+  }
+
+  const repair = await repairDeployedSiteStack({
+    host,
+    domain,
+    vhostMode: resolved,
     onLog: log,
   });
-
-  const repair = await repairDeployedSiteStack({ host, domain, onLog: log });
-  return { ...repair, stack };
+  return { ...repair, stack: phpStack, vhostMode: resolved };
 }
 
 /**
@@ -374,6 +426,7 @@ export async function repairDeployedSiteStack({ host, domain, onLog }) {
     sshPort: host?.sshPort,
     projectsBaseDir,
     mode: "auto",
+    vhostMode: vhostMode || "auto",
     onLog: log,
   });
 
@@ -439,6 +492,8 @@ export async function autoDeployBuildJobToHost(job, buildResult, { onLog } = {})
       projectName,
       userId,
       onLog,
+      stack: job?.payload?.stack,
+      generationMode: job?.payload?.generationMode,
     });
     return {
       status: "deployed",

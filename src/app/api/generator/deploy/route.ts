@@ -83,11 +83,34 @@ export async function POST(req: Request) {
       }
     }
 
+    let deployStack: string | undefined;
+    let deployGenerationMode: string | undefined;
+    try {
+      const { getProjectPath } = await import("@/src/lib/project-paths.js");
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const projectPath = await getProjectPath(projectName);
+      const manifestRaw = await fs.readFile(
+        path.join(projectPath, ".aurora_multipage.json"),
+        "utf8"
+      );
+      const manifest = JSON.parse(manifestRaw) as {
+        stack?: string;
+        generationMode?: string;
+      };
+      deployStack = manifest.stack;
+      deployGenerationMode = manifest.generationMode;
+    } catch {
+      /* optional manifest */
+    }
+
     const deployed = await deployGeneratedSiteToDomainFolder({
       host,
       domain: targetDomain,
       projectName,
       userId: user.id,
+      stack: deployStack,
+      generationMode: deployGenerationMode,
     });
 
     if (jobId) {

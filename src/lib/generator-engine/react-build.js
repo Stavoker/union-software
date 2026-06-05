@@ -30,6 +30,16 @@ import {
   isAcceptableClaudeApiKey,
 } from "@/lib/generator-llm-endpoint";
 import { stripModelJsonFences } from "@/lib/generator-engine/multipage-prompt-contract";
+import {
+  pickRegistryComponentsForArchitect,
+  formatComponentRegistryForArchitect,
+  formatComponentRegistryForCodegen,
+  getRegistryComponentById,
+} from "@/src/lib/react-component-registry";
+import {
+  buildUiUxProMaxSystemBlock,
+  buildUiUxProMaxUserHint,
+} from "@/src/lib/design-skills-prompt";
 
 const execFileAsync = promisify(execFile);
 const PROJECTS_DIR = getProjectsDir();
@@ -218,6 +228,13 @@ function stripCodeFences(code) {
   return s.trim();
 }
 
+function normalizeComponentIds(raw) {
+  const ids = Array.isArray(raw) ? raw : [];
+  return ids
+    .map((id) => String(id || "").trim())
+    .filter((id) => Boolean(getRegistryComponentById(id)));
+}
+
 function normalizePagesPlan(rawPages, expectedFiles) {
   const byFile = new Map();
   for (const p of Array.isArray(rawPages) ? rawPages : []) {
@@ -227,6 +244,13 @@ function normalizePagesPlan(rawPages, expectedFiles) {
   return expectedFiles.map((file, i) => {
     const p = byFile.get(file) || {};
     const route = phpFileToRoutePath(file);
+    let componentIds = normalizeComponentIds(p.componentIds);
+    if (!componentIds.length) {
+      componentIds =
+        i === 0
+          ? ["hero-gradient", "slot-grid", "feature-cards", "cta-banner"]
+          : ["content-split", "faq-accordion", "cta-banner"];
+    }
     return {
       file,
       route,
@@ -235,6 +259,7 @@ function normalizePagesPlan(rawPages, expectedFiles) {
       description: String(p.description || "").trim(),
       contentAngle: String(p.contentAngle || "").trim(),
       componentName: phpFileToComponentName(file),
+      componentIds,
     };
   });
 }
@@ -265,25 +290,41 @@ function buildArchitectUserPrompt({
   siteRules,
   gatewayUrl,
   imageFiles,
+  registryBlock,
+  designHint,
 }) {
   return `
 Тема сайта: ${theme}
 Бренд в текстах: ${themeBrandHint}
 Базовый шлюз регистрации (CTA): ${gatewayUrl}
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
-Для каждой страницы укажи file (как в списке), role, title, description, contentAngle.
-Стек: React + Vite + Tailwind + framer-motion, левый сайдбар в layout.
+Для каждой страницы укажи file (как в списке), role, title, description, contentAngle, componentIds (2–4 id).
+Стек: React + Vite + Tailwind + framer-motion + curated registry, левый сайдбар в layout.
+
+${registryBlock}
 
 ${siteRules}
 
+${designHint}
+
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
-Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle" } ] }
+Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 Допустимые img: ${(imageFiles || []).slice(0, 20).join(", ")}
 `.trim();
 }
 
-function buildPageCodegenPrompt({ page, brandName, theme, profilePrompt, siteRules, gatewayUrl, gameImages }) {
+function buildPageCodegenPrompt({
+  page,
+  brandName,
+  theme,
+  profilePrompt,
+  siteRules,
+  gatewayUrl,
+  gameImages,
+  registryCodegenBlock,
+  designHint,
+}) {
   return `
 Сгенерируй ОДИН React TSX-файл (functional component) для страницы.
 Экспорт: export function ${page.componentName}() { ... }
@@ -292,11 +333,15 @@ Tailwind utility classes, framer-motion для 1–2 секций (motion.sectio
 Язык контента: русский. Бренд: ${brandName}. Тема: ${theme}.
 Страница: file=${page.file}, route=${page.route}, title=${page.title}, description=${page.description}, angle=${page.contentAngle}.
 CTA на gateway: ${gatewayUrl}
-Игровые превью (только в блоке слотов, компактно): ${gameImages.join(", ") || "нет"}
+Игровые превью (только в SlotGrid / #lw-games): ${gameImages.join(", ") || "нет"}
 Пути картинок: ./img/имя_файла — только из списка билда.
 Не используй slot-превью в hero. Левый сайдбар уже в SiteLayout — только контент страницы.
+Оберни контент в <div className="space-y-10"> с секциями из registry.
+
+${registryCodegenBlock}
 
 ${siteRules}
+${designHint}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
 Верни ТОЛЬКО код компонента, без markdown и пояснений.
@@ -463,14 +508,22 @@ export async function buildReactSite({
     themeBrandHint,
     gameSlotPaths: gameImages.map((f) => `./img/${f}`),
     logoSrc,
+    sitePalette: brandKit?.palette || undefined,
   });
+
+  const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 8);
+  const registryBlock = formatComponentRegistryForArchitect(registryPool);
+  const designSystemBlock = buildUiUxProMaxSystemBlock({
+    theme: themeNorm,
+    brandName: themeBrandHint,
+  });
+  const designHint = buildUiUxProMaxUserHint({ pageRole: "architect" });
 
   ensureNotStopped();
   emitLog(onLog, "Архитектор JSON (Claude)…");
   const architectRaw = await callClaude({
     apiKey: claudeKey,
-    system:
-      "Ты архитектор iGaming SPA. Ответ — только валидный JSON без markdown. Корень: brandName, pages[].",
+    system: `${designSystemBlock}\n\nТы архитектор iGaming SPA. Ответ — только валидный JSON без markdown. Корень: brandName, pages[].`,
     user: buildArchitectUserPrompt({
       theme: themeNorm,
       expectedFiles,
@@ -479,6 +532,8 @@ export async function buildReactSite({
       siteRules,
       gatewayUrl,
       imageFiles,
+      registryBlock,
+      designHint,
     }),
     maxTokens: 4096,
     temperature: 0.5,
@@ -503,10 +558,11 @@ export async function buildReactSite({
   for (const page of pages) {
     ensureNotStopped();
     emitLog(onLog, `Генерация страницы ${page.file} → ${page.componentName}…`);
+    const registryCodegenBlock = formatComponentRegistryForCodegen(page.componentIds);
+    const pageDesignHint = buildUiUxProMaxUserHint({ pageRole: page.role });
     const pageRaw = await callClaude({
       apiKey: claudeKey,
-      system:
-        "Ты senior React+Tailwind инженер. Верни только TSX-код компонента без markdown.",
+      system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер (ui-ux-pro-max). Верни только TSX-код компонента без markdown.`,
       user: buildPageCodegenPrompt({
         page,
         brandName,
@@ -515,6 +571,8 @@ export async function buildReactSite({
         siteRules,
         gatewayUrl,
         gameImages,
+        registryCodegenBlock,
+        designHint: pageDesignHint,
       }),
       maxTokens: 12000,
       temperature: 0.65,
@@ -569,7 +627,9 @@ export async function buildReactSite({
       route: p.route,
       title: p.title,
       component: p.componentName,
+      componentIds: p.componentIds,
     })),
+    componentRegistry: registryPool.map((c) => c.id),
     generatedAt: new Date().toISOString(),
     model: ANTHROPIC_MODEL,
   };

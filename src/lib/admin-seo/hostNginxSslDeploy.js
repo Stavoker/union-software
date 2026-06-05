@@ -2,6 +2,13 @@ import SftpClient from "ssh2-sftp-client";
 import { assertSafeHostForRemotePath } from "./hostProjectCleanup.js";
 import { ensurePhpStackOnHost } from "./hostPhpStack.js";
 import { shellSingleQuote, sshExecCommand, sshUsesSudo } from "./hostSsh.js";
+import {
+  normalizeVhostMode,
+  resolveDeployVhostMode,
+  VHOST_MODE_PHP,
+  VHOST_MODE_SPA,
+  VHOST_MODE_AUTO,
+} from "@/src/lib/deploy-vhost.js";
 
 function envBool(name) {
   const v = String(process.env[name] || "").trim().toLowerCase();
@@ -15,17 +22,26 @@ function nginxPhpEnabled() {
 }
 
 /**
- * Шаблони різні: лише HTML у корені або в html/, або PHP (index.php + fastcgi).
- * .htaccess nginx не читає — правила з Apache треба переносити вручну, якщо потрібні рерайти.
+ * vhostMode: php | spa (React static SPA fallback → index.html)
+ * .htaccess nginx не читає — SPA rewrite має бути у vhost.
  */
-function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiPass }) {
-  const indexLine =
-    phpEnabled === true
+function buildNginxSiteConfig(domain, rootDir, sslDir, { vhostMode, phpFastcgiPass }) {
+  const spa = vhostMode === VHOST_MODE_SPA;
+  const php = vhostMode === VHOST_MODE_PHP;
+
+  const indexLine = spa
+    ? `    index index.html index.htm;`
+    : php
       ? `    index index.php index.html index.htm;`
       : `    index index.html index.htm;`;
 
-  const tryFilesMain =
-    phpEnabled === true
+  const tryFilesMain = spa
+    ? [
+        `    location / {`,
+        `        try_files $uri $uri/ /index.html;`,
+        `    }`,
+      ]
+    : php
       ? [
           `    location / {`,
           `        try_files $uri $uri/ /index.php?$query_string;`,
@@ -34,7 +50,7 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
       : [`    location / {`, `        try_files $uri $uri/ =404;`, `    }`];
 
   const phpBlock =
-    phpEnabled === true && phpFastcgiPass
+    php && phpFastcgiPass
       ? [
           ``,
           `    location ~ \\.php$ {`,
@@ -70,14 +86,22 @@ function buildNginxSiteConfig(domain, rootDir, sslDir, { phpEnabled, phpFastcgiP
   ].join("\n");
 }
 
-/** HTTP-only vhost (поки немає SSL у ssl/); для згенерованих PHP-сайтів у корені домену. */
-function buildNginxHttpOnlySiteConfig(domain, rootDir, { phpEnabled, phpFastcgiPass }) {
-  const indexLine =
-    phpEnabled === true
+/** HTTP-only vhost (поки немає SSL у ssl/). */
+function buildNginxHttpOnlySiteConfig(domain, rootDir, { vhostMode, phpFastcgiPass }) {
+  const spa = vhostMode === VHOST_MODE_SPA;
+  const php = vhostMode === VHOST_MODE_PHP;
+  const indexLine = spa
+    ? `    index index.html index.htm;`
+    : php
       ? `    index index.php index.html index.htm;`
       : `    index index.html index.htm;`;
-  const tryFilesMain =
-    phpEnabled === true
+  const tryFilesMain = spa
+    ? [
+        `    location / {`,
+        `        try_files $uri $uri/ /index.html;`,
+        `    }`,
+      ]
+    : php
       ? [
           `    location / {`,
           `        try_files $uri $uri/ /index.php?$query_string;`,
@@ -85,7 +109,7 @@ function buildNginxHttpOnlySiteConfig(domain, rootDir, { phpEnabled, phpFastcgiP
         ]
       : [`    location / {`, `        try_files $uri $uri/ =404;`, `    }`];
   const phpBlock =
-    phpEnabled === true && phpFastcgiPass
+    php && phpFastcgiPass
       ? [
           ``,
           `    location ~ \\.php$ {`,
@@ -117,6 +141,14 @@ function nginxConfigHasPhpBlock(nginxConf) {
     /fastcgi_pass\s+/.test(t) &&
     /try_files\s+\$uri/.test(t) &&
     /index\s+index\.php/.test(t)
+  );
+}
+
+function nginxConfigHasSpaBlock(nginxConf) {
+  const t = String(nginxConf || "");
+  return (
+    /try_files\s+\$uri\s+\$uri\/\s+\/index\.html/.test(t) &&
+    /index\s+index\.html/.test(t)
   );
 }
 
@@ -208,6 +240,51 @@ async function verifyNginxVhostOnHost({
   }
 
   return { smokeStatus: statusLine };
+}
+
+async function verifyNginxSpaVhostOnHost({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  confPath,
+  domain,
+  useHttps,
+}) {
+  const q = shellSingleQuote(confPath);
+  const { stdout } = await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    `grep -E 'try_files|index index.html' ${q} | wc -l`,
+    sshPort
+  );
+  const hits = parseInt(String(stdout || "").trim(), 10);
+  if (!Number.isFinite(hits) || hits < +2) {
+    throw new Error(`nginx SPA vhost incomplete (grep hits=${hits || 0})`);
+  }
+
+  const scheme = useHttps ? "https" : "http";
+  const port = useHttps ? "443" : "80";
+  const resolve = shellSingleQuote(`${domain}:${port}:127.0.0.1`);
+  for (const path of ["/", "/games"]) {
+    const curlCmd = `curl -sI -k --resolve ${resolve} ${scheme}://${domain}${path} | head -n 1`;
+    const { stdout: curlOut } = await sshExecCommand(
+      sshHost,
+      sshUser,
+      sshPassword,
+      curlCmd,
+      sshPort
+    );
+    const statusLine = String(curlOut || "").trim();
+    if (/ 403 /.test(statusLine)) {
+      throw new Error(`SPA smoke ${path} got 403`);
+    }
+    if (!/^HTTP\/\d/i.test(statusLine)) {
+      throw new Error(`SPA smoke ${path} failed: ${statusLine || "empty"}`);
+    }
+  }
+  return { smokeStatus: "SPA ok" };
 }
 
 function resolveNginxDeployPaths(projectsBaseDir, domain) {
@@ -356,6 +433,7 @@ export async function syncNginxVhostForDomain({
   sshPort: sshPortInput,
   projectsBaseDir: projectsBaseDirInput,
   mode = "auto",
+  vhostMode: vhostModeInput = VHOST_MODE_AUTO,
   onLog,
 }) {
   const log = (msg) => {
@@ -381,7 +459,48 @@ export async function syncNginxVhostForDomain({
   const { normalized, remoteProjectDir, sslDir, confPath, linkPath, reloadCmd } =
     resolveNginxDeployPaths(projectsBaseDir, domain);
 
-  const phpOn = nginxPhpEnabled();
+  let useHttps = mode === "https";
+  let resolvedVhostMode = normalizeVhostMode(vhostModeInput);
+  let hasIndexPhp = false;
+  let hasIndexHtml = false;
+
+  {
+    const sftp = new SftpClient();
+    try {
+      await sftp.connect({
+        host: sshHost,
+        port: Number.isFinite(sshPort) && sshPort > 0 ? sshPort : 22,
+        username: sshUser,
+        password: sshPassword,
+        readyTimeout: 20000,
+      });
+      if (mode === "auto" || mode === "http") {
+        const hasCert = (await sftp.exists(`${sslDir}/fullchain.pem`)) === "-";
+        const hasKey = (await sftp.exists(`${sslDir}/privkey.pem`)) === "-";
+        useHttps = hasCert && hasKey;
+      }
+      hasIndexPhp = (await sftp.exists(`${remoteProjectDir}/index.php`)) === "-";
+      hasIndexHtml = (await sftp.exists(`${remoteProjectDir}/index.html`)) === "-";
+      if (resolvedVhostMode === VHOST_MODE_AUTO) {
+        resolvedVhostMode = resolveDeployVhostMode({ hasIndexPhp, hasIndexHtml });
+        log(
+          `[nginx] vhost auto-detect: ${resolvedVhostMode} (index.php=${hasIndexPhp}, index.html=${hasIndexHtml})`
+        );
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        skipped: false,
+        warning: `nginx precheck failed: ${e?.message || String(e)}`,
+        remoteProjectDir,
+      };
+    } finally {
+      await sftp.end().catch(() => {});
+    }
+  }
+
+  const spaMode = resolvedVhostMode === VHOST_MODE_SPA;
+  const phpOn = !spaMode && (resolvedVhostMode === VHOST_MODE_PHP || nginxPhpEnabled());
   let phpSock = "";
   if (phpOn) {
     const stack = await ensurePhpStackOnHost({
@@ -409,32 +528,12 @@ export async function syncNginxVhostForDomain({
         onLog: log,
       }));
   }
-  const phpOpts = { phpEnabled: phpOn, phpFastcgiPass: phpOn ? phpSock : "" };
-
-  let useHttps = mode === "https";
-  if (mode === "auto" || mode === "http") {
-    const sftp = new SftpClient();
-    try {
-      await sftp.connect({
-        host: sshHost,
-        port: Number.isFinite(sshPort) && sshPort > 0 ? sshPort : 22,
-        username: sshUser,
-        password: sshPassword,
-        readyTimeout: 20000,
-      });
-      const hasCert = (await sftp.exists(`${sslDir}/fullchain.pem`)) === "-";
-      const hasKey = (await sftp.exists(`${sslDir}/privkey.pem`)) === "-";
-      useHttps = hasCert && hasKey;
-    } catch (e) {
-      return {
-        ok: false,
-        skipped: false,
-        warning: `nginx precheck failed: ${e?.message || String(e)}`,
-        remoteProjectDir,
-      };
-    } finally {
-      await sftp.end().catch(() => {});
-    }
+  const vhostOpts = {
+    vhostMode: spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
+    phpFastcgiPass: phpOn ? phpSock : "",
+  };
+  if (spaMode) {
+    log(`[nginx] SPA static vhost (try_files → /index.html, no PHP-FPM)`);
   }
 
   if (mode === "https" && !useHttps) {
@@ -449,9 +548,17 @@ export async function syncNginxVhostForDomain({
   }
 
   const nginxConf = useHttps
-    ? buildNginxSiteConfig(normalized, remoteProjectDir, sslDir, phpOpts)
-    : buildNginxHttpOnlySiteConfig(normalized, remoteProjectDir, phpOpts);
+    ? buildNginxSiteConfig(normalized, remoteProjectDir, sslDir, vhostOpts)
+    : buildNginxHttpOnlySiteConfig(normalized, remoteProjectDir, vhostOpts);
 
+  if (spaMode && !nginxConfigHasSpaBlock(nginxConf)) {
+    return {
+      ok: false,
+      skipped: false,
+      warning: "Generated nginx config is missing SPA try_files block",
+      remoteProjectDir,
+    };
+  }
   if (phpOn && !nginxConfigHasPhpBlock(nginxConf)) {
     return {
       ok: false,
@@ -489,17 +596,27 @@ export async function syncNginxVhostForDomain({
 
   let smokeStatus = "";
   try {
-    const smoke = await verifyNginxVhostOnHost({
-      sshHost,
-      sshUser,
-      sshPassword,
-      sshPort,
-      confPath,
-      domain: normalized,
-      useHttps,
-    });
+    const smoke = spaMode
+      ? await verifyNginxSpaVhostOnHost({
+          sshHost,
+          sshUser,
+          sshPassword,
+          sshPort,
+          confPath,
+          domain: normalized,
+          useHttps,
+        })
+      : await verifyNginxVhostOnHost({
+          sshHost,
+          sshUser,
+          sshPassword,
+          sshPort,
+          confPath,
+          domain: normalized,
+          useHttps,
+        });
     smokeStatus = smoke.smokeStatus || "";
-    log(`[nginx] smoke test ${normalized}: ${smokeStatus}`);
+    log(`[nginx] smoke test ${normalized} (${spaMode ? "SPA" : "PHP"}): ${smokeStatus}`);
   } catch (e) {
     return {
       ok: false,
@@ -523,6 +640,7 @@ export async function syncNginxVhostForDomain({
     nginxLinkPath: linkPath,
     nginxReloaded: true,
     phpFpmSocket: phpSock,
+    vhostMode: spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
     smokeStatus,
     verified: true,
   };

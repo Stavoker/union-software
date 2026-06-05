@@ -418,7 +418,7 @@ export async function markBuildJobDone(id, result) {
     });
     if (deploy?.status === "deployed" && deploy.stackReady === false) {
       try {
-        const { ensurePhpNginxForDeployedDomain } = await import(
+        const { ensureNginxForDeployedDomain } = await import(
           "@/lib/admin-seo/hostDomainFolders.js"
         );
         const { getHostById } = await import("@/lib/admin-seo/hostsRepository.js");
@@ -426,10 +426,12 @@ export async function markBuildJobDone(id, result) {
         const userId = String(job?.payload?.userId || "").trim();
         const host = await getHostById(hostId, userId);
         if (host && deploy.domain) {
-          appendBuildJobLog(id, "[deploy] retry PHP+nginx stack");
-          const retry = await ensurePhpNginxForDeployedDomain({
+          appendBuildJobLog(id, "[deploy] retry nginx stack");
+          const retry = await ensureNginxForDeployedDomain({
             host,
             domain: deploy.domain,
+            stack: job?.payload?.stack,
+            generationMode: job?.payload?.generationMode,
             onLog: (msg) => appendBuildJobLog(id, msg),
           });
           deploy = {
