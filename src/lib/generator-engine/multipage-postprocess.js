@@ -20,7 +20,14 @@ const DEPLOY_SKIP_EXACT = new Set([
 export function shouldSkipDeployProjectEntry(name, isDirectory = false) {
   const base = String(name || "").trim();
   if (!base) return true;
-  if (isDirectory && (base === ".git" || base === "node_modules" || base === "cache")) {
+  if (
+    isDirectory &&
+    (base === ".git" ||
+      base === "node_modules" ||
+      base === "cache" ||
+      base === "_react_src" ||
+      base === "dist")
+  ) {
     return true;
   }
   if (DEPLOY_SKIP_EXACT.has(base)) return true;

@@ -41,6 +41,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# React Lab template build artifacts
+/assets/react-lab-template/node_modules/
+/assets/react-lab-template/dist/
+
 # local generator runtime
 /storage/projects/
 /storage/jobs/

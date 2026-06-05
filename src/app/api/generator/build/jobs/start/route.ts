@@ -116,6 +116,7 @@ export async function POST(req: Request) {
   const pageCount = clampMultipagePageCountTotal(body.pageCount);
   const siteCount = clampSiteCount(body.siteCount);
   const generationModeRaw = String(body.generationMode || "standard").trim();
+  const stackRaw = String(body.stack || "php").trim();
   const hostId = String(body.hostId || "").trim();
   const siteUrlInputGlobal = String(body.siteUrl || "").trim();
 
@@ -177,6 +178,26 @@ export async function POST(req: Request) {
     siteCount <= 1
       ? [safeBase]
       : Array.from({ length: siteCount }, (_, i) => `${safeBase}-s${i + 1}`);
+
+  let normalizedStack = "php";
+  try {
+    const { normalizeGenerationStack, isReactGenerationStack, isReactBuildEnabled } =
+      await import("@/src/lib/generation-stack.js");
+    normalizedStack = normalizeGenerationStack(stackRaw);
+    if (isReactGenerationStack(normalizedStack) && !isReactBuildEnabled()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "React Lab вимкнено (SOFTGEN_REACT_BUILD=0). На Render увімкніть SOFTGEN_REACT_BUILD=1 для npm build.",
+        },
+        { status: 400 }
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
 
   const overrideCk = String(body.claudeApiKey || "").trim();
   const usePooledKeys = !overrideCk.startsWith("sk-ant-");
@@ -243,6 +264,7 @@ export async function POST(req: Request) {
       pageCount,
       referenceTemplateMode: true,
       generationMode: generationModeRaw,
+      stack: normalizedStack,
       etalonAlternatingIndex: etalonAlternationBase + i,
     };
 

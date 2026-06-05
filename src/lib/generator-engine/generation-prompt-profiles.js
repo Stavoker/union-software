@@ -124,6 +124,22 @@ export function pickWeightedGenerationProfile(rows, seed) {
  * @param {{ themeBrandHint?: string; publicBrandName?: string }} [opts]
  * @returns {string}
  */
+/**
+ * Тільки full_generation_prompt з профілю (стратегія React Lab / без еталонів).
+ * @param {Record<string, unknown> | null} profile
+ * @param {{ themeBrandHint?: string }} [opts]
+ * @returns {string}
+ */
+export function formatFullGenerationPromptOnly(profile, opts = {}) {
+  if (!profile) return "";
+  const themeBrand = String(opts.themeBrandHint || "").trim();
+  const full = scrubLegacyBrandMentionsInProfileText(
+    String(profile.full_generation_prompt || ""),
+    themeBrand
+  );
+  return full.trim();
+}
+
 export function formatGenerationPromptProfileBlock(profile, opts = {}) {
   if (!profile) return "";
   const themeBrand = String(

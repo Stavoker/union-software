@@ -14,6 +14,8 @@ import {
 import { getProjectsDir } from "@/src/lib/app-paths";
 import { getPhpBinary } from "@/src/lib/php-binary";
 import { buildMultipageSite } from "@/src/lib/multipage-build";
+import { buildReactSite } from "@/src/lib/react-build";
+import { isReactGenerationStack } from "@/src/lib/generation-stack";
 import {
   ensureProjectExists,
   getProjectPath,
@@ -84,6 +86,20 @@ export async function readProjectDeployReadiness(fullPath) {
   const indexPath = path.join(fullPath, "index.php");
   try {
     await fs.access(indexPath);
+    return {
+      pagesTotal: 1,
+      pagesDone: 1,
+      ready: true,
+      buildComplete: true,
+      status: "completed",
+    };
+  } catch {
+    /* fallthrough */
+  }
+
+  const indexHtmlPath = path.join(fullPath, "index.html");
+  try {
+    await fs.access(indexHtmlPath);
     return {
       pagesTotal: 1,
       pagesDone: 1,
@@ -209,7 +225,7 @@ export async function buildProject(opts) {
   }
 
   if (theme.length > 0 && Number.isFinite(wid) && wid >= 1 && wid <= 10) {
-    const result = await buildMultipageSite({
+    const buildOpts = {
       projectName: opts.projectName,
       windowId: wid,
       theme,
@@ -220,10 +236,15 @@ export async function buildProject(opts) {
       pageCount: opts.pageCount,
       brandKey: opts.brandKey,
       brandKit: opts.brandKit || null,
-      referenceTemplateMode: Boolean(opts.referenceTemplateMode),
       generationMode: opts.generationMode,
-      etalonAlternatingIndex: opts.etalonAlternatingIndex,
-    });
+    };
+    const result = isReactGenerationStack(opts.stack)
+      ? await buildReactSite(buildOpts)
+      : await buildMultipageSite({
+          ...buildOpts,
+          referenceTemplateMode: Boolean(opts.referenceTemplateMode),
+          etalonAlternatingIndex: opts.etalonAlternatingIndex,
+        });
     // buildMultipageSite очищает outputDir в начале — meta из /jobs/start удаляется.
     // Записываем снова, чтобы в ZIP и /api/projects/list был subdomainBrand для auto-script.
     await writeProjectSiteMeta({
