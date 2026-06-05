@@ -270,6 +270,8 @@
     "resuming": "Відновлення збірки…",
     "cancel": "Зупинити",
     "downloadZip": "Завантажити ZIP",
+    "downloadingZip": "Готуємо ZIP…",
+    "downloadZipFailed": "Не вдалося завантажити ZIP",
     "newSlug": "Новий slug",
     "status": "Статус",
     "logTitle": "Журнал збірки",

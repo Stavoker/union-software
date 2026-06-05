@@ -270,6 +270,8 @@
     "resuming": "Восстановление сборки…",
     "cancel": "Остановить",
     "downloadZip": "Скачать ZIP",
+    "downloadingZip": "Готовим ZIP…",
+    "downloadZipFailed": "Не удалось скачать ZIP",
     "newSlug": "Новый slug",
     "status": "Статус",
     "logTitle": "Журнал сборки",

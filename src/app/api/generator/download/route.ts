@@ -1,27 +1,33 @@
 import fs from "node:fs/promises";
-import fsSync from "node:fs";
-import os from "node:os";
+import { PassThrough, Readable } from "node:stream";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import archiver from "archiver";
 import { NextResponse } from "next/server";
 import { getSessionUserEmail } from "@/shared/lib/auth/get-session-user";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
-async function zipDirectory(sourceDir: string, outPath: string) {
-  await new Promise<void>((resolve, reject) => {
-    const output = fsSync.createWriteStream(outPath);
-    const archive = archiver("zip", { zlib: { level: 9 } });
-
-    output.on("close", () => resolve());
-    output.on("error", reject);
-    archive.on("error", reject);
-
-    archive.pipe(output);
-    archive.directory(sourceDir, false);
-    void archive.finalize();
-  });
+/**
+ * Додає у ZIP лише deployable файли (без _react_src, node_modules тощо).
+ */
+async function appendFilteredDirToArchive(
+  archive: archiver.Archiver,
+  localDir: string,
+  archivePrefix: string,
+  shouldSkip: (name: string, isDirectory: boolean) => boolean
+) {
+  const entries = await fs.readdir(localDir, { withFileTypes: true });
+  for (const ent of entries) {
+    if (shouldSkip(ent.name, ent.isDirectory())) continue;
+    const lp = path.join(localDir, ent.name);
+    const name = archivePrefix ? `${archivePrefix}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) {
+      await appendFilteredDirToArchive(archive, lp, name, shouldSkip);
+    } else {
+      archive.file(lp, { name });
+    }
+  }
 }
 
 export async function GET(req: Request) {
@@ -33,7 +39,6 @@ export async function GET(req: Request) {
     );
   }
 
-  let tempZipPath: string | null = null;
   try {
     const { searchParams } = new URL(req.url);
     const projectName = String(searchParams.get("projectName") || "").trim();
@@ -42,29 +47,46 @@ export async function GET(req: Request) {
     }
 
     const { getProjectPath } = await import("@/src/lib/project-service.js");
+    const { shouldSkipDeployProjectEntry } = await import(
+      "@/lib/generator-engine/multipage-postprocess.js"
+    );
     const projectPath = await getProjectPath(projectName);
-    tempZipPath = path.join(os.tmpdir(), `union-gen-${randomUUID()}.zip`);
 
-    await zipDirectory(projectPath, tempZipPath);
-    const zipBuffer = await fs.readFile(tempZipPath);
+    const pass = new PassThrough();
+    const archive = archiver("zip", { zlib: { level: 6 } });
 
-    return new NextResponse(zipBuffer, {
+    archive.on("error", (err) => {
+      pass.destroy(err);
+    });
+    archive.pipe(pass);
+
+    void (async () => {
+      try {
+        await appendFilteredDirToArchive(
+          archive,
+          projectPath,
+          "",
+          shouldSkipDeployProjectEntry
+        );
+        await archive.finalize();
+      } catch (err) {
+        archive.abort();
+        pass.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+
+    const webStream = Readable.toWeb(pass) as ReadableStream<Uint8Array>;
+
+    return new NextResponse(webStream, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${encodeURIComponent(projectName)}.zip"`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ZIP error";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
-  } finally {
-    if (tempZipPath) {
-      try {
-        await fs.unlink(tempZipPath);
-      } catch {
-        /* ignore */
-      }
-    }
   }
 }

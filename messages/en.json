@@ -270,6 +270,8 @@
     "resuming": "Resuming build…",
     "cancel": "Stop",
     "downloadZip": "Download ZIP",
+    "downloadingZip": "Preparing ZIP…",
+    "downloadZipFailed": "Could not download ZIP",
     "newSlug": "New slug",
     "status": "Status",
     "logTitle": "Build log",

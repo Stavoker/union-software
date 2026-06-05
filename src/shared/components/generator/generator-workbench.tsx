@@ -146,6 +146,7 @@ type JobRow = {
   deploy?: DeployInfo | null;
   hostId?: string;
   uploading?: boolean;
+  downloadingZip?: boolean;
 };
 
 type GeneratorWorkbenchProps = {
@@ -453,6 +454,40 @@ export function GeneratorWorkbench({
       });
     } catch {
       /* ignore */
+    }
+  }
+
+  async function downloadProjectZip(job: JobRow) {
+    setJobs((prev) =>
+      prev.map((j) => (j.jobId === job.jobId ? { ...j, downloadingZip: true } : j))
+    );
+    try {
+      const url = `/api/generator/download?projectName=${encodeURIComponent(job.projectName)}`;
+      const res = await fetch(url, { credentials: "include" });
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      if (!res.ok || contentType.includes("application/json")) {
+        let msg = t("downloadZipFailed");
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data.error) msg = data.error;
+        } catch {
+          /* not json */
+        }
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `${job.projectName}.zip`;
+      a.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("downloadZipFailed"));
+    } finally {
+      setJobs((prev) =>
+        prev.map((j) => (j.jobId === job.jobId ? { ...j, downloadingZip: false } : j))
+      );
     }
   }
 
@@ -862,9 +897,6 @@ export function GeneratorWorkbench({
           <div className="grid gap-4 md:grid-cols-2">
             {jobs.map((job) => {
               const done = job.status === "done";
-              const downloadZip = done
-                ? `/api/generator/download?projectName=${encodeURIComponent(job.projectName)}`
-                : null;
               const canStop = !TERMINAL.has(job.status);
               const canDismiss = TERMINAL.has(job.status);
               const deploy = job.deploy;
@@ -949,13 +981,15 @@ export function GeneratorWorkbench({
                   ) : null}
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {downloadZip ? (
-                      <a
-                        href={downloadZip}
-                        className="inline-flex items-center justify-center rounded-full border border-union-accent/40 bg-union-accent/10 px-4 py-2 text-xs font-medium text-union-accent hover:bg-union-accent/20"
+                    {done ? (
+                      <button
+                        type="button"
+                        disabled={job.downloadingZip}
+                        onClick={() => void downloadProjectZip(job)}
+                        className="inline-flex items-center justify-center rounded-full border border-union-accent/40 bg-union-accent/10 px-4 py-2 text-xs font-medium text-union-accent hover:bg-union-accent/20 disabled:opacity-50"
                       >
-                        {t("downloadZip")}
-                      </a>
+                        {job.downloadingZip ? t("downloadingZip") : t("downloadZip")}
+                      </button>
                     ) : null}
                     {showUploadBtn ? (
                       <button
