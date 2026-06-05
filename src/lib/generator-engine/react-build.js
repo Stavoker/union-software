@@ -649,8 +649,7 @@ export async function buildReactSite({
     sitemapPaths,
     generationMode,
   });
-
-  await fs.cp(imgDir, path.join(outputDir, "img"), { recursive: true });
+  // img/ уже в outputDir (бренд) або скопирован из dist/public через vite — не cp(src===dest)
 
   const manifest = {
     mode: "react-spa",
