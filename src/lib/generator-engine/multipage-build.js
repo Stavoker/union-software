@@ -9,6 +9,14 @@ import {
   selectGenerationPromptProfileForBuild,
   formatGenerationPromptProfileBlock,
 } from "@/src/lib/generation-prompt-profiles";
+import {
+  buildImagePools,
+  formatBrandPromptOverlay,
+  formatImagePoolsLogLine,
+  resolveBannerImageFiles,
+  resolveGameImageFiles,
+  resolvePaymentImageFiles,
+} from "@/lib/brand-image-pools";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
 import {
   formatSourceArticlesPromptBlock,
@@ -4310,13 +4318,15 @@ function hashString(input) {
   return Math.abs(h);
 }
 
-function pickBannerBackgrounds(imageFiles = []) {
-  const fromImg = Array.isArray(imageFiles)
-    ? imageFiles
-        .filter((name) => /\.(webp|png|jpe?g|gif|avif)$/i.test(String(name || "")))
-        .filter((name) => /(forbaner|baner|banner)/i.test(String(name || "")))
-        .map((name) => `./img/${name}`)
-    : [];
+function pickBannerBackgrounds(imageFiles = [], imagePools = null) {
+  const bannerFiles = imagePools
+    ? resolveBannerImageFiles(imageFiles, imagePools)
+    : (Array.isArray(imageFiles) ? imageFiles : []).filter((name) =>
+        /(forbaner|baner|banner)/i.test(String(name || ""))
+      );
+  const fromImg = bannerFiles
+    .filter((name) => /\.(webp|png|jpe?g|gif|avif)$/i.test(String(name || "")))
+    .map((name) => `./img/${name}`);
   const fallback = [
     "./img/forBaner.webp",
     "./img/baner-image.webp",
@@ -7942,6 +7952,18 @@ export async function buildMultipageSite({
     imageFiles = [...imageFiles, "favicon.ico"];
   }
 
+  const imagePools = buildImagePools(imageFiles);
+  const gameSourceFiles = resolveGameImageFiles(imageFiles, imagePools, brandKit);
+  const bannerImagePaths = resolveBannerImageFiles(imageFiles, imagePools).map(
+    (f) => `./img/${f}`
+  );
+  const paymentImagePaths = resolvePaymentImageFiles(imageFiles, imagePools).map(
+    (f) => `./img/${f}`
+  );
+  if (brandKit?.userId) {
+    emitLog(onLog, `Бренд-ассеты: ${formatImagePoolsLogLine(imagePools)}`);
+  }
+
   const cssDir = path.join(outputDir, "css");
   const jsDir = path.join(outputDir, "js");
   await fs.mkdir(cssDir, { recursive: true });
@@ -8071,6 +8093,8 @@ export async function buildMultipageSite({
   const siteRulesForArchitect = buildSiteGenerationRulesBlock({
     themeBrandHint: themeBrandHintEarly,
     logoSrc: logoSrcForBuild,
+    bannerImagePaths,
+    paymentImagePaths,
   });
   let pageTemplatePlan = {};
   let templateCssFromEtalon = null;
@@ -8305,11 +8329,7 @@ export async function buildMultipageSite({
       promptRemixOverlay = "";
     }
   }
-  const brandPromptOverlay = brandKit?.promptOverlay
-    ? sanitizePromptOverlayText(
-        `БРЕНД КЛИЕНТА (настройки admin):\n${brandKit.promptOverlay}`
-      )
-    : "";
+  const brandPromptOverlay = formatBrandPromptOverlay(brandKit?.promptOverlay);
   const finalPromptOverlay = [
     sanitizePromptOverlayText(promptProfileOverlay),
     sanitizePromptOverlayText(referenceSiteOverlay),
@@ -8651,23 +8671,25 @@ export async function buildMultipageSite({
     }
   }
 
-  const gameImages = pickGameImages(imageFiles, {
+  const gameImages = pickGameImages(gameSourceFiles, {
     seed: siteSeed,
     max: 36,
   });
-  const gameTabSlotBatches = buildGameTabSlotBatches(imageFiles, siteSeed, 3, 8);
+  const gameTabSlotBatches = buildGameTabSlotBatches(gameSourceFiles, siteSeed, 3, 8);
   const gameSlotPaths =
     gameTabSlotBatches[0]?.length > 0
       ? gameTabSlotBatches[0]
-      : buildIndexedGameSlots(imageFiles, siteSeed, 8);
+      : buildIndexedGameSlots(gameSourceFiles, siteSeed, 8);
   const siteGenerationRulesBlock = buildSiteGenerationRulesBlock({
     themeBrandHint: themeBrandHintEarly,
     gameSlotPaths,
+    bannerImagePaths,
+    paymentImagePaths,
     logoSrc: logoSrcForBuild,
     sitePalette,
   });
   const canonSlotCount = CANONICAL_SLOT_GAME_FILENAMES.filter((f) =>
-    imageFiles.includes(f)
+    gameSourceFiles.includes(f)
   ).length;
   if (canonSlotCount < 4) {
     emitLog(

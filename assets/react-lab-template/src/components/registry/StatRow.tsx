@@ -18,10 +18,10 @@ export function StatRow({ stats = [] }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: i * 0.05 }}
-          className="rounded-xl border border-white/10 bg-white/5 px-4 py-5 text-center"
+          className="rounded-xl border border-brand-accent/15 bg-brand-block px-4 py-5 text-center"
         >
-          <div className="text-2xl font-bold text-lime-300">{s.value}</div>
-          <div className="mt-1 text-xs text-zinc-500">{s.label}</div>
+          <div className="text-2xl font-bold text-brand-accent">{s.value}</div>
+          <div className="mt-1 text-xs text-brand-muted">{s.label}</div>
         </motion.div>
       ))}
     </div>

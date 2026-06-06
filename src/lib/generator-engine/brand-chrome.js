@@ -1950,7 +1950,8 @@ export function pickGameImages(imageFiles, options = {}) {
     .filter((f) => !/\.svg$/i.test(f))
     .filter(
       (f) =>
-        !/^(logo|favicon|icon)/i.test(f) &&
+        !/^(logo|favicon|icon|pay-)/i.test(f) &&
+        !/^(banner-|forbanner|forbaner)/i.test(f) &&
         !/laki_world|golden_logo/i.test(f) &&
         !/banner-5\.png$/i.test(f) &&
         !/Bonus-mobile/i.test(f) &&

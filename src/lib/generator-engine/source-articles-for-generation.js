@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { applyBrandPlaceholder } from "@/src/lib/generation-prompt-profiles";
 
 const TABLE = "source_articles";
 
@@ -33,6 +34,9 @@ function scrubBrandInText(text, themeBrandHint = "") {
   let out = String(text || "");
   for (const [re, repl] of BRAND_SCRUB_PATTERNS) {
     out = out.replace(re, brand === "{brand}" ? repl : brand);
+  }
+  if (brand !== "{brand}") {
+    out = applyBrandPlaceholder(out, brand);
   }
   return out.replace(/\s{2,}/g, " ").trim();
 }
@@ -132,7 +136,7 @@ export function formatSourceArticlesPromptBlock(articles, opts = {}) {
 
   const lines = [
     "=== РЕФЕРЕНС ТЕКСТОВ (source_articles, только стиль и глубина; не копировать дословно) ===",
-    `Бренд текущей сборки: «${brand}». Названия брендов из примеров ниже заменены на {brand} — не восстанавливай Laki/Лаки.`,
+    `Бренд текущей сборки: «${brand}». В примерах ниже чужие бренды заменены на «${brand}» — не восстанавливай Laki/Лаки и не подставляй «О нашем казино».`,
     "Используй примеры как ориентир по тону, структуре абзацев и iGaming-лексике; факты адаптируй под тему страницы.",
   ];
   if (page) lines.push(`Страница сборки: ${page}`);
@@ -183,6 +187,7 @@ export async function loadSourceArticlesContextForBuild(opts) {
     return empty;
   }
 
+  const settings = resolveSourceArticlesSettings(process.env);
   const count =
     opts.articleCount != null
       ? Math.max(0, Math.min(4, Math.trunc(Number(opts.articleCount))))

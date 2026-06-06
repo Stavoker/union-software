@@ -58,6 +58,13 @@ const EMPTY_PALETTE: Palette = {
   text: "#edf0f5",
 };
 
+const ASSET_KIND_LABEL_KEYS: Record<string, "kindHero" | "kindGame" | "kindPayment" | "kindMisc"> = {
+  hero: "kindHero",
+  game: "kindGame",
+  payment: "kindPayment",
+  misc: "kindMisc",
+};
+
 export function BrandAdminEditor({
   userId,
   userEmail,
@@ -265,6 +272,7 @@ export function BrandAdminEditor({
 
       <section className={`${seoCard} space-y-4`}>
         <h2 className="text-base font-semibold text-union-text">{t("sectionAssets")}</h2>
+        <p className="text-xs text-union-muted">{t("assetsHint")}</p>
         <div className="flex flex-wrap gap-3">
           <label className="cursor-pointer rounded-lg border border-union-border px-3 py-2 text-sm text-union-text hover:border-[#d1fe17]/40">
             {t("uploadLogo")}
@@ -295,7 +303,67 @@ export function BrandAdminEditor({
             />
           </label>
           <label className="cursor-pointer rounded-lg border border-union-border px-3 py-2 text-sm text-union-text hover:border-[#d1fe17]/40">
-            {t("uploadImage")}
+            {t("uploadBanner")}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              disabled={uploading}
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files?.length) return;
+                void (async () => {
+                  for (const f of Array.from(files)) {
+                    await uploadFile(f, "hero");
+                  }
+                })();
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className="cursor-pointer rounded-lg border border-union-border px-3 py-2 text-sm text-union-text hover:border-[#d1fe17]/40">
+            {t("uploadSlot")}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              disabled={uploading}
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files?.length) return;
+                void (async () => {
+                  for (const f of Array.from(files)) {
+                    await uploadFile(f, "game");
+                  }
+                })();
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className="cursor-pointer rounded-lg border border-union-border px-3 py-2 text-sm text-union-text hover:border-[#d1fe17]/40">
+            {t("uploadPayment")}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              disabled={uploading}
+              onChange={(e) => {
+                const files = e.target.files;
+                if (!files?.length) return;
+                void (async () => {
+                  for (const f of Array.from(files)) {
+                    await uploadFile(f, "payment");
+                  }
+                })();
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className="cursor-pointer rounded-lg border border-dashed border-union-border px-3 py-2 text-sm text-union-muted hover:border-[#d1fe17]/40">
+            {t("uploadMisc")}
             <input
               type="file"
               accept="image/*"
@@ -318,6 +386,9 @@ export function BrandAdminEditor({
         {brand.logoStoragePath ? (
           <p className="font-mono text-xs text-union-muted">logo: {brand.logoStoragePath}</p>
         ) : null}
+        {brand.faviconStoragePath ? (
+          <p className="font-mono text-xs text-union-muted">favicon: {brand.faviconStoragePath}</p>
+        ) : null}
         {brand.assets.length > 0 ? (
           <ul className="space-y-2">
             {brand.assets.map((a) => (
@@ -325,9 +396,14 @@ export function BrandAdminEditor({
                 key={a.id}
                 className="flex items-center justify-between gap-2 rounded-lg border border-union-border px-3 py-2 text-sm"
               >
-                <span className="min-w-0 truncate font-mono text-xs text-union-muted">
-                  {a.fileName}
-                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 rounded-md bg-union-border/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#d1fe17]">
+                    {t(ASSET_KIND_LABEL_KEYS[a.kind] || "kindMisc")}
+                  </span>
+                  <span className="min-w-0 truncate font-mono text-xs text-union-muted">
+                    {a.fileName}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="shrink-0 text-xs text-red-300 hover:text-red-200"

@@ -1,62 +1,172 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
-import { GATEWAY_URL, BRAND_NAME, siteRoutes } from "../lib/site-routes";
+import type { LucideIcon } from "lucide-react";
+import {
+  Home,
+  Gamepad2,
+  Gift,
+  CreditCard,
+  Star,
+  Crown,
+  Dices,
+  Link2,
+  Megaphone,
+  HelpCircle,
+  Headphones,
+  Info,
+  LayoutGrid,
+  LogIn,
+  UserPlus,
+} from "lucide-react";
+import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, siteRoutes } from "../lib/site-routes";
+import { SiteFooter } from "./SiteFooter";
 
 type Props = { children: ReactNode };
 
+const ROUTE_ICONS: Record<string, LucideIcon> = {
+  "/": Home,
+  reviews: Star,
+  registration: UserPlus,
+  payments: CreditCard,
+  bonus: Gift,
+  games: Gamepad2,
+  vip: Crown,
+  slots: Dices,
+  mirror: Link2,
+  promo: Megaphone,
+  "faq-page": HelpCircle,
+  support: Headphones,
+  about: Info,
+};
+
+function routeIcon(path: string): LucideIcon {
+  if (path === "/") return ROUTE_ICONS["/"];
+  const slug = path.replace(/^\//, "");
+  return ROUTE_ICONS[slug] || LayoutGrid;
+}
+
 export function SiteLayout({ children }: Props) {
+  const multiPage = siteRoutes.length > 1;
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <img src="./img/logo.png" alt={BRAND_NAME} className="h-9 w-auto" />
-            <span className="text-sm font-semibold tracking-wide">{BRAND_NAME}</span>
+    <div className="min-h-screen bg-brand-bg text-brand-text">
+      <header className="sticky top-0 z-50 border-b border-brand-accent/15 bg-brand-bg/95 backdrop-blur-md">
+        <div className="flex h-14 items-center justify-between gap-4 pl-[4.5rem] pr-4 lg:pl-[15.5rem] lg:pr-6">
+          <NavLink to="/" className="flex shrink-0 items-center gap-3">
+            <img src={LOGO_SRC} alt={BRAND_NAME} className="h-8 w-auto lg:hidden" width={120} height={32} />
+            <span className="hidden text-sm font-semibold tracking-wide sm:inline lg:hidden">{BRAND_NAME}</span>
+          </NavLink>
+
+          {multiPage ? (
+            <nav className="hidden flex-1 items-center justify-center gap-1 overflow-x-auto md:flex" aria-label="Основное меню">
+              {siteRoutes.map((r) => (
+                <NavLink
+                  key={r.path}
+                  to={r.path}
+                  end={r.path === "/"}
+                  className={({ isActive }) =>
+                    `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-brand-accent/12 text-brand-accent"
+                        : "text-brand-muted hover:bg-brand-block hover:text-brand-text"
+                    }`
+                  }
+                >
+                  {r.navLabel}
+                </NavLink>
+              ))}
+            </nav>
+          ) : (
+            <div className="hidden flex-1 md:block" aria-hidden />
+          )}
+
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={GATEWAY_URL}
+              className="hidden min-h-[40px] items-center gap-2 rounded-full border border-brand-accent/30 px-4 py-2 text-sm font-medium text-brand-text hover:bg-brand-block sm:inline-flex"
+            >
+              <LogIn className="h-4 w-4" aria-hidden />
+              Вход
+            </a>
+            <a href={GATEWAY_URL} className="btn-brand gap-2 px-4 py-2 text-sm">
+              <UserPlus className="h-4 w-4" aria-hidden />
+              Регистрация
+            </a>
           </div>
-          <a
-            href={GATEWAY_URL}
-            className="rounded-full bg-lime-400 px-4 py-2 text-sm font-semibold text-black hover:bg-lime-300"
-          >
-            Регистрация
-          </a>
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6">
-        <aside className="hidden w-56 shrink-0 md:block">
-          <nav className="sticky top-20 space-y-1 rounded-2xl border border-white/10 bg-white/5 p-3">
-            {siteRoutes.map((r) => (
-              <NavLink
-                key={r.path}
-                to={r.path}
-                end={r.path === "/"}
-                className={({ isActive }) =>
-                  `block rounded-xl px-3 py-2 text-sm transition-colors ${
-                    isActive ? "bg-lime-400/15 text-lime-300" : "text-zinc-300 hover:bg-white/5"
-                  }`
-                }
-              >
-                {r.navLabel}
-              </NavLink>
-            ))}
+      <div className="flex">
+        <aside className="fixed left-0 top-14 z-40 hidden h-[calc(100vh-3.5rem)] w-[4.5rem] shrink-0 flex-col border-r border-brand-accent/15 bg-brand-card lg:flex xl:w-[15.5rem]">
+          <div className="hidden border-b border-brand-accent/15 px-4 py-4 xl:block">
+            <NavLink to="/" className="flex items-center gap-3">
+              <img src={LOGO_SRC} alt={BRAND_NAME} className="h-9 w-auto" width={120} height={36} />
+              <span className="text-sm font-semibold leading-tight">{BRAND_NAME}</span>
+            </NavLink>
+          </div>
+
+          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2 xl:p-3" aria-label="Боковое меню">
+            {siteRoutes.map((r) => {
+              const Icon = routeIcon(r.path);
+              return (
+                <NavLink
+                  key={`side-${r.path}`}
+                  to={r.path}
+                  end={r.path === "/"}
+                  title={r.navLabel}
+                  className={({ isActive }) =>
+                    `group flex items-center gap-3 rounded-xl border px-2 py-2.5 text-sm transition-all xl:px-3 ${
+                      isActive
+                        ? "border-brand-accent/25 bg-brand-accent/10 text-brand-accent"
+                        : "border-transparent text-brand-muted hover:border-brand-accent/15 hover:bg-brand-block hover:text-brand-text"
+                    }`
+                  }
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      r.path === "/"
+                        ? "bg-brand-accent/12 text-brand-accent"
+                        : "bg-brand-block text-brand-muted group-hover:text-brand-text"
+                    }`}
+                  >
+                    <Icon className="h-[18px] w-[18px]" aria-hidden />
+                  </span>
+                  <span className="hidden line-clamp-2 leading-snug xl:inline">{r.navLabel}</span>
+                </NavLink>
+              );
+            })}
           </nav>
+
+          <div className="space-y-2 border-t border-brand-accent/15 p-2 xl:p-3">
+            <a
+              href={GATEWAY_URL}
+              className="flex h-10 w-full items-center justify-center rounded-xl border border-brand-accent/25 text-brand-text hover:bg-brand-block xl:justify-start xl:gap-2 xl:px-3"
+              title="Вход"
+            >
+              <LogIn className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="hidden text-sm xl:inline">Вход</span>
+            </a>
+            <a href={GATEWAY_URL} className="btn-brand h-10 w-full gap-2 px-3 text-sm xl:justify-start" title="Регистрация">
+              <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="hidden xl:inline">Регистрация</span>
+            </a>
+          </div>
         </aside>
 
-        <motion.main
-          key={typeof window !== "undefined" ? window.location.pathname : "main"}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25 }}
-          className="min-w-0 flex-1"
-        >
-          {children}
-        </motion.main>
+        <div className="min-w-0 flex-1 lg:pl-[4.5rem] xl:pl-[15.5rem]">
+          <motion.main
+            key={typeof window !== "undefined" ? window.location.pathname : "main"}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="px-4 py-6 lg:px-8"
+          >
+            {children}
+          </motion.main>
+          <SiteFooter />
+        </div>
       </div>
-
-      <footer className="border-t border-white/10 py-8 text-center text-xs text-zinc-500">
-        © {new Date().getFullYear()} {BRAND_NAME}
-      </footer>
     </div>
   );
 }

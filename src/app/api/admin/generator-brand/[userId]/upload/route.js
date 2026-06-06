@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import { buildUploadFileName } from "@/lib/brand-image-pools";
 import {
   GENERATOR_ASSETS_BUCKET,
   storagePathForUserFile,
@@ -32,14 +33,18 @@ export async function POST(req, { params }) {
     return NextResponse.json({ ok: false, error: "file required" }, { status: 400 });
   }
 
-  const safeKind = ["logo", "favicon", "hero", "game", "misc"].includes(kind) ? kind : "misc";
+  const safeKind = ["logo", "favicon", "hero", "game", "payment", "misc"].includes(kind)
+    ? kind
+    : "misc";
   const ext = path.extname(file.name || "").toLowerCase() || ".png";
   const baseName =
     slot === "logo"
       ? `logo${ext}`
       : slot === "favicon"
         ? `favicon${ext}`
-        : `${randomUUID().slice(0, 8)}-${(file.name || "asset").replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+        : ["hero", "game", "payment"].includes(safeKind)
+          ? buildUploadFileName(file.name || "asset", safeKind)
+          : `${randomUUID().slice(0, 8)}-${(file.name || "asset").replace(/[^a-zA-Z0-9._-]/g, "-")}`;
 
   const relative =
     safeKind === "logo" || safeKind === "favicon"

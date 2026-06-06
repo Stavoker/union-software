@@ -6,8 +6,11 @@
  * @param {{
  *   themeBrandHint?: string;
  *   gameSlotPaths?: string[];
+ *   bannerImagePaths?: string[];
+ *   paymentImagePaths?: string[];
  *   logoSrc?: string;
  *   sitePalette?: Record<string, string>;
+ *   minPageWords?: number;
  * }} [opts]
  * @returns {string}
  */
@@ -20,6 +23,18 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
   const slotLines = slots.length
     ? slots.slice(0, 24).join(", ")
     : "только файлы слотов из списка билда (webp превью игр)";
+  const banners = (Array.isArray(opts.bannerImagePaths) ? opts.bannerImagePaths : [])
+    .map((p) => String(p || "").trim())
+    .filter(Boolean);
+  const bannerLines = banners.length
+    ? banners.slice(0, 12).join(", ")
+    : "banner-* / forbanner-* из img/ (не слоты)";
+  const payments = (Array.isArray(opts.paymentImagePaths) ? opts.paymentImagePaths : [])
+    .map((p) => String(p || "").trim())
+    .filter(Boolean);
+  const paymentLines = payments.length
+    ? payments.slice(0, 12).join(", ")
+    : "pay-* из img/ (иконки Visa, Mastercard и т.д.)";
   const pal = opts.sitePalette || {};
   const accent = pal.accent || "#c8e600";
   const bg = pal.bg || "#0a0a0a";
@@ -39,15 +54,33 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - Изображения: max-width:100%; height:auto везде, кроме блока слотов (см. ниже).
 
 ИГРОВЫЕ ИЗОБРАЖЕНИЯ (загруженные фото = превью слотов):
-- Используй эти файлы ТОЛЬКО внутри #lw-games, сеток слотов и слайдеров/вкладок с превью игр — не в hero, не в .ig-hero-slider и не как полноэкранный фон.
-- Запрещено: блок ig-hero-slider / hero-carousel с <img src="./img/…webp"> — в первом экране только баннер/иллюстрация бренда или CSS, без превью слотов.
+- Используй эти файлы ТОЛЬКО внутри #lw-games, SlotGrid, GameCarousel и сеток слотов — не в hero, не в HeroGradient и не как полноэкранный фон.
+- На главной обязательно SlotGrid или GameCarousel с images={GAME_IMAGE_PATHS} и gatewayHref={GATEWAY_URL}.
 - Допустимые пути (пример): ${slotLines}
-- В pageCss задай чёткие размеры превью, например:
-  #lw-games img, [class*="games"] img { width:100%; max-width:168px; height:112px; min-height:112px; object-fit:cover; object-position:center; display:block; border-radius:10px; }
-- Запрещено: растягивать slot-превью на половину экрана; подменять src на баннеры, favicon или чужие URL.
-- Карточка слота: одна ссылка на gateway с одним <img>; без карусели с автопрокруткой.
+- Превью слотов: фиксированный размер ~168×112px, object-fit:cover; не растягивать на пол-экрана.
+- GameCarousel: горизонтальный autoplay-слайдер с framer-motion; каждая карточка — ссылка на gateway.
+- Запрещено: slot-превью в первом экране (hero); подмена src на favicon или внешние URL.
 
-КОНТЕНТНЫЕ КАРТИНКИ ВНЕ СЛОТОВ:
-- Максимум 2–3 декоративных <img> в <main> вне #lw-games; компактные (высота превью до ~200px), не коллаж.
+ФОНОВЫЕ ИЗОБРАЖЕНИЯ В БЛОКАХ (баннеры):
+- SectionWithBg, HeroGradient, промо-слайдеры: только баннеры — ${bannerLines}.
+- Запрещено: slot-* / game-* в hero и фоновых секциях; logo.png и favicon.png — только в chrome.
+- ContentSplit: декоративное изображение в колонке (высота до ~200px), предпочтительно из баннеров.
+- Максимум 2–3 секции с фоновыми/декоративными картинками на страницу.
+
+ИКОНКИ ОПЛАТ:
+- Страница «Платежи» и блок способов оплаты в footer: ${paymentLines}.
+- Не используй pay-* в карусели слотов и hero.
+
+ОБЪЁМ И КАЧЕСТВО ТЕКСТА:
+- Минимум ${Number(opts.minPageWords) || 1200} слов видимого русского текста на странице (абзацы, списки, FAQ, карточки).
+- Запрещены пустые секции, заглушки «текст», «описание», «Lorem ipsum», незаполненные {brand} и плейсхолдеры.
+- ProseBlock: обязателен на каждой странице; на главной — минимум 2 блока; paragraphs — 3–5 абзацев по 3–5 предложений.
+- Каждый блок registry (FeatureCards, ContentSplit, FaqAccordion, CtaBanner и т.д.) — с развёрнутым уникальным копирайтом (2–5 предложений в карточке, 6–8 пунктов в FAQ).
+- Имя бренда «${brand}» должно встречаться в тексте естественно (не реже чем в каждой 2–3 секции).
+
+СЛОТЫ И ВИЗУАЛ:
+- На главной: slot-grid и/или game-carousel в componentIds.
+- На страницах games/slots: обязательно SlotGrid или GameCarousel.
+- SectionWithBg: развёрнутый body (4–6 предложений), не пустой блок.
 `.trim();
 }

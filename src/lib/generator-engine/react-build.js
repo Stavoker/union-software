@@ -6,6 +6,14 @@ import { promisify } from "node:util";
 
 import { getAppRoot, getProjectsDir, getImgGenDir } from "@/src/lib/app-paths";
 import {
+  buildImagePools,
+  formatBrandPromptOverlay,
+  formatImagePoolsLogLine,
+  resolveBannerImageFiles,
+  resolveGameImageFiles,
+  resolvePaymentImageFiles,
+} from "@/lib/brand-image-pools";
+import {
   resolveGatewayUrlForBuild,
   pickLogoSrcForBuild,
   pickGameImages,
@@ -13,8 +21,11 @@ import {
 import {
   selectGenerationPromptProfileForBuild,
   formatFullGenerationPromptOnly,
+  formatGenerationPromptProfileBlock,
 } from "@/src/lib/generation-prompt-profiles";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
+import { normalizePalette } from "@/lib/generator-brand-palette";
+import { loadSourceArticlesContextForBuild } from "@/lib/generator-engine/source-articles-for-generation";
 import { normalizeGenerationMode } from "@/src/lib/generation-modes";
 import { isReactBuildEnabled } from "@/src/lib/generation-stack";
 import {
@@ -235,33 +246,128 @@ function normalizeComponentIds(raw) {
     .filter((id) => Boolean(getRegistryComponentById(id)));
 }
 
+const REACT_MIN_PAGE_WORDS = (() => {
+  const raw = Number(process.env.SOFTGEN_REACT_MIN_PAGE_WORDS);
+  if (Number.isFinite(raw) && raw >= 400) return Math.min(5000, Math.trunc(raw));
+  return 1200;
+})();
+
+const GENERIC_BRAND_PHRASE_RE =
+  /\b(о нашем(?:\s+казино)?|онлайн[\s-]*казино|казино[\s-]*онлайн)\b/gi;
+const GENERIC_BRAND_PHRASE_TEST =
+  /\b(о нашем(?:\s+казино)?|онлайн[\s-]*казино|казино[\s-]*онлайн)\b/i;
+
+function resolveReactBrandName({ brandKit }) {
+  const fromKit = String(brandKit?.brandName || brandKit?.publicBrandName || "").trim();
+  if (fromKit) return fromKit;
+  return "Бренд";
+}
+
+function scrubGenericBrandPhrases(text, brandName) {
+  const bn = String(brandName || "").trim();
+  if (!bn) return String(text || "").trim();
+  return String(text || "")
+    .replace(GENERIC_BRAND_PHRASE_RE, bn)
+    .replace(/\{brand\}/gi, bn)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizePagesForBrand(pages, brandName) {
+  const bn = String(brandName || "").trim() || "Бренд";
+  return pages.map((page, i) => {
+    let title = scrubGenericBrandPhrases(page.title, bn);
+    let description = scrubGenericBrandPhrases(page.description, bn);
+    if (!title || GENERIC_BRAND_PHRASE_TEST.test(title)) {
+      title =
+        i === 0
+          ? `${bn} — официальный обзор платформы, игры и бонусы`
+          : `${bn} — ${page.navLabel || page.role || "раздел"}`;
+    }
+    if (!description || description.length < 40) {
+      description = `${bn}: ${page.contentAngle || page.role || "информация о платформе, бонусах и играх для игроков."}`;
+    }
+    return { ...page, title, description };
+  });
+}
+
+function navLabelForPage(page, index) {
+  const role = String(page.role || "").trim();
+  if (role && role.length <= 48 && !/—|обзор платформы/i.test(role)) return role;
+  const slug = String(page.file || "").replace(/\.php$/i, "").toLowerCase();
+  const map = {
+    index: "Главная",
+    reviews: "Отзывы",
+    registration: "Регистрация",
+    payments: "Платежи",
+    bonus: "Бонусы",
+    games: "Игры",
+    vip: "VIP",
+    slots: "Слоты",
+    mirror: "Зеркало",
+    promo: "Акции",
+    support: "Поддержка",
+    about: "О нас",
+  };
+  return map[slug] || `Страница ${index + 1}`;
+}
+
+function ensureRichPageComponents(pages) {
+  return pages.map((page, i) => {
+    const ids = [...page.componentIds];
+    if (i === 0) {
+      const hasGames = ids.includes("slot-grid") || ids.includes("game-carousel");
+      if (!hasGames) ids.splice(1, 0, "game-carousel", "slot-grid");
+      if (!ids.includes("section-with-bg")) ids.push("section-with-bg");
+      while (ids.filter((id) => id === "prose-block").length < 2) ids.push("prose-block");
+    } else {
+      if (!ids.includes("prose-block")) ids.push("prose-block");
+      if (!ids.includes("content-split")) ids.unshift("content-split");
+    }
+    return { ...page, componentIds: [...new Set(ids)] };
+  });
+}
+
 function normalizePagesPlan(rawPages, expectedFiles) {
   const byFile = new Map();
   for (const p of Array.isArray(rawPages) ? rawPages : []) {
     const file = String(p?.file || "").trim().toLowerCase();
     if (file && expectedFiles.includes(file)) byFile.set(file, p);
   }
-  return expectedFiles.map((file, i) => {
+  const pages = expectedFiles.map((file, i) => {
     const p = byFile.get(file) || {};
     const route = phpFileToRoutePath(file);
     let componentIds = normalizeComponentIds(p.componentIds);
     if (!componentIds.length) {
       componentIds =
         i === 0
-          ? ["hero-gradient", "slot-grid", "feature-cards", "cta-banner"]
-          : ["content-split", "faq-accordion", "cta-banner"];
+          ? [
+              "hero-gradient",
+              "game-carousel",
+              "prose-block",
+              "slot-grid",
+              "section-with-bg",
+              "prose-block",
+              "feature-cards",
+              "faq-accordion",
+              "cta-banner",
+            ]
+          : ["content-split", "prose-block", "section-with-bg", "faq-accordion", "cta-banner"];
     }
+    const role = String(p.role || (i === 0 ? "Главная" : "Раздел")).trim();
     return {
       file,
       route,
-      role: String(p.role || (i === 0 ? "home" : "inner")).trim(),
+      role,
       title: String(p.title || `Страница ${i + 1}`).trim(),
       description: String(p.description || "").trim(),
       contentAngle: String(p.contentAngle || "").trim(),
       componentName: phpFileToComponentName(file),
       componentIds,
+      navLabel: navLabelForPage({ ...p, file, role }, i),
     };
   });
+  return ensureRichPageComponents(pages);
 }
 
 async function hasViteInNodeModules(reactSrcDir) {
@@ -323,19 +429,24 @@ function buildArchitectUserPrompt({
   expectedFiles,
   themeBrandHint,
   profilePrompt,
+  brandPromptOverlay,
   siteRules,
   gatewayUrl,
   imageFiles,
   registryBlock,
   designHint,
+  minPageWords,
+  sourceArticlesBlock,
 }) {
+  const singlePage = expectedFiles.length <= 1;
   return `
 Тема сайта: ${theme}
-Бренд в текстах: ${themeBrandHint}
+Бренд в текстах (СТРОГО): ${themeBrandHint}
 Базовый шлюз регистрации (CTA): ${gatewayUrl}
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
-Для каждой страницы укажи file (как в списке), role, title, description, contentAngle, componentIds (2–4 id).
-Стек: React + Vite + Tailwind + framer-motion + curated registry, левый сайдбар в layout.
+Для каждой страницы укажи file (как в списке), role (короткая русская подпись для меню, 1–4 слова), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
+Стек: React + Vite + Tailwind + framer-motion + curated registry, левый сайдбар с иконками и профессиональный footer в layout.
+${singlePage ? "Одностраничный сайт: навигация только в левом сайдбаре; в header НЕТ ссылок на разделы." : "Многостраничный: навигация в левом сайдбаре (иконки + подписи); header — логотип и CTA."}
 
 ${registryBlock}
 
@@ -343,9 +454,17 @@ ${siteRules}
 
 ${designHint}
 
+${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
+${brandPromptOverlay ? `=== БРЕНД КЛИЕНТА ===\n${brandPromptOverlay}\n` : ""}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
+- Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
+- title и description каждой страницы должны содержать «${themeBrandHint}», не общие фразы.
+- Для index.php в componentIds: hero-gradient, game-carousel, slot-grid, минимум 2× prose-block, section-with-bg, feature-cards, faq-accordion (6–8 id).
+- Для внутренних страниц: content-split, prose-block, section-with-bg, faq-accordion.
+- role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
+- title/description планируй под объём не меньше ${minPageWords} слов контента на странице.
 Допустимые img: ${(imageFiles || []).slice(0, 20).join(", ")}
 `.trim();
 }
@@ -355,42 +474,134 @@ function buildPageCodegenPrompt({
   brandName,
   theme,
   profilePrompt,
+  brandPromptOverlay,
   siteRules,
   gatewayUrl,
   gameImages,
+  bannerImages,
+  paymentImages,
   registryCodegenBlock,
   designHint,
+  minPageWords,
+  sourceArticlesBlock,
 }) {
+  const needsSlotGrid = page.componentIds.includes("slot-grid");
+  const needsCarousel = page.componentIds.includes("game-carousel");
+  const needsProse = page.componentIds.includes("prose-block");
+  const proseCount = page.componentIds.filter((id) => id === "prose-block").length;
   return `
 Сгенерируй ОДИН React TSX-файл (functional component) для страницы.
 Экспорт: export function ${page.componentName}() { ... }
 Без default export. Без import React unless needed.
-Tailwind utility classes, framer-motion для 1–2 секций (motion.section).
-Язык контента: русский. Бренд: ${brandName}. Тема: ${theme}.
+Tailwind utility classes, framer-motion для 2–4 секций (motion.section).
+Язык контента: русский. Бренд в текстах: **${brandName}** (везде вместо {brand} и общих фраз). Тема: ${theme}.
 Страница: file=${page.file}, route=${page.route}, title=${page.title}, description=${page.description}, angle=${page.contentAngle}.
 CTA на gateway: ${gatewayUrl}
-Игровые превью (только в SlotGrid / #lw-games): ${gameImages.join(", ") || "нет"}
+
+ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
+import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS } from "../lib/site-routes";
+- Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
+${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
+${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"2–3 предложения\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
+${needsProse ? `- Обязательно ${proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ \"абзац 3–5 предложений\", … ]} /> — каждый paragraphs: 3–5 полных предложений, уникальный текст с ${brandName}.` : ""}
+
+Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
+Баннеры (hero, SectionWithBg): ${bannerImages.join(", ") || "banner-* из ./img/"}
+Иконки оплат (страница payments, footer): ${paymentImages.join(", ") || "pay-* из ./img/"}
 Пути картинок: ./img/имя_файла — только из списка билда.
-Не используй slot-превью в hero. Левый сайдбар уже в SiteLayout — только контент страницы.
+Не используй slot-превью в hero; не используй баннеры и pay-* в карусели слотов. Шапка, сайдбар и footer уже в SiteLayout — только контент страницы.
 Оберни контент в <div className="space-y-10"> с секциями из registry.
+
+ОБЪЁМ: минимум ${minPageWords} слов видимого русского текста на странице.
+- HeroGradient: paragraphs={[...]} — 3 абзаца по 3–5 предложений (не один subtitle).
+- ProseBlock: минимум 3 абзаца в paragraphs, каждый 3–5 предложений; на главной — 2 разных ProseBlock с разными темами.
+- ContentSplit: paragraphs={[...]} — 2–3 абзаца, не один короткий body.
+- FAQ: 6–8 вопросов, ответ каждый 2–4 предложения; FeatureCards: body 2–4 предложения в карточке.
+- SectionWithBg: body минимум 4 предложения; backgroundImage — логотип/баннер из ./img/, не webp слотов.
+- Запрещены пустые <section>, пустые заголовки без абзацев, заглушки «текст», «описание», незаполненный {brand}.
 
 ${registryCodegenBlock}
 
 ${siteRules}
 ${designHint}
+${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
+${brandPromptOverlay ? `=== БРЕНД КЛИЕНТА ===\n${brandPromptOverlay}\n` : ""}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
 Верни ТОЛЬКО код компонента, без markdown и пояснений.
 `.trim();
 }
 
-async function writeSiteRoutesModule(reactSrcDir, { gatewayUrl, brandName, pages, pageImports }) {
+function shadeAccentHex(accentHex) {
+  const raw = String(accentHex || "#d1fe17").replace(/^#/, "");
+  if (raw.length !== 6) return "#c8f015";
+  const channels = [0, 2, 4].map((i) => Math.max(0, Math.round(parseInt(raw.slice(i, i + 2), 16) * 0.96)));
+  return `#${channels.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Підставляє палітру з /brand у CSS @theme та brand-theme.ts перед vite build.
+ * @param {string} reactSrcDir
+ * @param {Record<string, string> | null | undefined} paletteInput
+ */
+async function writeBrandPaletteForBuild(reactSrcDir, paletteInput) {
+  const pal = normalizePalette(paletteInput || {});
+  const accentHover = shadeAccentHex(pal.accent);
+  const muted = "#9aa3ad";
+
+  const themeTs = `/**
+ * Палітра з /brand (збірка Union). Не редагувати вручну — генерується react-build.
+ */
+export const BRAND_PALETTE = {
+  accent: ${JSON.stringify(pal.accent)},
+  bg: ${JSON.stringify(pal.bg)},
+  text: ${JSON.stringify(pal.text)},
+  block: ${JSON.stringify(pal.block)},
+  card: ${JSON.stringify(pal.card)},
+  gradEnd: ${JSON.stringify(pal.gradEnd)},
+  muted: ${JSON.stringify(muted)},
+  accentOn: ${JSON.stringify(pal.accentOn)},
+  accentHover: ${JSON.stringify(accentHover)},
+} as const;
+`;
+
+  const themeCss = `@theme {
+  --color-brand-accent: ${pal.accent};
+  --color-brand-accent-hover: ${accentHover};
+  --color-brand-bg: ${pal.bg};
+  --color-brand-block: ${pal.block};
+  --color-brand-card: ${pal.card};
+  --color-brand-text: ${pal.text};
+  --color-brand-muted: ${muted};
+  --color-brand-accent-on: ${pal.accentOn};
+  --color-brand-grad-end: ${pal.gradEnd};
+}`;
+
+  await fs.mkdir(path.join(reactSrcDir, "src/lib"), { recursive: true });
+  await fs.writeFile(path.join(reactSrcDir, "src/lib/brand-theme.ts"), themeTs, "utf8");
+
+  const cssPath = path.join(reactSrcDir, "src/index.css");
+  let css = await fs.readFile(cssPath, "utf8");
+  if (/@theme\s*\{/.test(css)) {
+    css = css.replace(/@theme\s*\{[\s\S]*?\}/, themeCss);
+  } else {
+    css = css.replace(/@import "tailwindcss";/, `@import "tailwindcss";\n\n${themeCss}`);
+  }
+  await fs.writeFile(cssPath, css, "utf8");
+}
+
+async function writeSiteRoutesModule(
+  reactSrcDir,
+  { gatewayUrl, brandName, gameImagePaths, logoSrc, pages, pageImports }
+) {
   const lines = [
     `import type { ComponentType } from "react";`,
     ...pageImports.map((p) => `import { ${p.componentName} } from "../pages/${p.componentName}";`),
     ``,
     `export const GATEWAY_URL = ${JSON.stringify(gatewayUrl)};`,
     `export const BRAND_NAME = ${JSON.stringify(brandName)};`,
+    `export const LOGO_SRC = ${JSON.stringify(logoSrc || "./img/logo.png")};`,
+    `export const GAME_IMAGE_PATHS = ${JSON.stringify(gameImagePaths || [])};`,
     ``,
     `export type SiteRoute = {`,
     `  path: string;`,
@@ -405,7 +616,7 @@ async function writeSiteRoutesModule(reactSrcDir, { gatewayUrl, brandName, pages
   for (const p of pages) {
     lines.push(`  {`);
     lines.push(`    path: ${JSON.stringify(p.route)},`);
-    lines.push(`    navLabel: ${JSON.stringify(p.title)},`);
+    lines.push(`    navLabel: ${JSON.stringify(p.navLabel || p.role || p.title)},`);
     lines.push(`    title: ${JSON.stringify(p.title)},`);
     lines.push(`    description: ${JSON.stringify(p.description)},`);
     lines.push(`    Component: ${p.componentName},`);
@@ -527,37 +738,83 @@ export async function buildReactSite({
   const expectedFiles = pickExpectedPageFiles(structureSeed, pageCountInput);
   emitLog(onLog, `План страниц: ${expectedFiles.join(", ")}`);
 
-  const themeBrandHint = String(brandKit?.publicBrandName || themeNorm).trim().slice(0, 80);
+  const themeBrandHint = String(brandKit?.brandName || brandKit?.publicBrandName || "")
+    .trim()
+    .slice(0, 80);
+  if (!themeBrandHint) {
+    throw new Error(
+      "Не задано имя бренда пользователя. Заполните brand_name на странице /brand в админке."
+    );
+  }
+  emitLog(onLog, `Бренд клиента (admin): «${themeBrandHint}»`);
+  const imagePools = buildImagePools(imageFiles);
+  emitLog(onLog, `Бренд-ассеты: ${formatImagePoolsLogLine(imagePools)}`);
   const logoSrc = pickLogoSrcForBuild(imageFiles, siteSeed);
-  const gameImages = pickGameImages(imageFiles, { seed: siteSeed, max: 12 });
+  const gameImageFiles = resolveGameImageFiles(imageFiles, imagePools, brandKit);
+  const gameImages = pickGameImages(gameImageFiles, { seed: siteSeed, max: 12 });
+  const gameImagePaths = gameImages.map((f) => `./img/${f}`);
+  const bannerImagePaths = resolveBannerImageFiles(imageFiles, imagePools).map(
+    (f) => `./img/${f}`
+  );
+  const paymentImagePaths = resolvePaymentImageFiles(imageFiles, imagePools).map(
+    (f) => `./img/${f}`
+  );
+  const brandPromptOverlay = formatBrandPromptOverlay(brandKit?.promptOverlay);
+  const minPageWords = REACT_MIN_PAGE_WORDS;
 
   let profilePrompt = "";
+  let profileMetaBlock = "";
   try {
     const profile = await selectGenerationPromptProfileForBuild({
       theme: themeNorm,
       pickSeed: `${buildNonce}|${safeName}|react`,
+      themeBrandHint,
       onLog,
     });
     profilePrompt = formatFullGenerationPromptOnly(profile, { themeBrandHint });
-    if (profilePrompt) emitLog(onLog, "Профиль: full_generation_prompt загружен.");
+    profileMetaBlock = formatGenerationPromptProfileBlock(profile, {
+      themeBrandHint,
+      publicBrandName: themeBrandHint,
+    });
+    if (profilePrompt || profileMetaBlock) {
+      emitLog(onLog, "Профиль: generation_prompt_profiles загружен.");
+    }
   } catch (e) {
     emitLog(onLog, `Профиль: пропуск (${String(e?.message || e).slice(0, 120)})`);
   }
 
   const siteRules = buildSiteGenerationRulesBlock({
     themeBrandHint,
-    gameSlotPaths: gameImages.map((f) => `./img/${f}`),
+    gameSlotPaths: gameImagePaths,
+    bannerImagePaths,
+    paymentImagePaths,
     logoSrc,
     sitePalette: brandKit?.palette || undefined,
+    minPageWords,
   });
 
-  const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 8);
+  const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 10);
   const registryBlock = formatComponentRegistryForArchitect(registryPool);
   const designSystemBlock = buildUiUxProMaxSystemBlock({
     theme: themeNorm,
     brandName: themeBrandHint,
   });
   const designHint = buildUiUxProMaxUserHint({ pageRole: "architect" });
+
+  let sourceArticlesArchitectBlock = "";
+  try {
+    const saArchitect = await loadSourceArticlesContextForBuild({
+      theme: themeNorm,
+      pickSeed: `${buildNonce}|${safeName}|react`,
+      pageFile: "architect",
+      themeBrandHint,
+      articleCount: 2,
+      onLog,
+    });
+    sourceArticlesArchitectBlock = saArchitect.block;
+  } catch (e) {
+    emitLog(onLog, `source_articles (architect): ${String(e?.message || e).slice(0, 120)}`);
+  }
 
   ensureNotStopped();
   emitLog(onLog, "Архитектор JSON (Claude)…");
@@ -568,21 +825,27 @@ export async function buildReactSite({
       theme: themeNorm,
       expectedFiles,
       themeBrandHint,
-      profilePrompt,
+      profilePrompt: [profileMetaBlock, profilePrompt].filter(Boolean).join("\n\n"),
+      brandPromptOverlay,
       siteRules,
       gatewayUrl,
       imageFiles,
       registryBlock,
       designHint,
+      minPageWords,
+      sourceArticlesBlock: sourceArticlesArchitectBlock,
     }),
     maxTokens: 4096,
     temperature: 0.5,
     onLog,
   });
   const architectPlan = extractJsonObject(architectRaw);
-  const brandName = String(architectPlan?.brandName || themeBrandHint).trim();
-  const pages = normalizePagesPlan(architectPlan?.pages, expectedFiles);
-  emitLog(onLog, `Бренд: ${brandName}; страниц: ${pages.length}`);
+  const brandName = resolveReactBrandName({ brandKit });
+  const pages = sanitizePagesForBrand(
+    normalizePagesPlan(architectPlan?.pages, expectedFiles),
+    brandName
+  );
+  emitLog(onLog, `Бренд: ${brandName}; страниц: ${pages.length}; мин. слов: ${minPageWords}`);
 
   const reactSrcDir = path.join(outputDir, REACT_SRC_DIR);
   emitLog(onLog, "Копирование React Lab template…");
@@ -600,6 +863,19 @@ export async function buildReactSite({
     emitLog(onLog, `Генерация страницы ${page.file} → ${page.componentName}…`);
     const registryCodegenBlock = formatComponentRegistryForCodegen(page.componentIds);
     const pageDesignHint = buildUiUxProMaxUserHint({ pageRole: page.role });
+    let sourceArticlesPageBlock = "";
+    try {
+      const saPage = await loadSourceArticlesContextForBuild({
+        theme: themeNorm,
+        pickSeed: `${buildNonce}|${safeName}|react`,
+        pageFile: page.file,
+        themeBrandHint: brandName,
+        onLog,
+      });
+      sourceArticlesPageBlock = saPage.block;
+    } catch (e) {
+      emitLog(onLog, `source_articles (${page.file}): ${String(e?.message || e).slice(0, 100)}`);
+    }
     const pageRaw = await callClaude({
       apiKey: claudeKey,
       system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер (ui-ux-pro-max). Верни только TSX-код компонента без markdown.`,
@@ -607,14 +883,19 @@ export async function buildReactSite({
         page,
         brandName,
         theme: themeNorm,
-        profilePrompt,
+        profilePrompt: [profileMetaBlock, profilePrompt].filter(Boolean).join("\n\n"),
+        brandPromptOverlay,
         siteRules,
         gatewayUrl,
-        gameImages,
+        gameImages: gameImagePaths,
+        bannerImages: bannerImagePaths,
+        paymentImages: paymentImagePaths,
         registryCodegenBlock,
         designHint: pageDesignHint,
+        minPageWords,
+        sourceArticlesBlock: sourceArticlesPageBlock,
       }),
-      maxTokens: 12000,
+      maxTokens: 16000,
       temperature: 0.65,
       onLog,
     });
@@ -630,9 +911,16 @@ export async function buildReactSite({
   await writeSiteRoutesModule(reactSrcDir, {
     gatewayUrl,
     brandName,
+    gameImagePaths,
+    logoSrc,
     pages: generatedPages,
     pageImports: generatedPages,
   });
+  await writeBrandPaletteForBuild(reactSrcDir, brandKit?.palette);
+  emitLog(
+    onLog,
+    `Палитра /brand: accent=${brandKit?.palette?.accent || "default"}, bg=${brandKit?.palette?.bg || "default"}, text=${brandKit?.palette?.text || "default"}`
+  );
   await writePageHeadMeta(reactSrcDir, generatedPages);
 
   ensureNotStopped();
@@ -649,6 +937,10 @@ export async function buildReactSite({
     sitemapPaths,
     generationMode,
   });
+  emitLog(
+    onLog,
+    `React Lab: исходники сохранены в ${REACT_SRC_DIR}/ (не деплоятся на хост; только index.html + assets/ на production).`
+  );
   // img/ уже в outputDir (бренд) або скопирован из dist/public через vite — не cp(src===dest)
 
   const manifest = {
@@ -656,6 +948,7 @@ export async function buildReactSite({
     stack: "react",
     generationMode,
     projectName: safeName,
+    reactSrcDir: REACT_SRC_DIR,
     windowId: wid,
     theme: themeNorm,
     baseUrl,

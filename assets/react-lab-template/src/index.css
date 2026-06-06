@@ -1,4 +1,18 @@
 @import "tailwindcss";
+@source "./**/*.{tsx,ts,jsx,js}";
+
+/* Кольори з /brand: акцент #d1fe17, фон #0f1113, текст #edf0f5 */
+@theme {
+  --color-brand-accent: #d1fe17;
+  --color-brand-accent-hover: #c8f015;
+  --color-brand-bg: #0f1113;
+  --color-brand-block: #1a1d21;
+  --color-brand-card: #1c1f24;
+  --color-brand-text: #edf0f5;
+  --color-brand-muted: #9aa3ad;
+  --color-brand-accent-on: #0f1113;
+  --color-brand-grad-end: #0d0f11;
+}
 
 :root {
   color-scheme: dark;
@@ -7,8 +21,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #0a0a0a;
-  color: #f5f5f5;
+  background: var(--color-brand-bg);
+  color: var(--color-brand-text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
@@ -20,4 +34,20 @@ a {
 img {
   max-width: 100%;
   height: auto;
+}
+
+.btn-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 9999px;
+  background: var(--color-brand-accent);
+  color: var(--color-brand-accent-on);
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.btn-brand:hover {
+  background: var(--color-brand-accent-hover);
 }

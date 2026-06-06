@@ -12,6 +12,17 @@ const LEGACY_BRAND_PATTERNS = [
 ];
 
 /**
+ * Замінює плейсхолдер {brand} на імʼя бренду користувача.
+ * @param {string} text
+ * @param {string} [brandName]
+ */
+export function applyBrandPlaceholder(text, brandName = "") {
+  const brand = String(brandName || "").trim();
+  if (!brand) return String(text || "");
+  return String(text || "").replace(/\{brand\}/gi, brand);
+}
+
+/**
  * Прибирає застарілі Laki/Лаки з текстів профілю; підстановка бренду — на етапі збірки.
  * @param {string} text
  * @param {string} [themeBrandHint]
@@ -21,6 +32,9 @@ export function scrubLegacyBrandMentionsInProfileText(text, themeBrandHint = "")
   let out = String(text || "");
   for (const [re, repl] of LEGACY_BRAND_PATTERNS) {
     out = out.replace(re, brand === "{brand}" ? repl : brand);
+  }
+  if (brand !== "{brand}") {
+    out = applyBrandPlaceholder(out, brand);
   }
   return out.replace(/\s{2,}/g, " ").trim();
 }

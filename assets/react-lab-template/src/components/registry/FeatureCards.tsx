@@ -14,7 +14,7 @@ export function FeatureCards({ title = "Преимущества", items = [] }:
   ];
   return (
     <section className="space-y-6">
-      <h2 className="text-2xl font-semibold">{title}</h2>
+      <h2 className="text-2xl font-semibold text-brand-text">{title}</h2>
       <div className="grid gap-4 md:grid-cols-3">
         {list.map((item, i) => {
           const Icon = ICONS[i % ICONS.length];
@@ -24,11 +24,11 @@ export function FeatureCards({ title = "Преимущества", items = [] }:
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="rounded-2xl border border-white/10 bg-white/5 p-5"
+              className="rounded-2xl border border-brand-accent/15 bg-brand-block p-5"
             >
-              <Icon className="h-6 w-6 text-lime-300" aria-hidden />
-              <h3 className="mt-3 font-semibold">{item.title}</h3>
-              <p className="mt-2 text-sm text-zinc-400">{item.body}</p>
+              <Icon className="h-6 w-6 text-brand-accent" aria-hidden />
+              <h3 className="mt-3 font-semibold text-brand-text">{item.title}</h3>
+              <p className="mt-2 text-sm text-brand-muted">{item.body}</p>
             </motion.article>
           );
         })}

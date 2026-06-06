@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getSupabaseServerClient } from "@/lib/admin-seo/supabaseServer";
+import {
+  buildImagePools,
+  formatImagePoolsLogLine,
+  materializedDestNameForAsset,
+} from "@/lib/brand-image-pools";
 import { normalizePalette } from "@/lib/generator-brand-palette";
 
 export const GENERATOR_ASSETS_BUCKET = "generator-assets";
@@ -137,9 +142,7 @@ export async function materializeBrandImagesForBuild(opts) {
   }
   for (const asset of brandKit?.assets || []) {
     if (!asset.storagePath) continue;
-    const safeName = String(asset.fileName || path.basename(asset.storagePath))
-      .replace(/[^a-zA-Z0-9._-]/g, "-")
-      .replace(/^-+/, "");
+    const safeName = materializedDestNameForAsset(asset);
     if (!safeName || seen.has(safeName.toLowerCase())) continue;
     seen.add(safeName.toLowerCase());
     queue.push({ storagePath: asset.storagePath, destName: safeName });
@@ -158,7 +161,10 @@ export async function materializeBrandImagesForBuild(opts) {
   }
 
   if (copied.length) {
-    emit(`Бренд: скопировано в img/ — ${copied.length} файл(ов)`);
+    const pools = buildImagePools(copied);
+    emit(
+      `Бренд: скопировано в img/ — ${copied.length} файл(ов) (${formatImagePoolsLogLine(pools)})`
+    );
     return copied.sort();
   }
 
