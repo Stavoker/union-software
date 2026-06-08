@@ -260,7 +260,7 @@ function normalizeComponentIds(raw) {
 const REACT_MIN_PAGE_WORDS = (() => {
   const raw = Number(process.env.SOFTGEN_REACT_MIN_PAGE_WORDS);
   if (Number.isFinite(raw) && raw >= 400) return Math.min(5000, Math.trunc(raw));
-  return 1200;
+  return 2000;
 })();
 
 const GENERIC_BRAND_PHRASE_RE =
@@ -366,6 +366,7 @@ const HOME_COMPONENT_ORDER = [
   "prose-block",
   "game-carousel",
   "slot-grid",
+  "prose-block",
   "section-with-bg",
   "prose-block",
   "feature-cards",
@@ -374,10 +375,10 @@ const HOME_COMPONENT_ORDER = [
 ];
 
 const INNER_PAGE_TEMPLATES = [
-  ["section-with-bg", "prose-block", "content-split", "faq-accordion", "cta-banner"],
-  ["content-split", "prose-block", "feature-cards", "section-with-bg", "faq-accordion"],
-  ["prose-block", "stat-row", "content-split", "section-with-bg", "cta-banner", "faq-accordion"],
-  ["content-split", "section-with-bg", "prose-block", "feature-cards", "faq-accordion", "cta-banner"],
+  ["section-with-bg", "prose-block", "content-split", "prose-block", "faq-accordion", "cta-banner"],
+  ["content-split", "prose-block", "feature-cards", "prose-block", "section-with-bg", "faq-accordion"],
+  ["prose-block", "stat-row", "content-split", "prose-block", "section-with-bg", "cta-banner", "faq-accordion"],
+  ["content-split", "section-with-bg", "prose-block", "feature-cards", "prose-block", "faq-accordion", "cta-banner"],
 ];
 
 function rotateComponentIds(ids, pageIndex) {
@@ -405,6 +406,31 @@ function mergeComponentOrder(preferred, existing) {
   return out;
 }
 
+function ensureMinProseBlocks(ids, minCount) {
+  const next = [...ids];
+  while (next.filter((id) => id === "prose-block").length < minCount) {
+    next.push("prose-block");
+  }
+  return next;
+}
+
+/** Дедуплікація componentIds, але prose-block може повторюватись (кілька секцій на сторінці). */
+function finalizeComponentIds(ids) {
+  const seen = new Set();
+  const out = [];
+  for (const id of ids) {
+    if (id === "prose-block") {
+      out.push(id);
+      continue;
+    }
+    if (!seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return out;
+}
+
 function ensureRichPageComponents(pages) {
   return pages.map((page, i) => {
     let ids = [...page.componentIds];
@@ -413,15 +439,17 @@ function ensureRichPageComponents(pages) {
         if (!ids.includes(id)) ids.push(id);
       }
       ids = mergeComponentOrder(HOME_COMPONENT_ORDER, ids);
+      ids = ensureMinProseBlocks(ids, 3);
     } else {
       const tpl = INNER_PAGE_TEMPLATES[i % INNER_PAGE_TEMPLATES.length];
       for (const id of tpl) {
         if (!ids.includes(id)) ids.push(id);
       }
       ids = mergeComponentOrder(tpl, ids);
+      ids = ensureMinProseBlocks(ids, 2);
       ids = rotateComponentIds(ids, i);
     }
-    return { ...page, componentIds: [...new Set(ids)] };
+    return { ...page, componentIds: finalizeComponentIds(ids) };
   });
 }
 
@@ -443,13 +471,14 @@ function normalizePagesPlan(rawPages, expectedFiles) {
               "game-carousel",
               "prose-block",
               "slot-grid",
+              "prose-block",
               "section-with-bg",
               "prose-block",
               "feature-cards",
               "faq-accordion",
               "cta-banner",
             ]
-          : ["content-split", "prose-block", "section-with-bg", "faq-accordion", "cta-banner"];
+          : ["content-split", "prose-block", "section-with-bg", "prose-block", "faq-accordion", "cta-banner"];
     }
     const role = String(p.role || (i === 0 ? "Главная" : "Раздел")).trim();
     return {
@@ -668,7 +697,8 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
 - title и description каждой страницы должны содержать «${themeBrandHint}» и SEO-ключи (если заданы выше), не общие фразы.
-- Для index.php: hero-gradient, prose-block (сразу после hero), game-carousel, slot-grid, section-with-bg, второй prose-block, feature-cards, faq-accordion (6–8 id).
+- Для index.php: hero-gradient, минимум 3× prose-block, game-carousel, slot-grid, section-with-bg, feature-cards, faq-accordion (8–10 id).
+- Для внутренних: минимум 2× prose-block + content-split или section-with-bg.
 - Для внутренних страниц: другой порядок componentIds на каждой странице (не копируй одинаковую последовательность).
 - Порядок секций на разных file должен заметно отличаться (меняй первый блок: content-split / section-with-bg / prose-block).
 - role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
@@ -677,11 +707,22 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 `.trim();
 }
 
+/** Підрахунок видимих слів у російських рядках TSX (для валідації обсягу). */
+function countVisibleWordsInTsx(tsxCode) {
+  const strings = [...String(tsxCode || "").matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) =>
+    m[1].replace(/\\n/g, " ").replace(/\\"/g, '"')
+  );
+  const cyrillicText = strings.filter((s) => /[А-Яа-яЁё]/.test(s)).join(" ");
+  return cyrillicText.split(/\s+/).filter((w) => /[А-Яа-яЁё]/.test(w)).length;
+}
+
 /** @returns {string[]} human-readable issues */
-function detectWeakRegistryContentIssues(tsxCode, componentIds) {
+function detectWeakRegistryContentIssues(tsxCode, componentIds, minPageWords = 2000) {
   const issues = [];
   const code = String(tsxCode || "");
-  const ids = new Set(Array.isArray(componentIds) ? componentIds : []);
+  const idList = Array.isArray(componentIds) ? componentIds : [];
+  const ids = new Set(idList);
+  const expectedProseBlocks = idList.filter((id) => id === "prose-block").length;
 
   if (ids.has("faq-accordion") && /FaqAccordion/i.test(code)) {
     const faqBlock =
@@ -712,6 +753,21 @@ function detectWeakRegistryContentIssues(tsxCode, componentIds) {
 
   if (/\.?\/img\/pay-/i.test(code) && /<img[^>]+pay-/i.test(code) && !/PaymentMethodsRow/i.test(code)) {
     issues.push("Оплаты: используй <PaymentMethodsRow variant=\"inline\" />, не сырые <img src=\"./img/pay-*\">");
+  }
+
+  const wordCount = countVisibleWordsInTsx(code);
+  const minWords = Math.max(1200, Number(minPageWords) || 2000);
+  if (wordCount < Math.round(minWords * 0.82)) {
+    issues.push(
+      `Объём текста: ~${wordCount} слов (нужно минимум ${minWords}); добавь ProseBlock с 4–6 абзацами по 4–6 предложений`
+    );
+  }
+
+  const proseBlocks = (code.match(/<ProseBlock/g) || []).length;
+  if (expectedProseBlocks >= 2 && proseBlocks < expectedProseBlocks) {
+    issues.push(
+      `ProseBlock: только ${proseBlocks} блок(а) — нужно ${expectedProseBlocks} текстовых секций с длинными абзацами`
+    );
   }
 
   return issues;
@@ -755,8 +811,8 @@ import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
 ${needsHero ? `- HeroGradient: backgroundImage={BANNER_IMAGE_PATHS[0]} (или [1]), title, eyebrow, subtitle (ОДНА короткая строка), ctaHref={GATEWAY_URL}. ЗАПРЕЩЕНО paragraphs в HeroGradient — длинный текст только в ProseBlock сразу после hero.` : ""}
 ${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
-${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"2–3 предложения\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
-${needsProse ? `- Обязательно ${proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ \"абзац 3–5 предложений\", … ]} /> — каждый paragraphs: 3–5 полных предложений, уникальный текст с ${brandName}.` : ""}
+${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
+${needsProse ? `- Обязательно ${proseCount >= 3 ? "три" : proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ … ]} /> — в КАЖДОМ ProseBlock 4–6 абзацев, каждый абзац 4–6 полных предложений, уникальный SEO-текст с ${brandName}.` : ""}
 ${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 2–4 предложения\" }, … ]} /> — РОВНО 6–8 объектов; у КАЖДОГО q минимум 8 символов и a минимум 40 символов; запрещены пустые строки, заглушки «вопрос»/«ответ»/«текст».` : ""}
 
 Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
@@ -768,12 +824,13 @@ ${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q:
 Все CTA-кнопки: className="btn-brand ..." — НЕ задавай bg-[#...] text-white на кнопках.
 Оберни контент в <div className="space-y-10"> с секциями из registry.
 
-ОБЪЁМ: минимум ${minPageWords} слов видимого русского текста на странице.
-- ProseBlock: минимум 3 абзаца в paragraphs, каждый 3–5 предложений; на главной — 2 разных ProseBlock с разными темами.
-- ContentSplit: paragraphs={[...]} — 2–3 абзаца; imageSrc={BANNER_IMAGE_PATHS[n]} из баннеров, не logo.
-- FaqAccordion: 6–8 пар { q, a }; каждый ответ 2–4 полных предложения; пустые аккордеон-строки недопустимы.
-- FeatureCards: items с body 2–4 предложения в каждой карточке (минимум 3 карточки).
-- SectionWithBg: body минимум 4 предложения; backgroundImage={BANNER_IMAGE_PATHS[n]}, не logo и не слоты.
+ОБЪЁМ (КРИТИЧНО): минимум ${minPageWords} слов видимого русского текста на странице — считай абзацы ProseBlock, FAQ, карточки, intro карусели.
+- ProseBlock — основной объём: 4–6 абзацев в paragraphs, каждый 4–6 предложений; главная — 3 ProseBlock, внутренние — 2 ProseBlock с разными темами.
+- ContentSplit: paragraphs={[...]} — 3–4 абзаца по 3–5 предложений; imageSrc={BANNER_IMAGE_PATHS[n]}.
+- FaqAccordion: 6–8 пар { q, a }; ответ каждый 3–5 предложений.
+- FeatureCards: items body 3–5 предложений (минимум 3 карточки).
+- SectionWithBg: body 5–7 предложений; CtaBanner body 3–4 предложения.
+- GameCarousel intro: 4–5 предложений, не одна строка.
 - Запрещены пустые paragraphs={[]}, пустые items={[]}, заглушки «текст», «описание», незаполненный {brand}.
 
 ${registryCodegenBlock}
@@ -1210,13 +1267,13 @@ export async function buildReactSite({
       onLog,
     });
     let code = stripCodeFences(pageRaw);
-    const contentIssues = detectWeakRegistryContentIssues(code, page.componentIds);
+    const contentIssues = detectWeakRegistryContentIssues(code, page.componentIds, minPageWords);
     if (contentIssues.length) {
       emitLog(onLog, `Контент registry: ${contentIssues.join("; ")} — повтор codegen…`);
       pageRaw = await callClaude({
         apiKey: claudeKey,
-        system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер. Исправь TSX: все FaqAccordion items должны иметь непустые q и a (6–8 штук). Верни только TSX.`,
-        user: `${pageCodegenBase}\n\nОШИБКИ ПРЕДЫДУЩЕЙ ВЕРСИИ:\n${contentIssues.map((x) => `- ${x}`).join("\n")}\n\nПерепиши компонент целиком. FaqAccordion items — только полные вопросы и ответы про ${brandName}, без пустых строк.`,
+        system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер. Исправь TSX: больше текста (минимум ${minPageWords} слов), 2–3 ProseBlock с длинными абзацами. Верни только TSX.`,
+        user: `${pageCodegenBase}\n\nОШИБКИ ПРЕДЫДУЩЕЙ ВЕРСИИ:\n${contentIssues.map((x) => `- ${x}`).join("\n")}\n\nПерепиши компонент целиком. Минимум ${minPageWords} русских слов. ProseBlock — 4–6 абзацев по 4–6 предложений. FAQ — полные ответы про ${brandName}.`,
         maxTokens: 16000,
         temperature: 0.55,
         onLog,

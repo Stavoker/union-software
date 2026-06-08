@@ -7,6 +7,8 @@ import { useCallback, useState } from "react";
 import { normalizePaletteCore } from "@/lib/generator-brand-palette";
 import { seoBtnPrimary, seoCard, seoInput } from "@/shared/components/seo/seo-ui";
 
+import { normalizeLayoutVariant, type LayoutVariant } from "./brand-types";
+
 type Palette = {
   accent: string;
   bg: string;
@@ -27,8 +29,6 @@ type ThemeRow = {
   pageCount: number | "";
   sortOrder: number;
 };
-
-type LayoutVariant = "auto" | "sidebar-left" | "top-nav";
 
 type BrandState = {
   brandName: string;
@@ -131,10 +131,7 @@ export function BrandAdminEditor({
           defaultThemeText: data.brand.defaultThemeText || "",
           promptOverlay: data.brand.promptOverlay || "",
           seoKeywords: data.brand.seoKeywords || "",
-          layoutVariant:
-            data.brand.layoutVariant === "sidebar-left" || data.brand.layoutVariant === "top-nav"
-              ? data.brand.layoutVariant
-              : "auto",
+          layoutVariant: normalizeLayoutVariant(data.brand.layoutVariant),
           palette: normalizePaletteCore(data.brand.palette),
           logoStoragePath: data.brand.logoStoragePath || "",
           faviconStoragePath: data.brand.faviconStoragePath || "",

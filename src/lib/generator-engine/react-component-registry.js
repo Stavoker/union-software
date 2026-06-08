@@ -21,7 +21,7 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/ProseBlock",
     category: "content",
     description:
-      "Текстовий блок з заголовком і 3–5 абзацами (основний обʼєм SEO-копірайту на сторінці).",
+      "Текстовий блок: title + paragraphs (4–6 абзаців по 4–6 речень). Основний SEO-обсяг сторінки.",
     props: ["title", "paragraphs"],
     tags: ["prose", "text", "seo", "article"],
   },
@@ -148,7 +148,7 @@ export function formatComponentRegistryForArchitect(components) {
   const list = Array.isArray(components) ? components : REACT_COMPONENT_REGISTRY;
   const lines = [
     "=== COMPONENT REGISTRY (21st curated — вибирай componentIds для кожної сторінки) ===",
-    "Для кожної pages[] додай componentIds: string[] (2–4 id зі списку, унікальні в межах сторінки).",
+    "Для кожної pages[] додай componentIds: string[] (6–10 id на головній, 5–7 на внутрішніх). prose-block можна повторювати 2–3 рази для кількох текстових секцій.",
   ];
   for (const c of list) {
     lines.push(

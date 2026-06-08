@@ -8,6 +8,7 @@ import {
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
 import { BrandAdminEditor } from "./brand-admin-editor";
+import { normalizeLayoutVariant } from "./brand-types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +61,7 @@ export default async function UserBrandAdminPage({
         defaultThemeText: brand.defaultThemeText,
         promptOverlay: brand.promptOverlay,
         seoKeywords: brand.seoKeywords || "",
-        layoutVariant:
-          brand.layoutVariant === "sidebar-left" || brand.layoutVariant === "top-nav"
-            ? brand.layoutVariant
-            : "auto",
+        layoutVariant: normalizeLayoutVariant(brand.layoutVariant),
         palette: normalizePaletteCore(brand.palette),
         logoStoragePath: brand.logoStoragePath,
         faviconStoragePath: brand.faviconStoragePath,
