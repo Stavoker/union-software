@@ -1,4 +1,5 @@
 import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, PAYMENT_IMAGE_PATHS, siteRoutes } from "../lib/site-routes";
+import { PaymentMethodsRow } from "./registry/PaymentMethodsRow";
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
@@ -67,18 +68,8 @@ export function SiteFooter() {
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-muted">Способы оплаты</h3>
                 {PAYMENT_IMAGE_PATHS.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    {PAYMENT_IMAGE_PATHS.map((src) => (
-                      <img
-                        key={src}
-                        src={src}
-                        alt=""
-                        width={96}
-                        height={36}
-                        loading="lazy"
-                        className="h-9 max-w-[120px] object-contain opacity-90"
-                      />
-                    ))}
+                  <div className="mt-3">
+                    <PaymentMethodsRow images={PAYMENT_IMAGE_PATHS} variant="footer" />
                   </div>
                 ) : (
                   <p className="mt-4 text-sm text-brand-muted">Visa, Mastercard, СБП, криптовалюты и электронные кошельки.</p>

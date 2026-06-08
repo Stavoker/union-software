@@ -31,6 +31,8 @@ export function brandRowToKit(row) {
     faviconStoragePath: row.favicon_storage_path ? String(row.favicon_storage_path) : "",
     defaultThemeText: String(row.default_theme_text || "").trim(),
     promptOverlay: String(row.prompt_overlay || "").trim(),
+    seoKeywords: String(row.seo_keywords || "").trim(),
+    layoutVariant: String(row.layout_variant || "auto").trim() || "auto",
     assets: [],
   };
 }

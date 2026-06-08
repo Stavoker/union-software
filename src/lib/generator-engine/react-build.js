@@ -274,6 +274,44 @@ function resolveReactBrandName({ brandKit }) {
   return "Бренд";
 }
 
+/** @param {string} raw */
+function parseSeoKeywords(raw) {
+  return String(raw || "")
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+}
+
+/**
+ * @param {Record<string, unknown> | null | undefined} brandKit
+ * @param {string} seed
+ */
+function resolveSiteLayoutVariant(brandKit, seed) {
+  const v = String(brandKit?.layoutVariant || "auto").trim();
+  if (v === "sidebar-left" || v === "top-nav") return v;
+  let state = 0;
+  const s = String(seed || "layout");
+  for (let i = 0; i < s.length; i++) {
+    state = (state * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return state % 2 === 0 ? "sidebar-left" : "top-nav";
+}
+
+function buildSeoPromptBlock({ themeBrandHint, seoKeywords, theme }) {
+  const kws = parseSeoKeywords(seoKeywords);
+  if (!kws.length) return "";
+  return `
+=== SEO (обязательно для title/description страниц) ===
+Бренд: ${themeBrandHint}. Тема: ${theme}.
+Ключевые слова (включай естественно в title и description каждой pages[]):
+${kws.map((k) => `- ${k}`).join("\n")}
+- title главной: 50–65 символов, бренд + 1–2 ключа + intent (регистрация, бонусы, скачать и т.д.).
+- description: 140–165 символов, бренд + гео/интент + CTA-смысл.
+- Внутренние страницы: уникальные title/description с разными ключами из списка.
+`.trim();
+}
+
 function scrubGenericBrandPhrases(text, brandName) {
   const bn = String(brandName || "").trim();
   if (!bn) return String(text || "").trim();
@@ -606,6 +644,7 @@ function buildArchitectUserPrompt({
   designHint,
   minPageWords,
   sourceArticlesBlock,
+  seoPromptBlock,
 }) {
   return `
 Тема сайта: ${theme}
@@ -613,10 +652,10 @@ function buildArchitectUserPrompt({
 Базовый шлюз регистрации (CTA): ${gatewayUrl}
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
 Для каждой страницы укажи file (как в списке), role (короткая русская подпись для меню, 1–4 слова), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
-Стек: React + Vite + Tailwind + framer-motion + curated registry, левый сайдбар с иконками и профессиональный footer в layout.
-АРХИТЕКТУРА НАВИГАЦИИ: только левый сайдбар (иконки + подписи). Header — ТОЛЬКО кнопки «Вход» и «Регистрация», без ссылок на разделы и без дубля текстового названия бренда рядом с логотипом.
+Стек: React + Vite + Tailwind + framer-motion + curated registry, SiteLayout (sidebar-left или top-nav) и профессиональный footer.
+Навигация задаётся в SiteLayout при сборке — в TSX страниц не дублируй header/sidebar.
 
-${registryBlock}
+${seoPromptBlock ? `${seoPromptBlock}\n\n` : ""}${registryBlock}
 
 ${siteRules}
 
@@ -628,7 +667,7 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
-- title и description каждой страницы должны содержать «${themeBrandHint}», не общие фразы.
+- title и description каждой страницы должны содержать «${themeBrandHint}» и SEO-ключи (если заданы выше), не общие фразы.
 - Для index.php: hero-gradient, prose-block (сразу после hero), game-carousel, slot-grid, section-with-bg, второй prose-block, feature-cards, faq-accordion (6–8 id).
 - Для внутренних страниц: другой порядок componentIds на каждой странице (не копируй одинаковую последовательность).
 - Порядок секций на разных file должен заметно отличаться (меняй первый блок: content-split / section-with-bg / prose-block).
@@ -669,6 +708,10 @@ function detectWeakRegistryContentIssues(tsxCode, componentIds) {
     if (/title:\s*""/.test(cardsBlock) || /body:\s*""/.test(cardsBlock)) {
       issues.push("FeatureCards: есть карточки с пустыми title или body");
     }
+  }
+
+  if (/\.?\/img\/pay-/i.test(code) && /<img[^>]+pay-/i.test(code) && !/PaymentMethodsRow/i.test(code)) {
+    issues.push("Оплаты: используй <PaymentMethodsRow variant=\"inline\" />, не сырые <img src=\"./img/pay-*\">");
   }
 
   return issues;
@@ -718,7 +761,7 @@ ${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q:
 
 Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
 Баннеры (HeroGradient, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
-Иконки оплат: ${paymentImages.join(", ") || "PAYMENT_IMAGE_PATHS из site-routes"} — на странице payments показывай <img src={...}> из PAYMENT_IMAGE_PATHS, не текстовые чипы.
+Иконки оплат: ${paymentImages.join(", ") || "PAYMENT_IMAGE_PATHS из site-routes"} — только <PaymentMethodsRow title="…" intro="…" variant="inline" />; запрещены сырые <img> для pay-* и w-full на иконках оплат.
 Пути картинок: ./img/имя_файла — только из списка билда.
 ЗАПРЕЩЕНО: logo.png и favicon.png в HeroGradient, SectionWithBg, ContentSplit (только chrome/footer).
 Не используй slot-превью в hero; не используй баннеры и pay-* в карусели слотов. Шапка, сайдбар и footer уже в SiteLayout — только контент страницы.
@@ -812,6 +855,8 @@ async function writeSiteRoutesModule(
     gameImagePaths,
     bannerImagePaths,
     paymentImagePaths,
+    siteLayout,
+    seoKeywords,
     logoSrc,
     pages,
     pageImports,
@@ -827,6 +872,8 @@ async function writeSiteRoutesModule(
     `export const GAME_IMAGE_PATHS = ${JSON.stringify(gameImagePaths || [])};`,
     `export const BANNER_IMAGE_PATHS = ${JSON.stringify(bannerImagePaths || [])};`,
     `export const PAYMENT_IMAGE_PATHS = ${JSON.stringify(paymentImagePaths || [])};`,
+    `export const SITE_LAYOUT = ${JSON.stringify(siteLayout || "sidebar-left")};`,
+    `export const SEO_KEYWORDS = ${JSON.stringify(seoKeywords || [])};`,
     ``,
     `export type SiteRoute = {`,
     `  path: string;`,
@@ -855,22 +902,50 @@ async function writeSiteRoutesModule(
   );
 }
 
-async function writePageHeadMeta(reactSrcDir, pages) {
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+async function writePageHeadMeta(reactSrcDir, pages, { seoKeywords = [] } = {}) {
   const indexPage = pages.find((p) => p.route === "/") || pages[0];
   let html = await fs.readFile(path.join(reactSrcDir, "index.html"), "utf8");
   const title = indexPage?.title || "Сайт";
   const desc = indexPage?.description || "";
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${title}</title>`);
+  const kwList = Array.isArray(seoKeywords) ? seoKeywords.filter(Boolean) : [];
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtmlAttr(title)}</title>`);
   if (/<meta\s+name="description"/i.test(html)) {
     html = html.replace(
       /<meta\s+name="description"[^>]*>/i,
-      `<meta name="description" content="${desc.replace(/"/g, "&quot;")}" />`
+      `<meta name="description" content="${escapeHtmlAttr(desc)}" />`
     );
   } else {
     html = html.replace(
       /<\/head>/i,
-      `  <meta name="description" content="${desc.replace(/"/g, "&quot;")}" />\n  </head>`
+      `  <meta name="description" content="${escapeHtmlAttr(desc)}" />\n  </head>`
     );
+  }
+  if (kwList.length) {
+    const kwTag = `<meta name="keywords" content="${escapeHtmlAttr(kwList.join(", "))}" />`;
+    if (/<meta\s+name="keywords"/i.test(html)) {
+      html = html.replace(/<meta\s+name="keywords"[^>]*>/i, kwTag);
+    } else {
+      html = html.replace(/<\/head>/i, `  ${kwTag}\n  </head>`);
+    }
+  }
+  const ogTitle = `<meta property="og:title" content="${escapeHtmlAttr(title)}" />`;
+  const ogDesc = `<meta property="og:description" content="${escapeHtmlAttr(desc)}" />`;
+  for (const [pattern, tag] of [
+    [/<meta\s+property="og:title"[^>]*>/i, ogTitle],
+    [/<meta\s+property="og:description"[^>]*>/i, ogDesc],
+  ]) {
+    if (pattern.test(html)) {
+      html = html.replace(pattern, tag);
+    } else {
+      html = html.replace(/<\/head>/i, `  ${tag}\n  </head>`);
+    }
   }
   await fs.writeFile(path.join(reactSrcDir, "index.html"), html, "utf8");
 }
@@ -985,7 +1060,15 @@ export async function buildReactSite({
     (f) => `./img/${f}`
   );
   const brandPromptOverlay = formatBrandPromptOverlay(brandKit?.promptOverlay);
+  const seoKeywords = parseSeoKeywords(brandKit?.seoKeywords);
+  const siteLayout = resolveSiteLayoutVariant(brandKit, `${safeName}|${siteSeed}`);
+  const seoPromptBlock = buildSeoPromptBlock({
+    themeBrandHint,
+    seoKeywords: brandKit?.seoKeywords,
+    theme: themeNorm,
+  });
   const minPageWords = REACT_MIN_PAGE_WORDS;
+  emitLog(onLog, `Layout: ${siteLayout}; SEO keywords: ${seoKeywords.length || "—"}`);
 
   let profilePrompt = "";
   let profileMetaBlock = "";
@@ -1059,6 +1142,7 @@ export async function buildReactSite({
       designHint,
       minPageWords,
       sourceArticlesBlock: sourceArticlesArchitectBlock,
+      seoPromptBlock,
     }),
     maxTokens: 4096,
     temperature: 0.5,
@@ -1153,6 +1237,8 @@ export async function buildReactSite({
     gameImagePaths,
     bannerImagePaths,
     paymentImagePaths,
+    siteLayout,
+    seoKeywords,
     logoSrc,
     pages: generatedPages,
     pageImports: generatedPages,
@@ -1162,7 +1248,7 @@ export async function buildReactSite({
     onLog,
     `Палитра /brand: accent=${brandKit?.palette?.accent || "default"}, bg=${brandKit?.palette?.bg || "default"}, text=${brandKit?.palette?.text || "default"}`
   );
-  await writePageHeadMeta(reactSrcDir, generatedPages);
+  await writePageHeadMeta(reactSrcDir, generatedPages, { seoKeywords });
 
   ensureNotStopped();
   await runNpmBuild(reactSrcDir, onLog);

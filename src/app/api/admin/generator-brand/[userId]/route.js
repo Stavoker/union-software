@@ -60,6 +60,10 @@ export async function PUT(req, { params }) {
     palette,
     default_theme_text: String(body?.defaultThemeText || "").trim(),
     prompt_overlay: String(body?.promptOverlay || "").trim(),
+    seo_keywords: String(body?.seoKeywords || "").trim(),
+    layout_variant: ["auto", "sidebar-left", "top-nav"].includes(String(body?.layoutVariant || "").trim())
+      ? String(body.layoutVariant).trim()
+      : "auto",
     logo_storage_path: body?.logoStoragePath
       ? String(body.logoStoragePath)
       : null,

@@ -19,7 +19,7 @@ import {
   LogIn,
   UserPlus,
 } from "lucide-react";
-import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, siteRoutes } from "../lib/site-routes";
+import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, SITE_LAYOUT, siteRoutes } from "../lib/site-routes";
 import { SiteFooter } from "./SiteFooter";
 
 type Props = { children: ReactNode };
@@ -46,7 +46,71 @@ function routeIcon(path: string): LucideIcon {
   return ROUTE_ICONS[slug] || LayoutGrid;
 }
 
-export function SiteLayout({ children }: Props) {
+function HeaderCtas() {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <a
+        href={GATEWAY_URL}
+        className="hidden min-h-[40px] items-center gap-2 rounded-full border border-brand-accent/30 px-4 py-2 text-sm font-medium text-brand-text hover:bg-brand-block sm:inline-flex"
+      >
+        <LogIn className="h-4 w-4" aria-hidden />
+        Вход
+      </a>
+      <a href={GATEWAY_URL} className="btn-brand gap-2 px-4 py-2 text-sm">
+        <UserPlus className="h-4 w-4" aria-hidden />
+        Регистрация
+      </a>
+    </div>
+  );
+}
+
+function TopNavLayout({ children }: Props) {
+  return (
+    <div className="min-h-screen bg-brand-bg text-brand-text">
+      <header className="sticky top-0 z-50 border-b border-brand-accent/15 bg-brand-bg/95 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 lg:px-8">
+          <NavLink to="/" className="flex shrink-0 items-center" aria-label={BRAND_NAME}>
+            <img src={LOGO_SRC} alt="" className="h-8 w-auto max-w-[140px]" width={140} height={32} />
+          </NavLink>
+
+          <nav className="hidden flex-1 items-center justify-center gap-1 md:flex" aria-label="Основное меню">
+            {siteRoutes.map((r) => (
+              <NavLink
+                key={r.path}
+                to={r.path}
+                end={r.path === "/"}
+                className={({ isActive }) =>
+                  `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-brand-accent/12 text-brand-accent"
+                      : "text-brand-muted hover:bg-brand-block hover:text-brand-text"
+                  }`
+                }
+              >
+                {r.navLabel}
+              </NavLink>
+            ))}
+          </nav>
+
+          <HeaderCtas />
+        </div>
+      </header>
+
+      <motion.main
+        key={typeof window !== "undefined" ? window.location.pathname : "main"}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="mx-auto max-w-6xl px-4 py-6 lg:px-8"
+      >
+        {children}
+      </motion.main>
+      <SiteFooter />
+    </div>
+  );
+}
+
+function SidebarLayout({ children }: Props) {
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
       <header className="sticky top-0 z-50 border-b border-brand-accent/15 bg-brand-bg/95 backdrop-blur-md">
@@ -54,22 +118,8 @@ export function SiteLayout({ children }: Props) {
           <NavLink to="/" className="flex shrink-0 items-center lg:hidden" aria-label={BRAND_NAME}>
             <img src={LOGO_SRC} alt="" className="h-8 w-auto" width={120} height={32} />
           </NavLink>
-
           <div className="hidden flex-1 lg:block" aria-hidden />
-
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <a
-              href={GATEWAY_URL}
-              className="hidden min-h-[40px] items-center gap-2 rounded-full border border-brand-accent/30 px-4 py-2 text-sm font-medium text-brand-text hover:bg-brand-block sm:inline-flex"
-            >
-              <LogIn className="h-4 w-4" aria-hidden />
-              Вход
-            </a>
-            <a href={GATEWAY_URL} className="btn-brand gap-2 px-4 py-2 text-sm">
-              <UserPlus className="h-4 w-4" aria-hidden />
-              Регистрация
-            </a>
-          </div>
+          <HeaderCtas />
         </div>
       </header>
 
@@ -144,4 +194,11 @@ export function SiteLayout({ children }: Props) {
       </div>
     </div>
   );
+}
+
+export function SiteLayout({ children }: Props) {
+  if (SITE_LAYOUT === "top-nav") {
+    return <TopNavLayout>{children}</TopNavLayout>;
+  }
+  return <SidebarLayout>{children}</SidebarLayout>;
 }

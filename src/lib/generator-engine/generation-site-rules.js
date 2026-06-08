@@ -68,7 +68,8 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - HeroGradient: title + eyebrow + subtitle (1 строка) + CTA; длинные абзацы — в ProseBlock сразу после hero, не внутри hero.
 
 ИКОНКИ ОПЛАТ:
-- Footer и страница payments: <img src={PAYMENT_IMAGE_PATHS[n]} /> — ${paymentLines}.
+- Footer и страница payments: <PaymentMethodsRow variant="inline" /> — ${paymentLines}.
+- Запрещены сырые <img src="./img/pay-*"> и w-full на иконках оплат; только PaymentMethodsRow.
 - Запрещены текстовые чипы «Visa», «Mastercard» вместо картинок, если pay-* есть в билде.
 - Не используй pay-* в карусели слотов и hero.
 

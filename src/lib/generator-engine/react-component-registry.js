@@ -99,6 +99,16 @@ export const REACT_COMPONENT_REGISTRY = [
     tags: ["background", "hero", "promo", "banner"],
   },
   {
+    id: "payment-methods",
+    name: "PaymentMethodsRow",
+    importFrom: "../components/registry/PaymentMethodsRow",
+    category: "content",
+    description:
+      "Іконки оплат у фіксованих чіпах (variant inline). Не використовуй сирі <img> для pay-*.",
+    props: ["title", "intro", "images", "variant"],
+    tags: ["payments", "pay", "icons"],
+  },
+  {
     id: "sidebar-promo",
     name: "SidebarPromo",
     importFrom: "../components/registry/SidebarPromo",

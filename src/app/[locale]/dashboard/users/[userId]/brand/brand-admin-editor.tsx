@@ -28,11 +28,15 @@ type ThemeRow = {
   sortOrder: number;
 };
 
+type LayoutVariant = "auto" | "sidebar-left" | "top-nav";
+
 type BrandState = {
   brandName: string;
   notes: string;
   defaultThemeText: string;
   promptOverlay: string;
+  seoKeywords: string;
+  layoutVariant: LayoutVariant;
   palette: Palette;
   logoStoragePath: string;
   faviconStoragePath: string;
@@ -79,6 +83,8 @@ export function BrandAdminEditor({
       notes: "",
       defaultThemeText: "",
       promptOverlay: "",
+      seoKeywords: "",
+      layoutVariant: "auto",
       palette: { ...EMPTY_PALETTE },
       logoStoragePath: "",
       faviconStoragePath: "",
@@ -103,6 +109,8 @@ export function BrandAdminEditor({
           notes: brand.notes,
           defaultThemeText: brand.defaultThemeText,
           promptOverlay: brand.promptOverlay,
+          seoKeywords: brand.seoKeywords,
+          layoutVariant: brand.layoutVariant,
           palette: brand.palette,
           logoStoragePath: brand.logoStoragePath || null,
           faviconStoragePath: brand.faviconStoragePath || null,
@@ -122,6 +130,11 @@ export function BrandAdminEditor({
           notes: data.brand.notes || "",
           defaultThemeText: data.brand.defaultThemeText || "",
           promptOverlay: data.brand.promptOverlay || "",
+          seoKeywords: data.brand.seoKeywords || "",
+          layoutVariant:
+            data.brand.layoutVariant === "sidebar-left" || data.brand.layoutVariant === "top-nav"
+              ? data.brand.layoutVariant
+              : "auto",
           palette: normalizePaletteCore(data.brand.palette),
           logoStoragePath: data.brand.logoStoragePath || "",
           faviconStoragePath: data.brand.faviconStoragePath || "",
@@ -240,6 +253,32 @@ export function BrandAdminEditor({
               value={brand.promptOverlay}
               onChange={(e) => setBrand((b) => ({ ...b, promptOverlay: e.target.value }))}
             />
+          </label>
+          <label className="block space-y-1 md:col-span-2">
+            <span className="text-xs text-union-muted">{t("seoKeywords")}</span>
+            <textarea
+              className={`${seoInput} min-h-[80px]`}
+              value={brand.seoKeywords}
+              onChange={(e) => setBrand((b) => ({ ...b, seoKeywords: e.target.value }))}
+              placeholder={t("seoKeywordsPlaceholder")}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-union-muted">{t("layoutVariant")}</span>
+            <select
+              className={seoInput}
+              value={brand.layoutVariant}
+              onChange={(e) =>
+                setBrand((b) => ({
+                  ...b,
+                  layoutVariant: e.target.value as LayoutVariant,
+                }))
+              }
+            >
+              <option value="auto">{t("layoutAuto")}</option>
+              <option value="sidebar-left">{t("layoutSidebar")}</option>
+              <option value="top-nav">{t("layoutTopNav")}</option>
+            </select>
           </label>
           <label className="block space-y-1 md:col-span-2">
             <span className="text-xs text-union-muted">{t("notes")}</span>

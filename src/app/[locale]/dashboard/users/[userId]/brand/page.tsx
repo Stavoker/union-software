@@ -59,6 +59,11 @@ export default async function UserBrandAdminPage({
         notes: brand.notes,
         defaultThemeText: brand.defaultThemeText,
         promptOverlay: brand.promptOverlay,
+        seoKeywords: brand.seoKeywords || "",
+        layoutVariant:
+          brand.layoutVariant === "sidebar-left" || brand.layoutVariant === "top-nav"
+            ? brand.layoutVariant
+            : "auto",
         palette: normalizePaletteCore(brand.palette),
         logoStoragePath: brand.logoStoragePath,
         faviconStoragePath: brand.faviconStoragePath,
