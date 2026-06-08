@@ -35,7 +35,9 @@ import {
 } from "@/src/lib/site-ops";
 import { sanitizeProjectName } from "@/src/lib/project-paths";
 import {
+  buildAnthropicMessagesBody,
   buildAnthropicRequestHeaders,
+  claudeModelOmitsSamplingParams,
   describeClaudeKeyForBuildLog,
   getAnthropicMessagesUrl,
   isAcceptableClaudeApiKey,
@@ -168,14 +170,23 @@ async function callClaude({ apiKey, system, user, maxTokens = 8192, temperature 
     throw new Error("Недопустимый Claude API key.");
   }
   emitLog(onLog, "LLM: Claude (React Lab)");
+  if (claudeModelOmitsSamplingParams(ANTHROPIC_MODEL)) {
+    emitLog(
+      onLog,
+      `Claude ${ANTHROPIC_MODEL}: temperature не передаётся (Opus 4.7+ — только prompting)`
+    );
+  }
   const messagesUrl = getAnthropicMessagesUrl(key);
-  const payload = JSON.stringify({
-    model: ANTHROPIC_MODEL,
-    max_tokens: maxTokens,
-    temperature,
-    system: String(system || "").slice(0, 120000),
-    messages: [{ role: "user", content: user }],
-  });
+  const payload = JSON.stringify(
+    buildAnthropicMessagesBody({
+      model: ANTHROPIC_MODEL,
+      maxTokens,
+      system,
+      userContent: user,
+      temperature,
+      maxSystemLen: 120000,
+    })
+  );
   const res = await fetch(messagesUrl, {
     method: "POST",
     headers: buildAnthropicRequestHeaders(key),

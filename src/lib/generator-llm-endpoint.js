@@ -125,6 +125,55 @@ export function describeClaudeKeyForBuildLog(apiKey) {
 /**
  * Розширене повідомлення для HTTP-помилок LLM (зокрема локальний gateway).
  */
+/**
+ * Opus 4.7+ відхиляє temperature/top_p/top_k (400 «deprecated») — поле треба не надсилати.
+ * @param {string} model
+ */
+export function claudeModelOmitsSamplingParams(model) {
+  const m = String(model || "")
+    .trim()
+    .toLowerCase();
+  return /claude-opus-4-[78]\b/.test(m) || /^claude-opus-4-[78]$/.test(m);
+}
+
+/**
+ * Тіло POST /v1/messages без sampling-полів для моделей, що їх не приймають.
+ * @param {{
+ *   model: string;
+ *   maxTokens: number;
+ *   system?: string;
+ *   userContent: string;
+ *   temperature?: number;
+ *   maxSystemLen?: number;
+ * }} opts
+ */
+export function buildAnthropicMessagesBody(opts) {
+  const {
+    model,
+    maxTokens,
+    system,
+    userContent,
+    temperature,
+    maxSystemLen = 200000,
+  } = opts;
+  /** @type {Record<string, unknown>} */
+  const body = {
+    model: String(model || "").trim(),
+    max_tokens: maxTokens,
+    system: String(system || "").slice(0, maxSystemLen),
+    messages: [{ role: "user", content: userContent }],
+  };
+  if (
+    !claudeModelOmitsSamplingParams(model) &&
+    temperature !== undefined &&
+    temperature !== null &&
+    Number.isFinite(Number(temperature))
+  ) {
+    body.temperature = Number(temperature);
+  }
+  return body;
+}
+
 export function formatAnthropicHttpError(status, rawText, apiKey) {
   const body = String(rawText || "").slice(0, 400);
   let msg = `Anthropic HTTP ${status}: ${body}`;

@@ -73,7 +73,9 @@ import {
   extractChromePairFromHtml,
 } from "@/src/lib/brand-chrome";
 import {
+  buildAnthropicMessagesBody,
   buildAnthropicRequestHeaders,
+  claudeModelOmitsSamplingParams,
   describeClaudeKeyForBuildLog,
   formatAnthropicHttpError,
   anthropicBaseUrlOverrideNote,
@@ -1382,14 +1384,23 @@ async function callClaudeOnly({
     emitLog(onLog, baseOverrideNote);
   }
   emitLog(onLog, `LLM endpoint: ${messagesUrl}`);
+  if (claudeModelOmitsSamplingParams(ANTHROPIC_MODEL)) {
+    emitLog(
+      onLog,
+      `Claude ${ANTHROPIC_MODEL}: temperature не передаётся (Opus 4.7+ — только prompting)`
+    );
+  }
 
-  const payload = JSON.stringify({
-    model: ANTHROPIC_MODEL,
-    max_tokens: maxTokens,
-    temperature,
-    system: String(system || "").slice(0, 200000),
-    messages: [{ role: "user", content: user }],
-  });
+  const payload = JSON.stringify(
+    buildAnthropicMessagesBody({
+      model: ANTHROPIC_MODEL,
+      maxTokens,
+      system,
+      userContent: user,
+      temperature,
+      maxSystemLen: 200000,
+    })
+  );
 
   let lastErr = null;
   const maxAttempts = 5;
