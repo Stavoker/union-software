@@ -1125,7 +1125,10 @@ export async function buildReactSite({
     theme: themeNorm,
   });
   const minPageWords = REACT_MIN_PAGE_WORDS;
-  emitLog(onLog, `Layout: ${siteLayout}; SEO keywords: ${seoKeywords.length || "—"}`);
+  emitLog(
+    onLog,
+    `Layout: ${siteLayout}; SEO keywords: ${seoKeywords.length || "—"} (theme: ${themeNorm.slice(0, 48)}${themeNorm.length > 48 ? "…" : ""})`
+  );
 
   let profilePrompt = "";
   let profileMetaBlock = "";

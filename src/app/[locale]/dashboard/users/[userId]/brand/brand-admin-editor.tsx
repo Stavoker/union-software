@@ -27,6 +27,7 @@ type ThemeRow = {
   id?: string;
   title: string;
   themeText: string;
+  seoKeywords: string;
   pageCount: number | "";
   sortOrder: number;
 };
@@ -36,7 +37,6 @@ type BrandState = {
   notes: string;
   defaultThemeText: string;
   promptOverlay: string;
-  seoKeywords: string;
   layoutVariant: LayoutVariant;
   palette: Palette;
   logoStoragePath: string;
@@ -84,7 +84,6 @@ export function BrandAdminEditor({
       notes: "",
       defaultThemeText: "",
       promptOverlay: "",
-      seoKeywords: "",
       layoutVariant: "auto",
       palette: { ...EMPTY_PALETTE },
       logoStoragePath: "",
@@ -110,7 +109,6 @@ export function BrandAdminEditor({
           notes: brand.notes,
           defaultThemeText: brand.defaultThemeText,
           promptOverlay: brand.promptOverlay,
-          seoKeywords: brand.seoKeywords,
           layoutVariant: brand.layoutVariant,
           palette: brand.palette,
           logoStoragePath: brand.logoStoragePath || null,
@@ -118,6 +116,7 @@ export function BrandAdminEditor({
           themes: themes.map((th, i) => ({
             title: th.title,
             themeText: th.themeText,
+            seoKeywords: th.seoKeywords,
             pageCount: th.pageCount === 3 || th.pageCount === 4 ? th.pageCount : null,
             sortOrder: i,
           })),
@@ -131,7 +130,6 @@ export function BrandAdminEditor({
           notes: data.brand.notes || "",
           defaultThemeText: data.brand.defaultThemeText || "",
           promptOverlay: data.brand.promptOverlay || "",
-          seoKeywords: data.brand.seoKeywords || "",
           layoutVariant: normalizeLayoutVariant(data.brand.layoutVariant),
           palette: normalizePaletteCore(data.brand.palette),
           logoStoragePath: data.brand.logoStoragePath || "",
@@ -259,15 +257,6 @@ export function BrandAdminEditor({
               className={`${seoInput} min-h-[100px]`}
               value={brand.promptOverlay}
               onChange={(e) => setBrand((b) => ({ ...b, promptOverlay: e.target.value }))}
-            />
-          </label>
-          <label className="block space-y-1 md:col-span-2">
-            <span className="text-xs text-union-muted">{t("seoKeywords")}</span>
-            <textarea
-              className={`${seoInput} min-h-[80px]`}
-              value={brand.seoKeywords}
-              onChange={(e) => setBrand((b) => ({ ...b, seoKeywords: e.target.value }))}
-              placeholder={t("seoKeywordsPlaceholder")}
             />
           </label>
           <label className="block space-y-1">
@@ -467,14 +456,17 @@ export function BrandAdminEditor({
 
       <section className={`${seoCard} space-y-4`}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-union-text">{t("sectionThemes")}</h2>
+          <div>
+            <h2 className="text-base font-semibold text-union-text">{t("sectionThemes")}</h2>
+            <p className="mt-1 text-xs text-union-muted">{t("themeSeoKeywordsHint")}</p>
+          </div>
           <button
             type="button"
             className="text-sm text-[#d1fe17]"
             onClick={() =>
               setThemes((list) => [
                 ...list,
-                { title: "", themeText: "", pageCount: "", sortOrder: list.length },
+                { title: "", themeText: "", seoKeywords: "", pageCount: "", sortOrder: list.length },
               ])
             }
           >
@@ -514,6 +506,21 @@ export function BrandAdminEditor({
                     )
                   }
                 />
+                <label className="block space-y-1">
+                  <span className="text-xs text-union-muted">{t("themeSeoKeywords")}</span>
+                  <textarea
+                    className={`${seoInput} min-h-[72px]`}
+                    placeholder={t("seoKeywordsPlaceholder")}
+                    value={th.seoKeywords}
+                    onChange={(e) =>
+                      setThemes((list) =>
+                        list.map((row, i) =>
+                          i === index ? { ...row, seoKeywords: e.target.value } : row
+                        )
+                      )
+                    }
+                  />
+                </label>
                 <select
                   className={seoInput}
                   value={th.pageCount === "" ? "" : String(th.pageCount)}

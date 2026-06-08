@@ -86,7 +86,7 @@ export async function loadGeneratorBrandForUser(supabase, userId) {
 export async function loadActiveGeneratorThemes(supabase, userId) {
   const { data, error } = await supabase
     .from("generator_themes")
-    .select("id, title, theme_text, page_count, sort_order")
+    .select("id, title, theme_text, page_count, sort_order, seo_keywords")
     .eq("user_id", userId)
     .eq("is_active", true)
     .order("sort_order", { ascending: true })
@@ -94,6 +94,51 @@ export async function loadActiveGeneratorThemes(supabase, userId) {
 
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} userId
+ */
+export async function loadGeneratorThemesForUser(supabase, userId) {
+  const { data, error } = await supabase
+    .from("generator_themes")
+    .select("id, title, theme_text, page_count, sort_order, is_active, seo_keywords")
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/**
+ * Ключові слова для збірки: спочатку з пресету теми (за theme_text), інакше fallback з бренду.
+ * @param {{ themeText: string, themes?: { theme_text?: string, seo_keywords?: string }[], brandKit?: { seoKeywords?: string } | null }} opts
+ */
+export function resolveSeoKeywordsForBuild(opts) {
+  const themeText = String(opts?.themeText || "").trim();
+  const themes = Array.isArray(opts?.themes) ? opts.themes : [];
+  const brandFallback = String(opts?.brandKit?.seoKeywords || "").trim();
+
+  if (themeText) {
+    const matched = themes.find((row) => String(row?.theme_text || "").trim() === themeText);
+    const fromTheme = String(matched?.seo_keywords || "").trim();
+    if (fromTheme) return fromTheme;
+  }
+
+  return brandFallback;
+}
+
+/**
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} userId
+ * @param {string} themeText
+ * @param {{ seoKeywords?: string } | null | undefined} brandKit
+ */
+export async function resolveSeoKeywordsForUserBuild(supabase, userId, themeText, brandKit) {
+  const themes = await loadGeneratorThemesForUser(supabase, userId);
+  return resolveSeoKeywordsForBuild({ themeText, themes, brandKit });
 }
 
 export function storagePathForUserFile(userId, relativePath) {

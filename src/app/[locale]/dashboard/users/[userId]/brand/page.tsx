@@ -50,7 +50,7 @@ export default async function UserBrandAdminPage({
 
   const { data: themes } = await supabase
     .from("generator_themes")
-    .select("id, title, theme_text, page_count, sort_order")
+    .select("id, title, theme_text, page_count, sort_order, seo_keywords")
     .eq("user_id", userId)
     .order("sort_order", { ascending: true });
 
@@ -60,7 +60,6 @@ export default async function UserBrandAdminPage({
         notes: brand.notes,
         defaultThemeText: brand.defaultThemeText,
         promptOverlay: brand.promptOverlay,
-        seoKeywords: brand.seoKeywords || "",
         layoutVariant: normalizeLayoutVariant(brand.layoutVariant),
         palette: normalizePaletteCore(brand.palette),
         logoStoragePath: brand.logoStoragePath,
@@ -73,6 +72,7 @@ export default async function UserBrandAdminPage({
     id: t.id,
     title: t.title,
     themeText: t.theme_text,
+    seoKeywords: String(t.seo_keywords || ""),
     pageCount: t.page_count === 3 || t.page_count === 4 ? t.page_count : ("" as const),
     sortOrder: t.sort_order ?? 0,
   }));

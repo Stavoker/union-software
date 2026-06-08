@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { loadIntegrationSettingsForUser, withUserIntegrationEnv } from "@/lib/account-integration-settings";
-import { loadGeneratorBrandForUser } from "@/lib/generator-brand-kit";
+import {
+  loadGeneratorBrandForUser,
+  resolveSeoKeywordsForUserBuild,
+} from "@/lib/generator-brand-kit";
 import { getSessionUser } from "@/shared/lib/auth/get-session-user";
 import { createSupabaseServerClient } from "@/shared/lib/supabase/server";
 
@@ -103,6 +106,16 @@ export async function POST(req: Request) {
   const themeInput = String(body.theme || "").trim();
   const theme =
     themeInput || String(brandKit.defaultThemeText || "").trim();
+  const seoKeywordsForBuild = await resolveSeoKeywordsForUserBuild(
+    supabase,
+    user.id,
+    theme,
+    brandKit
+  );
+  const brandKitForBuild = {
+    ...brandKit,
+    seoKeywords: seoKeywordsForBuild,
+  };
   if (!theme) {
     return NextResponse.json(
       {
@@ -252,7 +265,7 @@ export async function POST(req: Request) {
       projectName,
       windowId,
       theme,
-      brandKit,
+      brandKit: brandKitForBuild,
       templateKey: body.templateKey,
       html: body.html,
       clusterTheme: body.clusterTheme,

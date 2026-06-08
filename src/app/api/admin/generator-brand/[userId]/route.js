@@ -21,7 +21,7 @@ export async function GET(_req, { params }) {
     const brand = await loadGeneratorBrandForUser(auth.session.supabase, userId);
     const { data: themes } = await auth.session.supabase
       .from("generator_themes")
-      .select("id, title, theme_text, page_count, sort_order, is_active")
+      .select("id, title, theme_text, page_count, sort_order, is_active, seo_keywords")
       .eq("user_id", userId)
       .order("sort_order", { ascending: true });
 
@@ -60,7 +60,6 @@ export async function PUT(req, { params }) {
     palette,
     default_theme_text: String(body?.defaultThemeText || "").trim(),
     prompt_overlay: String(body?.promptOverlay || "").trim(),
-    seo_keywords: String(body?.seoKeywords || "").trim(),
     layout_variant: ["auto", "sidebar-left", "top-nav"].includes(String(body?.layoutVariant || "").trim())
       ? String(body.layoutVariant).trim()
       : "auto",
@@ -95,6 +94,7 @@ export async function PUT(req, { params }) {
               : null,
           sort_order: Number(t?.sortOrder ?? t?.sort_order ?? index) || index,
           is_active: t?.isActive !== false && t?.is_active !== false,
+          seo_keywords: String(t?.seoKeywords || t?.seo_keywords || "").trim(),
         }))
         .filter((t) => t.title && t.theme_text);
 
