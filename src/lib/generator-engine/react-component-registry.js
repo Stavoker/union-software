@@ -57,7 +57,8 @@ export const REACT_COMPONENT_REGISTRY = [
     name: "FaqAccordion",
     importFrom: "../components/registry/FaqAccordion",
     category: "content",
-    description: "FAQ з розкривними пунктами (framer-motion height).",
+    description:
+      "FAQ-аккордеон: items={[ { q: \"вопрос?\", a: \"ответ 2–4 предложения\" }, … ]} — минимум 6 пунктов, q и a строго непустые.",
     props: ["title", "items"],
     tags: ["faq", "accordion", "support"],
   },

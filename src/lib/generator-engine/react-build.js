@@ -638,6 +638,42 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 `.trim();
 }
 
+/** @returns {string[]} human-readable issues */
+function detectWeakRegistryContentIssues(tsxCode, componentIds) {
+  const issues = [];
+  const code = String(tsxCode || "");
+  const ids = new Set(Array.isArray(componentIds) ? componentIds : []);
+
+  if (ids.has("faq-accordion") && /FaqAccordion/i.test(code)) {
+    const faqBlock =
+      code.match(/<FaqAccordion[\s\S]*?\/>/)?.[0] ||
+      code.match(/<FaqAccordion[\s\S]*?<\/FaqAccordion>/)?.[0] ||
+      "";
+    if (/items=\{\s*\[\s*\]\s*\}/.test(faqBlock)) {
+      issues.push("FaqAccordion: items={[]} — пустой массив");
+    }
+    if (/q:\s*""/.test(faqBlock) || /a:\s*""/.test(faqBlock)) {
+      issues.push("FaqAccordion: есть пункты с пустыми q или a");
+    }
+    const qCount = (faqBlock.match(/\bq:\s*"/g) || []).length;
+    if (qCount < 6) {
+      issues.push(`FaqAccordion: только ${qCount} вопросов (нужно 6–8 с непустыми q и a)`);
+    }
+  }
+
+  if (ids.has("feature-cards") && /FeatureCards/i.test(code)) {
+    const cardsBlock =
+      code.match(/<FeatureCards[\s\S]*?\/>/)?.[0] ||
+      code.match(/<FeatureCards[\s\S]*?<\/FeatureCards>/)?.[0] ||
+      "";
+    if (/title:\s*""/.test(cardsBlock) || /body:\s*""/.test(cardsBlock)) {
+      issues.push("FeatureCards: есть карточки с пустыми title или body");
+    }
+  }
+
+  return issues;
+}
+
 function buildPageCodegenPrompt({
   page,
   brandName,
@@ -658,6 +694,7 @@ function buildPageCodegenPrompt({
   const needsCarousel = page.componentIds.includes("game-carousel");
   const needsProse = page.componentIds.includes("prose-block");
   const needsHero = page.componentIds.includes("hero-gradient");
+  const needsFaq = page.componentIds.includes("faq-accordion");
   const proseCount = page.componentIds.filter((id) => id === "prose-block").length;
   const componentOrder = page.componentIds.join(" → ");
   return `
@@ -677,6 +714,7 @@ ${needsHero ? `- HeroGradient: backgroundImage={BANNER_IMAGE_PATHS[0]} (или [
 ${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
 ${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"2–3 предложения\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ \"абзац 3–5 предложений\", … ]} /> — каждый paragraphs: 3–5 полных предложений, уникальный текст с ${brandName}.` : ""}
+${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 2–4 предложения\" }, … ]} /> — РОВНО 6–8 объектов; у КАЖДОГО q минимум 8 символов и a минимум 40 символов; запрещены пустые строки, заглушки «вопрос»/«ответ»/«текст».` : ""}
 
 Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
 Баннеры (HeroGradient, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
@@ -690,7 +728,8 @@ ${needsProse ? `- Обязательно ${proseCount >= 2 ? "два" : "оди�
 ОБЪЁМ: минимум ${minPageWords} слов видимого русского текста на странице.
 - ProseBlock: минимум 3 абзаца в paragraphs, каждый 3–5 предложений; на главной — 2 разных ProseBlock с разными темами.
 - ContentSplit: paragraphs={[...]} — 2–3 абзаца; imageSrc={BANNER_IMAGE_PATHS[n]} из баннеров, не logo.
-- FAQ: 6–8 вопросов, ответ каждый 2–4 предложения; FeatureCards: items с body 2–4 предложения в каждой карточке (минимум 3 карточки).
+- FaqAccordion: 6–8 пар { q, a }; каждый ответ 2–4 полных предложения; пустые аккордеон-строки недопустимы.
+- FeatureCards: items с body 2–4 предложения в каждой карточке (минимум 3 карточки).
 - SectionWithBg: body минимум 4 предложения; backgroundImage={BANNER_IMAGE_PATHS[n]}, не logo и не слоты.
 - Запрещены пустые paragraphs={[]}, пустые items={[]}, заглушки «текст», «описание», незаполненный {brand}.
 
@@ -1062,30 +1101,44 @@ export async function buildReactSite({
     } catch (e) {
       emitLog(onLog, `source_articles (${page.file}): ${String(e?.message || e).slice(0, 100)}`);
     }
-    const pageRaw = await callClaude({
+    const pageCodegenBase = buildPageCodegenPrompt({
+      page,
+      brandName,
+      theme: themeNorm,
+      profilePrompt: [profileMetaBlock, profilePrompt].filter(Boolean).join("\n\n"),
+      brandPromptOverlay,
+      siteRules,
+      gatewayUrl,
+      gameImages: gameImagePaths,
+      bannerImages: bannerImagePaths,
+      paymentImages: paymentImagePaths,
+      registryCodegenBlock,
+      designHint: pageDesignHint,
+      minPageWords,
+      sourceArticlesBlock: sourceArticlesPageBlock,
+    });
+    let pageRaw = await callClaude({
       apiKey: claudeKey,
       system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер (ui-ux-pro-max). Верни только TSX-код компонента без markdown.`,
-      user: buildPageCodegenPrompt({
-        page,
-        brandName,
-        theme: themeNorm,
-        profilePrompt: [profileMetaBlock, profilePrompt].filter(Boolean).join("\n\n"),
-        brandPromptOverlay,
-        siteRules,
-        gatewayUrl,
-        gameImages: gameImagePaths,
-        bannerImages: bannerImagePaths,
-        paymentImages: paymentImagePaths,
-        registryCodegenBlock,
-        designHint: pageDesignHint,
-        minPageWords,
-        sourceArticlesBlock: sourceArticlesPageBlock,
-      }),
+      user: pageCodegenBase,
       maxTokens: 16000,
       temperature: 0.65,
       onLog,
     });
-    const code = stripCodeFences(pageRaw);
+    let code = stripCodeFences(pageRaw);
+    const contentIssues = detectWeakRegistryContentIssues(code, page.componentIds);
+    if (contentIssues.length) {
+      emitLog(onLog, `Контент registry: ${contentIssues.join("; ")} — повтор codegen…`);
+      pageRaw = await callClaude({
+        apiKey: claudeKey,
+        system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер. Исправь TSX: все FaqAccordion items должны иметь непустые q и a (6–8 штук). Верни только TSX.`,
+        user: `${pageCodegenBase}\n\nОШИБКИ ПРЕДЫДУЩЕЙ ВЕРСИИ:\n${contentIssues.map((x) => `- ${x}`).join("\n")}\n\nПерепиши компонент целиком. FaqAccordion items — только полные вопросы и ответы про ${brandName}, без пустых строк.`,
+        maxTokens: 16000,
+        temperature: 0.55,
+        onLog,
+      });
+      code = stripCodeFences(pageRaw);
+    }
     await fs.writeFile(
       path.join(reactSrcDir, "src/pages", `${page.componentName}.tsx`),
       `${code}\n`,

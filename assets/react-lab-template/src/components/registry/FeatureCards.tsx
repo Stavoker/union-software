@@ -6,8 +6,15 @@ type Props = { title?: string; items?: Item[] };
 
 const ICONS = [Sparkles, Shield, Zap];
 
+function isFilledCard(item: Item | undefined): item is Item {
+  const title = String(item?.title || "").trim();
+  const body = String(item?.body || "").trim();
+  return title.length >= 3 && body.length >= 15 && !/^(заголовок|текст|описание|\.{3})$/i.test(title);
+}
+
 export function FeatureCards({ title = "Преимущества", items = [] }: Props) {
-  const list = items.length ? items : [
+  const filtered = (Array.isArray(items) ? items : []).filter(isFilledCard);
+  const list = filtered.length >= 3 ? filtered : [
     { title: "Быстрый старт", body: "Регистрация за минуту." },
     { title: "Безопасность", body: "Защита данных и платежей." },
     { title: "Бонусы", body: "Акции для новых игроков." },
