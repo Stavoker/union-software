@@ -593,6 +593,12 @@ export const BRAND_PALETTE = {
 
   const cssPath = path.join(reactSrcDir, "src/index.css");
   let css = await fs.readFile(cssPath, "utf8");
+  if (!/@source\s+/.test(css)) {
+    css = css.replace(
+      /@import "tailwindcss";/,
+      `@import "tailwindcss";\n@source "./**/*.{tsx,ts,jsx,js}";`
+    );
+  }
   if (/@theme\s*\{/.test(css)) {
     css = css.replace(/@theme\s*\{[\s\S]*?\}/, themeCss);
   } else {
