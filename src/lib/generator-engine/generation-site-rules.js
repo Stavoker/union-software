@@ -62,14 +62,21 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - Запрещено: slot-превью в первом экране (hero); подмена src на favicon или внешние URL.
 
 ФОНОВЫЕ ИЗОБРАЖЕНИЯ В БЛОКАХ (баннеры):
-- SectionWithBg, HeroGradient, промо-слайдеры: только баннеры — ${bannerLines}.
-- Запрещено: slot-* / game-* в hero и фоновых секциях; logo.png и favicon.png — только в chrome.
-- ContentSplit: декоративное изображение в колонке (высота до ~200px), предпочтительно из баннеров.
-- Максимум 2–3 секции с фоновыми/декоративными картинками на страницу.
+- HeroGradient, SectionWithBg: backgroundImage только из баннеров — ${bannerLines}.
+- Запрещено: slot-* / game-* в hero; logo.png и favicon.png — ТОЛЬКО в SiteLayout/SiteFooter, никогда в hero/баннерах/ContentSplit.
+- ContentSplit: imageSrc из BANNER_IMAGE_PATHS[n], высота до ~200px.
+- HeroGradient: title + eyebrow + subtitle (1 строка) + CTA; длинные абзацы — в ProseBlock сразу после hero, не внутри hero.
 
 ИКОНКИ ОПЛАТ:
-- Страница «Платежи» и блок способов оплаты в footer: ${paymentLines}.
+- Footer и страница payments: <img src={PAYMENT_IMAGE_PATHS[n]} /> — ${paymentLines}.
+- Запрещены текстовые чипы «Visa», «Mastercard» вместо картинок, если pay-* есть в билде.
 - Не используй pay-* в карусели слотов и hero.
+
+LAYOUT И КНОПКИ:
+- Навигация только в левом сайдбаре; header — только Вход/Регистрация (SiteLayout).
+- Рядом с логотипом не дублируй текстовое имя бренда.
+- Все CTA: className="btn-brand" без bg-* text-white на кнопках.
+- ProseBlock и ContentSplit — без рамок; рамки допустимы у hero, SectionWithBg, FAQ, FeatureCards.
 
 ОБЪЁМ И КАЧЕСТВО ТЕКСТА:
 - Минимум ${Number(opts.minPageWords) || 1200} слов видимого русского текста на странице (абзацы, списки, FAQ, карточки).

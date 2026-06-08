@@ -47,41 +47,17 @@ function routeIcon(path: string): LucideIcon {
 }
 
 export function SiteLayout({ children }: Props) {
-  const multiPage = siteRoutes.length > 1;
-
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
       <header className="sticky top-0 z-50 border-b border-brand-accent/15 bg-brand-bg/95 backdrop-blur-md">
         <div className="flex h-14 items-center justify-between gap-4 pl-[4.5rem] pr-4 lg:pl-[15.5rem] lg:pr-6">
-          <NavLink to="/" className="flex shrink-0 items-center gap-3">
-            <img src={LOGO_SRC} alt={BRAND_NAME} className="h-8 w-auto lg:hidden" width={120} height={32} />
-            <span className="hidden text-sm font-semibold tracking-wide sm:inline lg:hidden">{BRAND_NAME}</span>
+          <NavLink to="/" className="flex shrink-0 items-center lg:hidden" aria-label={BRAND_NAME}>
+            <img src={LOGO_SRC} alt="" className="h-8 w-auto" width={120} height={32} />
           </NavLink>
 
-          {multiPage ? (
-            <nav className="hidden flex-1 items-center justify-center gap-1 overflow-x-auto md:flex" aria-label="Основное меню">
-              {siteRoutes.map((r) => (
-                <NavLink
-                  key={r.path}
-                  to={r.path}
-                  end={r.path === "/"}
-                  className={({ isActive }) =>
-                    `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-brand-accent/12 text-brand-accent"
-                        : "text-brand-muted hover:bg-brand-block hover:text-brand-text"
-                    }`
-                  }
-                >
-                  {r.navLabel}
-                </NavLink>
-              ))}
-            </nav>
-          ) : (
-            <div className="hidden flex-1 md:block" aria-hidden />
-          )}
+          <div className="hidden flex-1 lg:block" aria-hidden />
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <a
               href={GATEWAY_URL}
               className="hidden min-h-[40px] items-center gap-2 rounded-full border border-brand-accent/30 px-4 py-2 text-sm font-medium text-brand-text hover:bg-brand-block sm:inline-flex"
@@ -100,9 +76,8 @@ export function SiteLayout({ children }: Props) {
       <div className="flex">
         <aside className="fixed left-0 top-14 z-40 hidden h-[calc(100vh-3.5rem)] w-[4.5rem] shrink-0 flex-col border-r border-brand-accent/15 bg-brand-card lg:flex xl:w-[15.5rem]">
           <div className="hidden border-b border-brand-accent/15 px-4 py-4 xl:block">
-            <NavLink to="/" className="flex items-center gap-3">
-              <img src={LOGO_SRC} alt={BRAND_NAME} className="h-9 w-auto" width={120} height={36} />
-              <span className="text-sm font-semibold leading-tight">{BRAND_NAME}</span>
+            <NavLink to="/" className="block" aria-label={BRAND_NAME}>
+              <img src={LOGO_SRC} alt="" className="h-9 w-auto max-w-[168px]" width={168} height={36} />
             </NavLink>
           </div>
 

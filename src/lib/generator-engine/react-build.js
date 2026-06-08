@@ -323,17 +323,65 @@ function navLabelForPage(page, index) {
   return map[slug] || `Страница ${index + 1}`;
 }
 
+const HOME_COMPONENT_ORDER = [
+  "hero-gradient",
+  "prose-block",
+  "game-carousel",
+  "slot-grid",
+  "section-with-bg",
+  "prose-block",
+  "feature-cards",
+  "faq-accordion",
+  "cta-banner",
+];
+
+const INNER_PAGE_TEMPLATES = [
+  ["section-with-bg", "prose-block", "content-split", "faq-accordion", "cta-banner"],
+  ["content-split", "prose-block", "feature-cards", "section-with-bg", "faq-accordion"],
+  ["prose-block", "stat-row", "content-split", "section-with-bg", "cta-banner", "faq-accordion"],
+  ["content-split", "section-with-bg", "prose-block", "feature-cards", "faq-accordion", "cta-banner"],
+];
+
+function rotateComponentIds(ids, pageIndex) {
+  const arr = [...ids];
+  if (arr.length < 2) return arr;
+  const offset = pageIndex % arr.length;
+  return [...arr.slice(offset), ...arr.slice(0, offset)];
+}
+
+function mergeComponentOrder(preferred, existing) {
+  const seen = new Set();
+  const out = [];
+  for (const id of preferred) {
+    if (existing.includes(id) && !seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of existing) {
+    if (!seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return out;
+}
+
 function ensureRichPageComponents(pages) {
   return pages.map((page, i) => {
-    const ids = [...page.componentIds];
+    let ids = [...page.componentIds];
     if (i === 0) {
-      const hasGames = ids.includes("slot-grid") || ids.includes("game-carousel");
-      if (!hasGames) ids.splice(1, 0, "game-carousel", "slot-grid");
-      if (!ids.includes("section-with-bg")) ids.push("section-with-bg");
-      while (ids.filter((id) => id === "prose-block").length < 2) ids.push("prose-block");
+      for (const id of HOME_COMPONENT_ORDER) {
+        if (!ids.includes(id)) ids.push(id);
+      }
+      ids = mergeComponentOrder(HOME_COMPONENT_ORDER, ids);
     } else {
-      if (!ids.includes("prose-block")) ids.push("prose-block");
-      if (!ids.includes("content-split")) ids.unshift("content-split");
+      const tpl = INNER_PAGE_TEMPLATES[i % INNER_PAGE_TEMPLATES.length];
+      for (const id of tpl) {
+        if (!ids.includes(id)) ids.push(id);
+      }
+      ids = mergeComponentOrder(tpl, ids);
+      ids = rotateComponentIds(ids, i);
     }
     return { ...page, componentIds: [...new Set(ids)] };
   });
@@ -559,7 +607,6 @@ function buildArchitectUserPrompt({
   minPageWords,
   sourceArticlesBlock,
 }) {
-  const singlePage = expectedFiles.length <= 1;
   return `
 Тема сайта: ${theme}
 Бренд в текстах (СТРОГО): ${themeBrandHint}
@@ -567,7 +614,7 @@ function buildArchitectUserPrompt({
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
 Для каждой страницы укажи file (как в списке), role (короткая русская подпись для меню, 1–4 слова), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
 Стек: React + Vite + Tailwind + framer-motion + curated registry, левый сайдбар с иконками и профессиональный footer в layout.
-${singlePage ? "Одностраничный сайт: навигация только в левом сайдбаре; в header НЕТ ссылок на разделы." : "Многостраничный: навигация в левом сайдбаре (иконки + подписи); header — логотип и CTA."}
+АРХИТЕКТУРА НАВИГАЦИИ: только левый сайдбар (иконки + подписи). Header — ТОЛЬКО кнопки «Вход» и «Регистрация», без ссылок на разделы и без дубля текстового названия бренда рядом с логотипом.
 
 ${registryBlock}
 
@@ -582,8 +629,9 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
 - title и description каждой страницы должны содержать «${themeBrandHint}», не общие фразы.
-- Для index.php в componentIds: hero-gradient, game-carousel, slot-grid, минимум 2× prose-block, section-with-bg, feature-cards, faq-accordion (6–8 id).
-- Для внутренних страниц: content-split, prose-block, section-with-bg, faq-accordion.
+- Для index.php: hero-gradient, prose-block (сразу после hero), game-carousel, slot-grid, section-with-bg, второй prose-block, feature-cards, faq-accordion (6–8 id).
+- Для внутренних страниц: другой порядок componentIds на каждой странице (не копируй одинаковую последовательность).
+- Порядок секций на разных file должен заметно отличаться (меняй первый блок: content-split / section-with-bg / prose-block).
 - role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
 - title/description планируй под объём не меньше ${minPageWords} слов контента на странице.
 Допустимые img: ${(imageFiles || []).slice(0, 20).join(", ")}
@@ -609,7 +657,9 @@ function buildPageCodegenPrompt({
   const needsSlotGrid = page.componentIds.includes("slot-grid");
   const needsCarousel = page.componentIds.includes("game-carousel");
   const needsProse = page.componentIds.includes("prose-block");
+  const needsHero = page.componentIds.includes("hero-gradient");
   const proseCount = page.componentIds.filter((id) => id === "prose-block").length;
+  const componentOrder = page.componentIds.join(" → ");
   return `
 Сгенерируй ОДИН React TSX-файл (functional component) для страницы.
 Экспорт: export function ${page.componentName}() { ... }
@@ -618,28 +668,31 @@ Tailwind utility classes, framer-motion для 2–4 секций (motion.sectio
 Язык контента: русский. Бренд в текстах: **${brandName}** (везде вместо {brand} и общих фраз). Тема: ${theme}.
 Страница: file=${page.file}, route=${page.route}, title=${page.title}, description=${page.description}, angle=${page.contentAngle}.
 CTA на gateway: ${gatewayUrl}
+Порядок секций на странице (соблюдай): ${componentOrder}
 
 ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
-import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS } from "../lib/site-routes";
+import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
+${needsHero ? `- HeroGradient: backgroundImage={BANNER_IMAGE_PATHS[0]} (или [1]), title, eyebrow, subtitle (ОДНА короткая строка), ctaHref={GATEWAY_URL}. ЗАПРЕЩЕНО paragraphs в HeroGradient — длинный текст только в ProseBlock сразу после hero.` : ""}
 ${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
 ${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"2–3 предложения\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ \"абзац 3–5 предложений\", … ]} /> — каждый paragraphs: 3–5 полных предложений, уникальный текст с ${brandName}.` : ""}
 
 Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
-Баннеры (hero, SectionWithBg): ${bannerImages.join(", ") || "banner-* из ./img/"}
-Иконки оплат (страница payments, footer): ${paymentImages.join(", ") || "pay-* из ./img/"}
+Баннеры (HeroGradient, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
+Иконки оплат: ${paymentImages.join(", ") || "PAYMENT_IMAGE_PATHS из site-routes"} — на странице payments показывай <img src={...}> из PAYMENT_IMAGE_PATHS, не текстовые чипы.
 Пути картинок: ./img/имя_файла — только из списка билда.
+ЗАПРЕЩЕНО: logo.png и favicon.png в HeroGradient, SectionWithBg, ContentSplit (только chrome/footer).
 Не используй slot-превью в hero; не используй баннеры и pay-* в карусели слотов. Шапка, сайдбар и footer уже в SiteLayout — только контент страницы.
+Все CTA-кнопки: className="btn-brand ..." — НЕ задавай bg-[#...] text-white на кнопках.
 Оберни контент в <div className="space-y-10"> с секциями из registry.
 
 ОБЪЁМ: минимум ${minPageWords} слов видимого русского текста на странице.
-- HeroGradient: paragraphs={[...]} — 3 абзаца по 3–5 предложений (не один subtitle).
 - ProseBlock: минимум 3 абзаца в paragraphs, каждый 3–5 предложений; на главной — 2 разных ProseBlock с разными темами.
-- ContentSplit: paragraphs={[...]} — 2–3 абзаца, не один короткий body.
-- FAQ: 6–8 вопросов, ответ каждый 2–4 предложения; FeatureCards: body 2–4 предложения в карточке.
-- SectionWithBg: body минимум 4 предложения; backgroundImage — логотип/баннер из ./img/, не webp слотов.
-- Запрещены пустые <section>, пустые заголовки без абзацев, заглушки «текст», «описание», незаполненный {brand}.
+- ContentSplit: paragraphs={[...]} — 2–3 абзаца; imageSrc={BANNER_IMAGE_PATHS[n]} из баннеров, не logo.
+- FAQ: 6–8 вопросов, ответ каждый 2–4 предложения; FeatureCards: items с body 2–4 предложения в каждой карточке (минимум 3 карточки).
+- SectionWithBg: body минимум 4 предложения; backgroundImage={BANNER_IMAGE_PATHS[n]}, не logo и не слоты.
+- Запрещены пустые paragraphs={[]}, пустые items={[]}, заглушки «текст», «описание», незаполненный {brand}.
 
 ${registryCodegenBlock}
 
@@ -714,7 +767,16 @@ export const BRAND_PALETTE = {
 
 async function writeSiteRoutesModule(
   reactSrcDir,
-  { gatewayUrl, brandName, gameImagePaths, logoSrc, pages, pageImports }
+  {
+    gatewayUrl,
+    brandName,
+    gameImagePaths,
+    bannerImagePaths,
+    paymentImagePaths,
+    logoSrc,
+    pages,
+    pageImports,
+  }
 ) {
   const lines = [
     `import type { ComponentType } from "react";`,
@@ -724,6 +786,8 @@ async function writeSiteRoutesModule(
     `export const BRAND_NAME = ${JSON.stringify(brandName)};`,
     `export const LOGO_SRC = ${JSON.stringify(logoSrc || "./img/logo.png")};`,
     `export const GAME_IMAGE_PATHS = ${JSON.stringify(gameImagePaths || [])};`,
+    `export const BANNER_IMAGE_PATHS = ${JSON.stringify(bannerImagePaths || [])};`,
+    `export const PAYMENT_IMAGE_PATHS = ${JSON.stringify(paymentImagePaths || [])};`,
     ``,
     `export type SiteRoute = {`,
     `  path: string;`,
@@ -1034,6 +1098,8 @@ export async function buildReactSite({
     gatewayUrl,
     brandName,
     gameImagePaths,
+    bannerImagePaths,
+    paymentImagePaths,
     logoSrc,
     pages: generatedPages,
     pageImports: generatedPages,

@@ -13,11 +13,16 @@ export function ContentSplit({
   title,
   body,
   paragraphs = [],
-  imageSrc = "./img/logo.png",
+  imageSrc,
   imageAlt = "",
   reverse = false,
 }: Props) {
   const blocks = paragraphs.length ? paragraphs : body ? [body] : [];
+  const imgSrc = imageSrc
+    ? imageSrc.startsWith("./")
+      ? imageSrc
+      : `./img/${imageSrc}`
+    : "";
 
   return (
     <motion.section
@@ -36,14 +41,18 @@ export function ContentSplit({
           ))}
         </div>
       </div>
-      <img
-        src={imageSrc}
-        alt={imageAlt}
-        width={480}
-        height={280}
-        loading="lazy"
-        className="mx-auto max-h-[200px] w-full max-w-md rounded-2xl border border-brand-accent/15 object-cover"
-      />
+      {imgSrc ? (
+        <img
+          src={imgSrc}
+          alt={imageAlt}
+          width={480}
+          height={280}
+          loading="lazy"
+          className="mx-auto max-h-[200px] w-full max-w-md rounded-2xl object-cover"
+        />
+      ) : (
+        <div className="mx-auto h-48 w-full max-w-md rounded-2xl bg-brand-block" aria-hidden />
+      )}
     </motion.section>
   );
 }

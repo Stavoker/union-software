@@ -10,8 +10,9 @@ export const REACT_COMPONENT_REGISTRY = [
     name: "HeroGradient",
     importFrom: "../components/registry/HeroGradient",
     category: "hero",
-    description: "Hero з градієнтом, h1, лід і primary CTA (без slot-превью).",
-    props: ["title", "paragraphs", "subtitle", "ctaLabel", "ctaHref"],
+    description:
+      "Hero: h1, eyebrow, одна строка subtitle, баннер backgroundImage, CTA. Без длинных абзацев (их — в ProseBlock ниже).",
+    props: ["title", "eyebrow", "subtitle", "backgroundImage", "ctaLabel", "ctaHref"],
     tags: ["hero", "landing", "home"],
   },
   {

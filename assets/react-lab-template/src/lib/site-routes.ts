@@ -5,6 +5,8 @@ export const GATEWAY_URL = "https://example.com/gateway";
 export const BRAND_NAME = "Brand";
 export const LOGO_SRC = "./img/logo.png";
 export const GAME_IMAGE_PATHS: string[] = [];
+export const BANNER_IMAGE_PATHS: string[] = [];
+export const PAYMENT_IMAGE_PATHS: string[] = [];
 
 export type SiteRoute = {
   path: string;

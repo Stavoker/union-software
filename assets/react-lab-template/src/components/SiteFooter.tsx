@@ -1,15 +1,4 @@
-import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, siteRoutes } from "../lib/site-routes";
-
-const PAYMENT_METHODS = [
-  { name: "Visa", label: "Visa" },
-  { name: "Mastercard", label: "Mastercard" },
-  { name: "МИР", label: "МИР" },
-  { name: "СБП", label: "СБП" },
-  { name: "Bitcoin", label: "BTC" },
-  { name: "USDT", label: "USDT" },
-  { name: "Ethereum", label: "ETH" },
-  { name: "Skrill", label: "Skrill" },
-];
+import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, PAYMENT_IMAGE_PATHS, siteRoutes } from "../lib/site-routes";
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
@@ -37,10 +26,7 @@ export function SiteFooter() {
           <div className="mx-auto max-w-6xl">
             <div className="grid gap-10 md:grid-cols-[1.1fr_1fr] lg:grid-cols-[1.2fr_1fr_1fr]">
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <img src={LOGO_SRC} alt={BRAND_NAME} className="h-10 w-auto" width={120} height={40} />
-                  <span className="text-sm font-semibold tracking-wide">{BRAND_NAME}</span>
-                </div>
+                <img src={LOGO_SRC} alt={BRAND_NAME} className="h-10 w-auto max-w-[168px]" width={168} height={40} />
                 <p className="max-w-md text-sm leading-relaxed text-brand-muted">
                   {BRAND_NAME} — игровая платформа с быстрыми выплатами, защищёнными транзакциями и круглосуточной
                   поддержкой.
@@ -80,17 +66,23 @@ export function SiteFooter() {
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-muted">Способы оплаты</h3>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {PAYMENT_METHODS.map((m) => (
-                    <span
-                      key={m.name}
-                      className="rounded-lg border border-brand-accent/20 bg-brand-block px-2.5 py-1.5 text-xs font-medium text-brand-text"
-                      title={m.name}
-                    >
-                      {m.label}
-                    </span>
-                  ))}
-                </div>
+                {PAYMENT_IMAGE_PATHS.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    {PAYMENT_IMAGE_PATHS.map((src) => (
+                      <img
+                        key={src}
+                        src={src}
+                        alt=""
+                        width={96}
+                        height={36}
+                        loading="lazy"
+                        className="h-9 max-w-[120px] object-contain opacity-90"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-brand-muted">Visa, Mastercard, СБП, криптовалюты и электронные кошельки.</p>
+                )}
               </div>
             </div>
 

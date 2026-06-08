@@ -47,7 +47,7 @@ img {
   min-height: 44px;
   border-radius: 9999px;
   background: var(--color-brand-accent);
-  color: var(--color-brand-accent-on);
+  color: var(--color-brand-accent-on) !important;
   font-weight: 600;
   transition: background-color 0.2s ease;
 }
