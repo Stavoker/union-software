@@ -1,5 +1,9 @@
-@import "tailwindcss";
-@source "./**/*.{tsx,ts,jsx,js}";
+@import "tailwindcss" source(none);
+@source "./pages/**/*.{tsx,ts,jsx,js}";
+@source "./components/**/*.{tsx,ts,jsx,js}";
+@source "./lib/**/*.{tsx,ts,jsx,js}";
+@source "./App.tsx";
+@source "./main.tsx";
 
 /* Кольори з /brand: акцент #d1fe17, фон #0f1113, текст #edf0f5 */
 @theme {

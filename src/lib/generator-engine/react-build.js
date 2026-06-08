@@ -381,21 +381,85 @@ function normalizePagesPlan(rawPages, expectedFiles) {
   return ensureRichPageComponents(pages);
 }
 
-async function hasViteInNodeModules(reactSrcDir) {
+const MIN_REACT_CSS_BYTES = 15000;
+const TAILWIND_IMPORT = `@import "tailwindcss" source(none);`;
+const TAILWIND_SOURCE_LINES = [
+  `@source "./pages/**/*.{tsx,ts,jsx,js}";`,
+  `@source "./components/**/*.{tsx,ts,jsx,js}";`,
+  `@source "./lib/**/*.{tsx,ts,jsx,js}";`,
+  `@source "./App.tsx";`,
+  `@source "./main.tsx";`,
+];
+
+/**
+ * Tailwind v4 auto-detection walks parent dirs for .gitignore when _react_src has no .git.
+ * On Render that often yields empty utilities (~4.5 KB CSS). Force explicit scan paths.
+ * @param {string} css
+ */
+function ensureTailwindCssSources(css) {
+  let body = String(css || "");
+  body = body.replace(/@import\s+"tailwindcss"(?:\s+source\([^)]*\))?;\s*/g, "");
+  body = body.replace(/@source\s+[^;]+;\s*/g, "");
+  const header = [TAILWIND_IMPORT, ...TAILWIND_SOURCE_LINES, ""].join("\n");
+  return `${header}${body.trimStart()}\n`;
+}
+
+async function pathExists(filePath) {
   try {
-    await fs.access(path.join(reactSrcDir, "node_modules", "vite", "package.json"));
+    await fs.access(filePath);
     return true;
   } catch {
     return false;
   }
 }
 
-/** Child process env for Vite build; cap heap for 512MB Render instances. */
+async function hasTailwindStack(reactSrcDir) {
+  const nm = path.join(reactSrcDir, "node_modules");
+  const required = [
+    path.join(nm, "vite", "package.json"),
+    path.join(nm, "tailwindcss", "package.json"),
+    path.join(nm, "@tailwindcss", "vite", "package.json"),
+  ];
+  for (const pkg of required) {
+    if (!(await pathExists(pkg))) return false;
+  }
+  return true;
+}
+
+/** Git boundary + .gitignore so Tailwind does not walk parent storage/ ignores. */
+async function ensureReactBuildScanBoundary(reactSrcDir) {
+  const gitignorePath = path.join(reactSrcDir, ".gitignore");
+  if (!(await pathExists(gitignorePath))) {
+    await fs.writeFile(gitignorePath, "node_modules\ndist\n.DS_Store\n", "utf8");
+  }
+  const gitDir = path.join(reactSrcDir, ".git");
+  if (!(await pathExists(gitDir))) {
+    await fs.mkdir(gitDir, { recursive: true });
+  }
+}
+
+async function measureDistCssBytes(distDir) {
+  try {
+    const assetsDir = path.join(distDir, "assets");
+    const entries = await fs.readdir(assetsDir);
+    let total = 0;
+    for (const name of entries) {
+      if (!name.endsWith(".css")) continue;
+      const st = await fs.stat(path.join(assetsDir, name));
+      total += st.size;
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+/** Child process env for Vite build; tune heap via SOFTGEN_REACT_NODE_MAX_MB. */
 function reactBuildChildEnv() {
   const mbRaw = Number(process.env.SOFTGEN_REACT_NODE_MAX_MB);
   const mb = Number.isFinite(mbRaw) && mbRaw >= 128
-    ? Math.min(512, Math.trunc(mbRaw))
-    : 280;
+    ? Math.min(1536, Math.trunc(mbRaw))
+    : 512;
   const memFlag = `--max-old-space-size=${mb}`;
   const base = String(process.env.NODE_OPTIONS || "").trim();
   return {
@@ -404,35 +468,81 @@ function reactBuildChildEnv() {
   };
 }
 
-async function runNpmBuild(reactSrcDir, onLog) {
+async function runNpmInstall(reactSrcDir, onLog, label) {
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const childEnv = reactBuildChildEnv();
-  const preinstalled = await hasViteInNodeModules(reactSrcDir);
+  emitLog(onLog, label);
+  await execFileAsync(
+    npmCmd,
+    ["install", "--no-audit", "--no-fund", "--include=dev"],
+    {
+      cwd: reactSrcDir,
+      env: reactBuildChildEnv(),
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 600000,
+    }
+  );
+}
+
+async function runViteBuild(reactSrcDir, onLog) {
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  emitLog(onLog, "React Lab: vite build…");
+  await execFileAsync(npmCmd, ["run", "build"], {
+    cwd: reactSrcDir,
+    env: reactBuildChildEnv(),
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: 600000,
+  });
+}
+
+async function runNpmBuild(reactSrcDir, onLog) {
+  await ensureReactBuildScanBoundary(reactSrcDir);
+
+  const preinstalled = await hasTailwindStack(reactSrcDir);
   if (!preinstalled) {
-    emitLog(onLog, "React Lab: npm install (немає node_modules у шаблоні)…");
-    await execFileAsync(
-      npmCmd,
-      ["install", "--no-audit", "--no-fund", "--include=dev"],
-      {
-        cwd: reactSrcDir,
-        env: childEnv,
-        maxBuffer: 20 * 1024 * 1024,
-        timeout: 600000,
-      }
+    await runNpmInstall(
+      reactSrcDir,
+      onLog,
+      "React Lab: npm install (немає tailwind/vite у шаблоні)…"
     );
   } else {
     emitLog(
       onLog,
-      "React Lab: node_modules з шаблону — npm install пропущено (економія RAM на Render)"
+      "React Lab: node_modules з шаблону — npm install пропущено (економія RAM)"
     );
   }
-  emitLog(onLog, "React Lab: vite build…");
-  await execFileAsync(npmCmd, ["run", "build"], {
-    cwd: reactSrcDir,
-    env: childEnv,
-    maxBuffer: 20 * 1024 * 1024,
-    timeout: 600000,
-  });
+
+  await runViteBuild(reactSrcDir, onLog);
+
+  const distDir = path.join(reactSrcDir, "dist");
+  let cssBytes = await measureDistCssBytes(distDir);
+  emitLog(onLog, `React Lab: CSS bundle ${cssBytes} bytes`);
+
+  if (cssBytes < MIN_REACT_CSS_BYTES) {
+    emitLog(
+      onLog,
+      `React Lab: CSS замалий (<${MIN_REACT_CSS_BYTES}) — Tailwind utilities не згенеровані. Повтор з npm install…`
+    );
+    await fs.rm(path.join(reactSrcDir, "node_modules"), { recursive: true, force: true });
+    const cssPath = path.join(reactSrcDir, "src/index.css");
+    let css = await fs.readFile(cssPath, "utf8");
+    css = ensureTailwindCssSources(css);
+    await fs.writeFile(cssPath, css, "utf8");
+    await ensureReactBuildScanBoundary(reactSrcDir);
+    await runNpmInstall(
+      reactSrcDir,
+      onLog,
+      "React Lab: npm install (retry після браку CSS)…"
+    );
+    await runViteBuild(reactSrcDir, onLog);
+    cssBytes = await measureDistCssBytes(distDir);
+    emitLog(onLog, `React Lab: CSS bundle після retry: ${cssBytes} bytes`);
+    if (cssBytes < MIN_REACT_CSS_BYTES) {
+      throw new Error(
+        `React Lab: Tailwind CSS не згенерував utilities (${cssBytes} bytes). ` +
+          "Перевірте prepare:react-lab на деплої або SOFTGEN_REACT_NODE_MAX_MB."
+      );
+    }
+  }
 }
 
 function buildArchitectUserPrompt({
@@ -593,16 +703,11 @@ export const BRAND_PALETTE = {
 
   const cssPath = path.join(reactSrcDir, "src/index.css");
   let css = await fs.readFile(cssPath, "utf8");
-  if (!/@source\s+/.test(css)) {
-    css = css.replace(
-      /@import "tailwindcss";/,
-      `@import "tailwindcss";\n@source "./**/*.{tsx,ts,jsx,js}";`
-    );
-  }
+  css = ensureTailwindCssSources(css);
   if (/@theme\s*\{/.test(css)) {
     css = css.replace(/@theme\s*\{[\s\S]*?\}/, themeCss);
   } else {
-    css = css.replace(/@import "tailwindcss";/, `@import "tailwindcss";\n\n${themeCss}`);
+    css = css.replace(TAILWIND_IMPORT, `${TAILWIND_IMPORT}\n\n${themeCss}`);
   }
   await fs.writeFile(cssPath, css, "utf8");
 }
@@ -714,7 +819,7 @@ export async function buildReactSite({
   );
   emitLog(
     onLog,
-    "React Lab RAM: npm install пропускається, якщо node_modules є в шаблоні (prepare:react-lab при деплої). Для 512MB: SOFTGEN_REACT_NODE_MAX_MB=280, 1 сторінка, без паралельних job."
+    "React Lab RAM: prepare:react-lab при деплої. 2GB: SOFTGEN_REACT_NODE_MAX_MB=1024; 512MB: 280. Без паралельних job на 1 CPU."
   );
   emitLog(onLog, `Ключи: Claude (${describeClaudeKeyForBuildLog(claudeKey)})`);
   ensureNotStopped();
