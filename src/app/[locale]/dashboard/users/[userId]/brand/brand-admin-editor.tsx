@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 
 import { normalizePaletteCore } from "@/lib/generator-brand-palette";
 import { seoBtnPrimary, seoCard, seoInput } from "@/shared/components/seo/seo-ui";
+import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 
 import { normalizeLayoutVariant, type LayoutVariant } from "./brand-types";
 
@@ -92,13 +93,13 @@ export function BrandAdminEditor({
     }
   );
   const [themes, setThemes] = useState<ThemeRow[]>(initialThemes);
-  const [status, setStatus] = useState("");
+  const [toast, setToast] = useState({ message: "", lime: true });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const save = useCallback(async () => {
     setSaving(true);
-    setStatus("");
+    setToast({ message: "", lime: true });
     try {
       const res = await fetch(`/api/admin/generator-brand/${userId}`, {
         method: "PUT",
@@ -138,9 +139,9 @@ export function BrandAdminEditor({
           assets: data.brand.assets || [],
         });
       }
-      setStatus(t("saved"));
+      setToast({ message: t("saved"), lime: true });
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : t("saveError"));
+      setToast({ message: e instanceof Error ? e.message : t("saveError"), lime: true });
     } finally {
       setSaving(false);
     }
@@ -148,7 +149,7 @@ export function BrandAdminEditor({
 
   async function uploadFile(file: File, kind: string, slot?: string) {
     setUploading(true);
-    setStatus("");
+    setToast({ message: "", lime: true });
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -180,26 +181,27 @@ export function BrandAdminEditor({
           ],
         }));
       }
-      setStatus(t("uploaded"));
+      setToast({ message: t("uploaded"), lime: true });
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : t("uploadError"));
+      setToast({ message: e instanceof Error ? e.message : t("uploadError"), lime: true });
     } finally {
       setUploading(false);
     }
   }
 
   async function deleteAsset(assetId: string) {
-    setStatus("");
+    setToast({ message: "", lime: true });
     const res = await fetch(
       `/api/admin/generator-brand/${userId}?assetId=${encodeURIComponent(assetId)}`,
       { method: "DELETE", credentials: "include" }
     );
     const data = await res.json();
     if (!res.ok || !data.ok) {
-      setStatus(data.error || t("deleteError"));
+      setToast({ message: data.error || t("deleteError"), lime: true });
       return;
     }
     setBrand((b) => ({ ...b, assets: b.assets.filter((a) => a.id !== assetId) }));
+    setToast({ message: t("deleted"), lime: true });
   }
 
   function setPaletteField(key: keyof Palette, value: string) {
@@ -207,6 +209,14 @@ export function BrandAdminEditor({
   }
 
   return (
+    <>
+      <UnionStatusToast
+        message={toast.message}
+        variant={toast.lime ? "lime" : "muted"}
+        onDismiss={() => setToast({ message: "", lime: true })}
+        dismissLabel={t("toastDismiss")}
+      />
+
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <Link
@@ -532,8 +542,8 @@ export function BrandAdminEditor({
         <button type="button" className={seoBtnPrimary} disabled={saving} onClick={() => void save()}>
           {saving ? t("saving") : t("save")}
         </button>
-        {status ? <p className="text-sm text-union-muted">{status}</p> : null}
       </div>
     </div>
+    </>
   );
 }

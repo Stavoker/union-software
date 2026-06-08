@@ -511,6 +511,8 @@
     "save": "Save brand",
     "saving": "Saving…",
     "saved": "Saved.",
+    "deleted": "File deleted.",
+    "toastDismiss": "Dismiss",
     "saveError": "Could not save.",
     "uploadError": "Upload failed.",
     "uploaded": "File uploaded.",
