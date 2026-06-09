@@ -24,6 +24,7 @@ import {
   formatGenerationPromptProfileBlock,
 } from "@/src/lib/generation-prompt-profiles";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
+import { writeBuildProgress } from "@/lib/generator-engine/job-progress";
 import { normalizePalette } from "@/lib/generator-brand-palette";
 import { loadSourceArticlesContextForBuild } from "@/lib/generator-engine/source-articles-for-generation";
 import { normalizeGenerationMode } from "@/src/lib/generation-modes";
@@ -846,13 +847,13 @@ CTA на gateway: ${gatewayUrl}
 ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
 import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
-${needsHero ? `- HeroGradient: split-макет (текст + баннер сбоку, НЕ bg-cover на весь блок). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер баннеров справа.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один баннер справа.`} title, eyebrow, subtitle (ОДНА строка), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
+${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, subtitle (ОДНА строка), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
 ${needsSlotGrid ? `- Обязательно <SlotGrid title=\"Популярные слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsCarousel ? `- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsSlotShowcase ? `- Обязательно <SlotShowcase title=\"Топ слоты ${brandName}\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — 1 крупный + сетка превью.` : ""}
 ${needsSlotScroll ? `- Обязательно <SlotScrollRow title=\"Новинки слотов\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — горизонтальный scroll-snap.` : ""}
 ${needsSlotFeatured ? `- Обязательно <SlotFeaturedRow title=\"Рекомендуемые слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS.slice(0, 3)} gatewayHref={GATEWAY_URL} /> — 3 вертикальные карточки.` : ""}
-${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — слайдер баннеров, не дублируй SectionWithBg на той же странице.` : ""}
+${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — full-bleed слайдер: баннеры bg-cover на всю секцию, title+intro+CTA поверх (как HeroGradient); ЗАПРЕЩЕНЫ рамка, object-contain и текст над/под слайдером. Не дублируй SectionWithBg на той же странице.` : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 3 ? "три" : proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ … ]} /> — в КАЖДОМ ProseBlock 4–6 абзацев, каждый абзац 4–6 полных предложений, уникальный SEO-текст с ${brandName}.` : ""}
 ${needsFaqAccordion ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 3–5 предложений\" }, … ]} /> — 6–8 объектов; q и a непустые.` : ""}
 ${needsFaqTwoColumn ? `- Обязательно <FaqTwoColumn title=\"…\" intro=\"1–2 предложения\" items={[ { q, a }, … ]} /> — 6–8 пар; ответ каждый 3–5 предложений.` : ""}
@@ -1149,6 +1150,7 @@ export async function buildReactSite({
   const structureSeed = `${siteSeed}|fp|${structureSalt}`;
   const expectedFiles = pickExpectedPageFiles(structureSeed, pageCountInput);
   emitLog(onLog, `План страниц: ${expectedFiles.join(", ")}`);
+  await writeBuildProgress(outputDir, expectedFiles.length, 0);
 
   const themeBrandHint = String(brandKit?.brandName || brandKit?.publicBrandName || "")
     .trim()
@@ -1318,6 +1320,7 @@ export async function buildReactSite({
     brandName
   );
   emitLog(onLog, `Бренд: ${brandName}; страниц: ${pages.length}; мин. слов: ${minPageWords}`);
+  await writeBuildProgress(outputDir, pages.length, 0);
 
   const reactSrcDir = path.join(outputDir, REACT_SRC_DIR);
   emitLog(onLog, "Копирование React Lab template…");
@@ -1394,6 +1397,7 @@ export async function buildReactSite({
       "utf8"
     );
     generatedPages.push(page);
+    await writeBuildProgress(outputDir, pages.length, generatedPages.length);
   }
 
   await writeSiteRoutesModule(reactSrcDir, {

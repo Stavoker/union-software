@@ -2,6 +2,22 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getProjectsDir } from "@/src/lib/app-paths";
 
+export const AURORA_BUILD_PROGRESS = ".aurora_build_progress.json";
+
+export async function writeBuildProgress(outputDir, pagesTotal, pagesDone) {
+  const payload = {
+    pagesTotal,
+    pagesDone,
+    status:
+      pagesTotal > 0 && pagesDone >= pagesTotal ? "complete" : "building",
+  };
+  await fs.writeFile(
+    path.join(outputDir, AURORA_BUILD_PROGRESS),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    "utf8"
+  );
+}
+
 export function safeProjectDirSegment(name) {
   const value = String(name || "").trim();
   if (!value) return null;
@@ -18,7 +34,7 @@ export async function readBuildProgressFile(projectNameRaw) {
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
     return null;
   }
-  const progressPath = path.join(projectDir, ".aurora_build_progress.json");
+  const progressPath = path.join(projectDir, AURORA_BUILD_PROGRESS);
   try {
     const raw = await fs.readFile(progressPath, "utf8");
     const p = JSON.parse(raw);

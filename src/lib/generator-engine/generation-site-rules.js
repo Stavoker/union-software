@@ -77,7 +77,8 @@ ${s.header}
 - На главной: один слот-блок (slot-grid | game-carousel | slot-showcase | slot-scroll | slot-featured).
 
 БАННЕРЫ И SPLIT:
-- HeroGradient: split (текст + баннер сбоку); ЗАПРЕЩЕНО bg-cover на весь hero.
+- HeroGradient: full-bleed bg-cover фон + текст поверх; ЗАПРЕЩЁН split (текст + баннер сбоку).
+- PosterSlider: full-bleed bg-cover слайдер без рамки; title, intro и CTA поверх gradient overlay; ЗАПРЕЩЕНЫ object-contain и текст вне слайдера.
 - ContentSplit / SectionWithBg: один абзац рядом с картинкой, остальные ниже.
 
 ИКОНКИ ОПЛАТ:

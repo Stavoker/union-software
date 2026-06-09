@@ -152,6 +152,10 @@ import {
   etalonLabelForTemplateId,
   resolveEtalonTemplateForAlternatingIndex,
 } from "@/lib/generator-engine/etalon-alternation";
+import {
+  AURORA_BUILD_PROGRESS,
+  writeBuildProgress,
+} from "@/lib/generator-engine/job-progress";
 
 const PROJECTS_DIR = getProjectsDir();
 
@@ -591,22 +595,6 @@ function applyChromeAliasClasses(html, opts = {}) {
     out = out.replace(/<(header|footer|aside)\b/i, `<$1 class="${rootMarker}"`);
   }
   return out;
-}
-
-const AURORA_BUILD_PROGRESS = ".aurora_build_progress.json";
-
-async function writeBuildProgress(outputDir, pagesTotal, pagesDone) {
-  const payload = {
-    pagesTotal,
-    pagesDone,
-    status:
-      pagesTotal > 0 && pagesDone >= pagesTotal ? "complete" : "building",
-  };
-  await fs.writeFile(
-    path.join(outputDir, AURORA_BUILD_PROGRESS),
-    `${JSON.stringify(payload, null, 2)}\n`,
-    "utf8"
-  );
 }
 
 function canonicalMultipageFile(file) {

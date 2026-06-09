@@ -11,7 +11,7 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/HeroGradient",
     category: "hero",
     description:
-      "Hero split: текст слева, баннер справа (backgroundImage или images[] для слайдера). Без full-bleed фона.",
+      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх с gradient overlay. backgroundImage или images[] для слайдера фона.",
     props: ["title", "eyebrow", "subtitle", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
     tags: ["hero", "landing", "home"],
   },
@@ -76,7 +76,7 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/PosterSlider",
     category: "content",
     description:
-      "Слайдер банерів/постерів (BANNER_IMAGE_PATHS): autoplay, стрілки, dots, object-contain — зображення повністю в блоці.",
+      "Слайдер банерів full-bleed (BANNER_IMAGE_PATHS): bg-cover на всю секцію, title+intro+CTA поверх gradient overlay; autoplay, стрілки, dots; без рамки/object-contain.",
     props: ["title", "intro", "images", "gatewayHref", "ctaLabel"],
     tags: ["banner", "poster", "slider", "promo", "carousel"],
   },

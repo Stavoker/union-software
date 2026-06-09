@@ -8,7 +8,7 @@ type Props = {
   /** Одна короткая строка (теглайн). Длинные абзацы — только в ProseBlock ниже hero. */
   subtitle?: string;
   backgroundImage?: string;
-  /** 2+ баннера — слайдер справа вместо одного изображения */
+  /** 2+ баннера — слайдер фона вместо одного изображения */
   images?: string[];
   ctaLabel?: string;
   ctaHref?: string;
@@ -19,8 +19,102 @@ function resolveSrc(src: string) {
   return src.startsWith("./") ? src : `./img/${src}`;
 }
 
-function HeroImagePanel({ images }: { images: string[] }) {
+function HeroBackground({ images, index }: { images: string[]; index: number }) {
   const list = images.slice(0, 6);
+
+  if (!list.length) {
+    return (
+      <div
+        className="absolute inset-0 bg-gradient-to-br from-brand-block via-brand-card to-brand-bg"
+        aria-hidden
+      />
+    );
+  }
+
+  const active = list[index % list.length];
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.img
+        key={active}
+        src={resolveSrc(active)}
+        alt=""
+        width={1280}
+        height={720}
+        initial={{ opacity: 0, scale: 1.03 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+        transition={{ duration: 0.4 }}
+        className="absolute inset-0 h-full w-full object-cover object-center"
+      />
+    </AnimatePresence>
+  );
+}
+
+function HeroSliderControls({
+  count,
+  index,
+  onPrev,
+  onNext,
+  onSelect,
+}: {
+  count: number;
+  index: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onSelect: (i: number) => void;
+}) {
+  if (count < 2) return null;
+
+  return (
+    <div className="absolute bottom-4 left-0 right-0 z-20 flex items-center justify-center gap-3 px-4 md:bottom-6">
+      <button
+        type="button"
+        onClick={onPrev}
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/25 bg-black/40 text-white backdrop-blur-sm"
+        aria-label="Предыдущий баннер"
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="flex gap-1.5">
+        {Array.from({ length: count }, (_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onSelect(i)}
+            className={`h-1.5 rounded-full transition-all ${
+              i === index ? "w-5 bg-brand-accent" : "w-1.5 bg-white/40"
+            }`}
+            aria-label={`Баннер ${i + 1}`}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onNext}
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-white/25 bg-black/40 text-white backdrop-blur-sm"
+        aria-label="Следующий баннер"
+      >
+        <ChevronRight className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+export function HeroGradient({
+  title,
+  eyebrow,
+  subtitle,
+  backgroundImage,
+  images = [],
+  ctaLabel = "Регистрация",
+  ctaHref = "#",
+  reverse = false,
+}: Props) {
+  const sliderImages =
+    images.length > 0 ? images : backgroundImage ? [backgroundImage] : [];
+
+  const list = sliderImages.slice(0, 6);
   const [index, setIndex] = useState(0);
 
   const go = useCallback(
@@ -37,118 +131,54 @@ function HeroImagePanel({ images }: { images: string[] }) {
     return () => window.clearInterval(id);
   }, [go, list.length]);
 
-  if (!list.length) {
-    return <div className="aspect-[4/3] w-full rounded-2xl bg-brand-block" aria-hidden />;
-  }
-
-  const active = list[index];
-
-  return (
-    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-brand-accent/15 bg-brand-block">
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.img
-          key={active}
-          src={resolveSrc(active)}
-          alt=""
-          width={640}
-          height={480}
-          initial={{ opacity: 0, scale: 1.03 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.98 }}
-          transition={{ duration: 0.4 }}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </AnimatePresence>
-
-      {list.length > 1 ? (
-        <>
-          <button
-            type="button"
-            onClick={() => go(-1)}
-            className="absolute left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-brand-accent/25 bg-brand-bg/80 text-brand-text backdrop-blur-sm"
-            aria-label="Предыдущий баннер"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => go(1)}
-            className="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-brand-accent/25 bg-brand-bg/80 text-brand-text backdrop-blur-sm"
-            aria-label="Следующий баннер"
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </button>
-          <div className="absolute bottom-2 left-0 right-0 z-10 flex justify-center gap-1.5">
-            {list.map((src, i) => (
-              <button
-                key={src}
-                type="button"
-                onClick={() => setIndex(i)}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === index ? "w-5 bg-brand-accent" : "w-1.5 bg-brand-muted/50"
-                }`}
-                aria-label={`Баннер ${i + 1}`}
-              />
-            ))}
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-export function HeroGradient({
-  title,
-  eyebrow,
-  subtitle,
-  backgroundImage,
-  images = [],
-  ctaLabel = "Регистрация",
-  ctaHref = "#",
-  reverse = false,
-}: Props) {
-  const sliderImages =
-    images.length > 0
-      ? images
-      : backgroundImage
-        ? [backgroundImage]
-        : [];
-
-  const textCol = (
-    <div className="flex flex-col justify-center space-y-4 p-6 md:p-8 lg:p-10">
-      {eyebrow ? (
-        <span className="inline-block w-fit rounded-full border border-brand-accent/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-accent">
-          {eyebrow}
-        </span>
-      ) : null}
-      <h1 className="text-3xl font-bold tracking-tight text-brand-text md:text-4xl">{title}</h1>
-      {subtitle ? (
-        <p className="max-w-xl text-base leading-relaxed text-brand-muted md:text-lg">{subtitle}</p>
-      ) : null}
-      <a href={ctaHref} className="btn-brand mt-2 w-fit px-6 py-2.5 text-sm">
-        {ctaLabel}
-      </a>
-    </div>
-  );
-
-  const mediaCol = (
-    <div className="p-4 md:p-6 lg:p-8">
-      <HeroImagePanel images={sliderImages} />
-    </div>
-  );
+  const overlayClass = reverse
+    ? "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-l md:from-black/80 md:via-black/45 md:to-transparent"
+    : "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-r md:from-black/80 md:via-black/45 md:to-transparent";
 
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-3xl border border-brand-accent/15 bg-gradient-to-br from-brand-block via-brand-card to-brand-bg"
+      className="relative min-h-[360px] overflow-hidden rounded-3xl border border-brand-accent/15 md:min-h-[480px]"
     >
+      <HeroBackground images={sliderImages} index={index} />
+
+      <div className={`absolute inset-0 ${overlayClass}`} aria-hidden />
+
       <div
-        className={`grid items-stretch md:grid-cols-2 ${reverse ? "md:[&>*:first-child]:order-2" : ""}`}
+        className={`relative z-10 flex min-h-[360px] flex-col justify-end p-6 md:min-h-[480px] md:justify-center md:p-8 lg:p-10 ${
+          reverse ? "items-end text-right" : "items-start text-left"
+        }`}
       >
-        {textCol}
-        {mediaCol}
+        <div className={`max-w-xl space-y-4 ${reverse ? "md:ml-auto" : ""}`}>
+          {eyebrow ? (
+            <span
+              className={`inline-block w-fit rounded-full border border-brand-accent/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-accent ${
+                reverse ? "ml-auto" : ""
+              }`}
+            >
+              {eyebrow}
+            </span>
+          ) : null}
+          <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">{title}</h1>
+          {subtitle ? (
+            <p className="text-base leading-relaxed text-white/85 md:text-lg">{subtitle}</p>
+          ) : null}
+          <a href={ctaHref} className={`btn-brand mt-2 inline-flex px-6 py-2.5 text-sm ${reverse ? "ml-auto" : ""}`}>
+            {ctaLabel}
+          </a>
+        </div>
       </div>
+
+      {list.length > 1 ? (
+        <HeroSliderControls
+          count={list.length}
+          index={index}
+          onPrev={() => go(-1)}
+          onNext={() => go(1)}
+          onSelect={setIndex}
+        />
+      ) : null}
     </motion.section>
   );
 }
