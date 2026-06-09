@@ -28,12 +28,21 @@ export function FeatureCards({ title = "Преимущества", items = [] }:
           return (
             <motion.article
               key={item.title}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 12 }}
               whileInView={{ opacity: 1, y: 0 }}
+              whileHover={{ y: -5, scale: 1.02 }}
               viewport={{ once: true }}
+              transition={{ delay: i * 0.08, type: "spring", stiffness: 260, damping: 22 }}
               className="rounded-2xl border border-brand-accent/15 bg-brand-block p-5"
             >
-              <Icon className="h-6 w-6 text-brand-accent" aria-hidden />
+              <motion.span
+                initial={{ scale: 0.9, opacity: 0.8 }}
+                whileInView={{ scale: 1, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 + 0.1 }}
+              >
+                <Icon className="h-6 w-6 text-brand-accent" aria-hidden />
+              </motion.span>
               <h3 className="mt-3 font-semibold text-brand-text">{item.title}</h3>
               <p className="mt-2 text-sm text-brand-muted">{item.body}</p>
             </motion.article>

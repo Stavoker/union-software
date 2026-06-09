@@ -364,21 +364,22 @@ function navLabelForPage(page, index) {
 const HOME_COMPONENT_ORDER = [
   "hero-gradient",
   "prose-block",
+  "poster-slider",
   "game-carousel",
   "slot-grid",
   "prose-block",
+  "feature-cards",
   "section-with-bg",
   "prose-block",
-  "feature-cards",
   "faq-accordion",
   "cta-banner",
 ];
 
 const INNER_PAGE_TEMPLATES = [
-  ["section-with-bg", "prose-block", "content-split", "prose-block", "faq-accordion", "cta-banner"],
-  ["content-split", "prose-block", "feature-cards", "prose-block", "section-with-bg", "faq-accordion"],
-  ["prose-block", "stat-row", "content-split", "prose-block", "section-with-bg", "cta-banner", "faq-accordion"],
-  ["content-split", "section-with-bg", "prose-block", "feature-cards", "prose-block", "faq-accordion", "cta-banner"],
+  ["poster-slider", "prose-block", "content-split", "prose-block", "faq-accordion", "cta-banner"],
+  ["content-split", "prose-block", "poster-slider", "feature-cards", "prose-block", "faq-accordion"],
+  ["prose-block", "stat-row", "poster-slider", "content-split", "prose-block", "cta-banner", "faq-accordion"],
+  ["section-with-bg", "prose-block", "feature-cards", "poster-slider", "prose-block", "faq-accordion", "cta-banner"],
 ];
 
 function rotateComponentIds(ids, pageIndex) {
@@ -468,17 +469,18 @@ function normalizePagesPlan(rawPages, expectedFiles) {
         i === 0
           ? [
               "hero-gradient",
-              "game-carousel",
               "prose-block",
+              "poster-slider",
+              "game-carousel",
               "slot-grid",
               "prose-block",
+              "feature-cards",
               "section-with-bg",
               "prose-block",
-              "feature-cards",
               "faq-accordion",
               "cta-banner",
             ]
-          : ["content-split", "prose-block", "section-with-bg", "prose-block", "faq-accordion", "cta-banner"];
+          : ["poster-slider", "content-split", "prose-block", "feature-cards", "prose-block", "faq-accordion", "cta-banner"];
     }
     const role = String(p.role || (i === 0 ? "Главная" : "Раздел")).trim();
     return {
@@ -697,8 +699,8 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
 - title и description каждой страницы должны содержать «${themeBrandHint}» и SEO-ключи (если заданы выше), не общие фразы.
-- Для index.php: hero-gradient, минимум 3× prose-block, game-carousel, slot-grid, section-with-bg, feature-cards, faq-accordion (8–10 id).
-- Для внутренних: минимум 2× prose-block + content-split или section-with-bg.
+- Для index.php: hero-gradient, минимум 3× prose-block, poster-slider, game-carousel, slot-grid, feature-cards, section-with-bg, faq-accordion (9–11 id).
+- Для внутренних: минимум 2× prose-block + poster-slider или content-split или section-with-bg (разный порядок).
 - Для внутренних страниц: другой порядок componentIds на каждой странице (не копируй одинаковую последовательность).
 - Порядок секций на разных file должен заметно отличаться (меняй первый блок: content-split / section-with-bg / prose-block).
 - role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
@@ -791,6 +793,7 @@ function buildPageCodegenPrompt({
 }) {
   const needsSlotGrid = page.componentIds.includes("slot-grid");
   const needsCarousel = page.componentIds.includes("game-carousel");
+  const needsPoster = page.componentIds.includes("poster-slider");
   const needsProse = page.componentIds.includes("prose-block");
   const needsHero = page.componentIds.includes("hero-gradient");
   const needsFaq = page.componentIds.includes("faq-accordion");
@@ -800,7 +803,7 @@ function buildPageCodegenPrompt({
 Сгенерируй ОДИН React TSX-файл (functional component) для страницы.
 Экспорт: export function ${page.componentName}() { ... }
 Без default export. Без import React unless needed.
-Tailwind utility classes, framer-motion для 2–4 секций (motion.section).
+Tailwind utility classes, framer-motion для 4–6 секций (motion.section / whileInView / whileHover).
 Язык контента: русский. Бренд в текстах: **${brandName}** (везде вместо {brand} и общих фраз). Тема: ${theme}.
 Страница: file=${page.file}, route=${page.route}, title=${page.title}, description=${page.description}, angle=${page.contentAngle}.
 CTA на gateway: ${gatewayUrl}
@@ -812,11 +815,12 @@ import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_
 ${needsHero ? `- HeroGradient: backgroundImage={BANNER_IMAGE_PATHS[0]} (или [1]), title, eyebrow, subtitle (ОДНА короткая строка), ctaHref={GATEWAY_URL}. ЗАПРЕЩЕНО paragraphs в HeroGradient — длинный текст только в ProseBlock сразу после hero.` : ""}
 ${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
 ${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
+${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — слайдер баннеров, не дублируй SectionWithBg на той же странице.` : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 3 ? "три" : proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ … ]} /> — в КАЖДОМ ProseBlock 4–6 абзацев, каждый абзац 4–6 полных предложений, уникальный SEO-текст с ${brandName}.` : ""}
 ${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 2–4 предложения\" }, … ]} /> — РОВНО 6–8 объектов; у КАЖДОГО q минимум 8 символов и a минимум 40 символов; запрещены пустые строки, заглушки «вопрос»/«ответ»/«текст».` : ""}
 
 Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
-Баннеры (HeroGradient, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
+Баннеры (HeroGradient, PosterSlider, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
 Иконки оплат: ${paymentImages.join(", ") || "PAYMENT_IMAGE_PATHS из site-routes"} — только <PaymentMethodsRow title="…" intro="…" variant="inline" />; запрещены сырые <img> для pay-* и w-full на иконках оплат.
 Пути картинок: ./img/имя_файла — только из списка билда.
 ЗАПРЕЩЕНО: logo.png и favicon.png в HeroGradient, SectionWithBg, ContentSplit (только chrome/footer).

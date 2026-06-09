@@ -196,6 +196,9 @@
       "SOFTGEN_SOURCE_ARTICLES_LANGUAGE": "Язык статей в source_articles (напр. ru, uk, en; по умолч. ru)",
       "SOFTGEN_SOURCE_ARTICLES_COUNT": "Сколько примеров статей на страницу, 0–4 (по умолч. 2)",
       "SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT": "Сколько статей загружать в пул из Supabase (5–120; по умолч. 40)",
+      "SOFTGEN_REACT_BUILD": "React Lab (Vite SPA): npm build на Union. 1 = вкл., 0 = выкл. (пусто = вкл.)",
+      "SOFTGEN_REACT_NODE_MAX_MB": "Память Node для npm run build (МБ). 2GB RAM: 1024; 512MB: 280",
+      "SOFTGEN_REACT_MIN_PAGE_WORDS": "Минимум слов на страницу React Lab (по умолч. 2000; для PHP — SOFTGEN_MIN_PAGE_WORDS)",
       "SPACESHIP_API_KEY": "Ключ Spaceship API",
       "SPACESHIP_API_SECRET": "Секрет Spaceship API",
       "SPACESHIP_CONTACT_ID": "Contact ID для регистрации домена",
@@ -646,7 +649,7 @@
       },
       "settingsGenerator": {
         "title": "Settings — генератор",
-        "body": "Settings → Генератор: ключи Claude, модель, URL API, лимиты токенов (ANTHROPIC_MAX_TOKENS_*, AURORA_CLAUDE_SITE_OUTPUT_BUDGET), объём текста (SOFTGEN_MIN_* / SOFTGEN_MAX_PAGE_WORDS), AURORA_GENERATION_TEMPERATURE, SOFTGEN_QUALITY_REGEN_ENABLED, SOFTGEN_SOURCE_ARTICLES_* (референс-тексты из source_articles). Прочие SOFTGEN_* (эталоны) — в .env сервера."
+        "body": "Settings → Генератор: ключи Claude, модель, URL API, лимиты токенов (ANTHROPIC_MAX_TOKENS_*, AURORA_CLAUDE_SITE_OUTPUT_BUDGET), объём текста (SOFTGEN_MIN_* / SOFTGEN_MAX_PAGE_WORDS), AURORA_GENERATION_TEMPERATURE, SOFTGEN_QUALITY_REGEN_ENABLED, SOFTGEN_SOURCE_ARTICLES_* (референс-тексты из source_articles), SOFTGEN_REACT_BUILD / SOFTGEN_REACT_NODE_MAX_MB / SOFTGEN_REACT_MIN_PAGE_WORDS (React Lab). Прочие SOFTGEN_* (эталоны) — в .env сервера."
       },
       "settingsSpaceshipZomro": {
         "title": "Settings — Spaceship и Zomro",

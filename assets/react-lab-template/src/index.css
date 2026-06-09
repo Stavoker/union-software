@@ -35,9 +35,35 @@ a {
   text-decoration: none;
 }
 
-img {
+/* Логотип: глобальний img { height:auto } ламає h-8/h-10 utilities (unlayered vs @layer). */
+.site-brand-logo {
+  height: 2rem;
+  max-height: 2rem;
+  width: auto;
+  max-width: 8.75rem;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.site-brand-logo--footer {
+  height: 1.75rem;
+  max-height: 1.75rem;
+  max-width: 7rem;
+}
+
+/* Превью слотів/банерів: повне зображення в рамці без обрізання */
+.media-contain-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-brand-block);
+}
+
+.media-contain-frame img {
+  max-height: 100%;
   max-width: 100%;
-  height: auto;
+  object-fit: contain;
 }
 
 .btn-brand {

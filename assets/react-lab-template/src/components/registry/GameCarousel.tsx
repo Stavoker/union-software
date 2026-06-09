@@ -7,6 +7,10 @@ type Props = {
   gatewayHref: string;
 };
 
+function resolveSrc(src: string) {
+  return src.startsWith("./") ? src : `./img/${src}`;
+}
+
 export function GameCarousel({
   title = "Популярные игры",
   intro,
@@ -17,33 +21,42 @@ export function GameCarousel({
   const doubled = [...list, ...list];
 
   return (
-    <section id="lw-games" className="space-y-4 overflow-hidden">
+    <motion.section
+      id="lw-games"
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="space-y-4 overflow-hidden"
+    >
       <h2 className="text-2xl font-semibold text-brand-text">{title}</h2>
       {intro ? <p className="max-w-3xl text-sm leading-relaxed text-brand-muted md:text-base">{intro}</p> : null}
       <div className="relative -mx-2">
         <motion.div
           className="flex gap-3 px-2"
           animate={{ x: ["0%", "-50%"] }}
-          transition={{ duration: Math.max(18, list.length * 2), repeat: Infinity, ease: "linear" }}
+          transition={{ duration: Math.max(22, list.length * 2.2), repeat: Infinity, ease: "linear" }}
         >
           {doubled.map((src, i) => (
-            <a
+            <motion.a
               key={`${src}-${i}`}
               href={gatewayHref}
+              whileHover={{ y: -4, scale: 1.03 }}
               className="group shrink-0 overflow-hidden rounded-xl border border-brand-accent/15 bg-brand-card"
             >
-              <img
-                src={src.startsWith("./") ? src : `./img/${src}`}
-                alt=""
-                width={168}
-                height={112}
-                loading="lazy"
-                className="h-[112px] w-[168px] object-cover object-center transition-transform group-hover:scale-105"
-              />
-            </a>
+              <div className="media-contain-frame h-[120px] w-[176px] p-2">
+                <img
+                  src={resolveSrc(src)}
+                  alt=""
+                  width={168}
+                  height={112}
+                  loading="lazy"
+                  className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+            </motion.a>
           ))}
         </motion.div>
       </div>
-    </section>
+    </motion.section>
   );
 }

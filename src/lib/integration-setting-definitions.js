@@ -45,6 +45,9 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
   def("SOFTGEN_SOURCE_ARTICLES_LANGUAGE", "generator"),
   def("SOFTGEN_SOURCE_ARTICLES_COUNT", "generator"),
   def("SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT", "generator"),
+  bool("SOFTGEN_REACT_BUILD", "generator"),
+  def("SOFTGEN_REACT_NODE_MAX_MB", "generator"),
+  def("SOFTGEN_REACT_MIN_PAGE_WORDS", "generator"),
 
   def("SPACESHIP_API_KEY", "spaceship", { secret: true }),
   def("SPACESHIP_API_SECRET", "spaceship", { secret: true }),

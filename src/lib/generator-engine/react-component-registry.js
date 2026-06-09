@@ -39,9 +39,19 @@ export const REACT_COMPONENT_REGISTRY = [
     name: "GameCarousel",
     importFrom: "../components/registry/GameCarousel",
     category: "games",
-    description: "Анімований горизонтальний слайдер ігрових превью (framer-motion, autoplay).",
-    props: ["title", "images", "gatewayHref"],
+    description: "Анімований горизонтальний слайдер ігрових превью (object-contain, framer-motion).",
+    props: ["title", "intro", "images", "gatewayHref"],
     tags: ["games", "slots", "carousel", "slider"],
+  },
+  {
+    id: "poster-slider",
+    name: "PosterSlider",
+    importFrom: "../components/registry/PosterSlider",
+    category: "content",
+    description:
+      "Слайдер банерів/постерів (BANNER_IMAGE_PATHS): autoplay, стрілки, dots, object-contain — зображення повністю в блоці.",
+    props: ["title", "intro", "images", "gatewayHref", "ctaLabel"],
+    tags: ["banner", "poster", "slider", "promo", "carousel"],
   },
   {
     id: "feature-cards",

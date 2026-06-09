@@ -88,8 +88,10 @@ LAYOUT И КНОПКИ:
 - Имя бренда «${brand}» должно встречаться в тексте естественно (не реже чем в каждой 2–3 секции).
 
 СЛОТЫ И ВИЗУАЛ:
-- На главной: slot-grid и/или game-carousel в componentIds.
+- На главной: slot-grid и/или game-carousel в componentIds; poster-slider для баннеров (BANNER_IMAGE_PATHS).
+- SlotGrid, GameCarousel, PosterSlider, ContentSplit: изображения только object-contain внутри рамки — без object-cover и без чёрных полос.
 - На страницах games/slots: обязательно SlotGrid или GameCarousel.
 - SectionWithBg: развёрнутый body (4–6 предложений), не пустой блок.
+- Анимации: framer-motion whileInView / whileHover на 4–6 секциях; чередуй poster-slider, content-split, section-with-bg между страницами.
 `.trim();
 }

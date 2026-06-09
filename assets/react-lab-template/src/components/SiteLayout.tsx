@@ -70,7 +70,7 @@ function TopNavLayout({ children }: Props) {
       <header className="sticky top-0 z-50 border-b border-brand-accent/15 bg-brand-bg/95 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 lg:px-8">
           <NavLink to="/" className="flex shrink-0 items-center" aria-label={BRAND_NAME}>
-            <img src={LOGO_SRC} alt="" className="h-8 w-auto max-w-[140px]" width={140} height={32} />
+            <img src={LOGO_SRC} alt="" className="site-brand-logo" width={140} height={32} />
           </NavLink>
 
           <nav className="hidden flex-1 items-center justify-center gap-1 md:flex" aria-label="Основное меню">
@@ -127,7 +127,7 @@ function SidebarLayout({ children }: Props) {
         <aside className="fixed left-0 top-14 z-40 hidden h-[calc(100vh-3.5rem)] w-[4.5rem] shrink-0 flex-col border-r border-brand-accent/15 bg-brand-card lg:flex xl:w-[15.5rem]">
           <div className="hidden border-b border-brand-accent/15 px-4 py-4 xl:block">
             <NavLink to="/" className="block" aria-label={BRAND_NAME}>
-              <img src={LOGO_SRC} alt="" className="h-9 w-auto max-w-[168px]" width={168} height={36} />
+              <img src={LOGO_SRC} alt="" className="site-brand-logo" width={140} height={32} />
             </NavLink>
           </div>
 

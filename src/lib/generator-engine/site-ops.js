@@ -106,6 +106,13 @@ Options -Indexes
   await fs.writeFile(path.join(outputDir, ".htaccess"), content, "utf8");
 }
 
+/** Vite base "./" breaks deep routes: /bonus resolves ./assets → /bonus/assets (404). */
+export function normalizeSpaIndexHtmlAssetPaths(html) {
+  return String(html || "")
+    .replace(/(\s(?:src|href)=["'])\.\/assets\//gi, "$1/assets/")
+    .replace(/(\s(?:src|href)=["'])\.\/img\//gi, "$1/img/");
+}
+
 /** SPA fallback for React static deploy (standard mode). */
 export async function writeReactSpaHtaccess(outputDir, opts = {}) {
   const botGate = isBotGateGenerationMode(opts.generationMode);
@@ -179,6 +186,9 @@ export async function finalizeReactDeployableSite(opts) {
   } catch {
     throw new Error("React build: dist/index.html not found");
   }
+
+  indexHtml = normalizeSpaIndexHtmlAssetPaths(indexHtml);
+  await fs.writeFile(indexHtmlPath, indexHtml, "utf8");
 
   if (isBotGateGenerationMode(generationMode)) {
     const wrapped = wrapHtmlDocumentForBotGate(indexHtml);

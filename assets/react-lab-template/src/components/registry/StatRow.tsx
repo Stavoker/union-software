@@ -17,10 +17,18 @@ export function StatRow({ stats = [] }: Props) {
           initial={{ opacity: 0, y: 6 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ delay: i * 0.05 }}
+          whileHover={{ y: -3, scale: 1.02 }}
+          transition={{ delay: i * 0.07, type: "spring", stiffness: 280, damping: 20 }}
           className="rounded-xl border border-brand-accent/15 bg-brand-block px-4 py-5 text-center"
         >
-          <div className="text-2xl font-bold text-brand-accent">{s.value}</div>
+          <motion.div
+            initial={{ scale: 0.92 }}
+            whileInView={{ scale: 1 }}
+            viewport={{ once: true }}
+            className="text-2xl font-bold text-brand-accent"
+          >
+            {s.value}
+          </motion.div>
           <div className="mt-1 text-xs text-brand-muted">{s.label}</div>
         </motion.div>
       ))}

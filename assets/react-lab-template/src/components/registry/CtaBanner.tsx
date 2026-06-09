@@ -13,9 +13,11 @@ export function CtaBanner({ title, body, ctaLabel = "Начать", ctaHref = "#
     "Создайте аккаунт за пару минут, активируйте приветственный бонус и получите доступ к каталогу слотов, live-играм и быстрым выплатам.";
   return (
     <motion.aside
-      initial={{ opacity: 0 }}
-      whileInView={{ opacity: 1 }}
+      initial={{ opacity: 0, scale: 0.97, y: 10 }}
+      whileInView={{ opacity: 1, scale: 1, y: 0 }}
+      whileHover={{ scale: 1.01 }}
       viewport={{ once: true }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="rounded-2xl border border-brand-accent/20 bg-brand-block px-6 py-8 text-center"
     >
       <h2 className="text-xl font-bold text-brand-text md:text-2xl">{title}</h2>

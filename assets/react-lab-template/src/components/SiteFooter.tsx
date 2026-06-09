@@ -27,7 +27,13 @@ export function SiteFooter() {
           <div className="mx-auto max-w-6xl">
             <div className="grid gap-10 md:grid-cols-[1.1fr_1fr] lg:grid-cols-[1.2fr_1fr_1fr]">
               <div className="space-y-4">
-                <img src={LOGO_SRC} alt={BRAND_NAME} className="h-10 w-auto max-w-[168px]" width={168} height={40} />
+                <img
+                  src={LOGO_SRC}
+                  alt={BRAND_NAME}
+                  className="site-brand-logo site-brand-logo--footer"
+                  width={112}
+                  height={28}
+                />
                 <p className="max-w-md text-sm leading-relaxed text-brand-muted">
                   {BRAND_NAME} — игровая платформа с быстрыми выплатами, защищёнными транзакциями и круглосуточной
                   поддержкой.
