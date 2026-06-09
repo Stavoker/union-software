@@ -11,8 +11,8 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/HeroGradient",
     category: "hero",
     description:
-      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх с gradient overlay. backgroundImage или images[] для слайдера фона.",
-    props: ["title", "eyebrow", "subtitle", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
+      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх с gradient overlay. subtitle через «|» или highlights[] — ротация строк; лёгкие анимации.",
+    props: ["title", "eyebrow", "subtitle", "highlights", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
     tags: ["hero", "landing", "home"],
   },
   {
@@ -124,8 +124,9 @@ export const REACT_COMPONENT_REGISTRY = [
     name: "CtaBanner",
     importFrom: "../components/registry/CtaBanner",
     category: "cta",
-    description: "Повноширинний CTA-блок з gateway-посиланням.",
-    props: ["title", "body", "ctaLabel", "ctaHref"],
+    description:
+      "CTA full-bleed: затемнений баннер на фоні (backgroundImage), title+body+CTA поверх gradient overlay.",
+    props: ["title", "body", "ctaLabel", "ctaHref", "backgroundImage"],
     tags: ["cta", "conversion", "banner"],
   },
   {

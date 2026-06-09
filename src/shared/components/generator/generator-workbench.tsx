@@ -58,7 +58,10 @@ export type GeneratorPageCount = 1 | 2 | 3 | 4;
 
 export type GeneratorGenerationMode = "standard" | "bot_gate";
 
-export type GeneratorStack = "php" | "react";
+export type GeneratorStack = "react";
+
+/** PHP stack hidden on UI; all builds use React Lab. */
+const GENERATION_STACK: GeneratorStack = "react";
 
 export type GeneratorThemePreset = {
   value: string;
@@ -193,7 +196,6 @@ export function GeneratorWorkbench({
   const [theme, setTheme] = useState(initialTheme);
   const [pageCount, setPageCount] = useState<GeneratorPageCount>(4);
   const [generationMode, setGenerationMode] = useState<GeneratorGenerationMode>("standard");
-  const [stack, setStack] = useState<GeneratorStack>("php");
   const [siteCount, setSiteCount] = useState(1);
   const [siteUrl, setSiteUrl] = useState("");
   const [hosts, setHosts] = useState<HostOption[]>([]);
@@ -411,7 +413,7 @@ export function GeneratorWorkbench({
           theme,
           pageCount,
           generationMode,
-          stack,
+          stack: GENERATION_STACK,
           siteUrl: siteUrl.trim() || undefined,
           siteCount,
           hostId: selectedHostId.trim() || undefined,
@@ -688,63 +690,6 @@ export function GeneratorWorkbench({
                 ))}
               </select>
             </label>
-
-            <fieldset className="block space-y-2 md:col-span-2">
-              <legend className="text-xs font-medium text-union-muted">{t("generationStack")}</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {(
-                  [
-                    {
-                      id: "php" as const,
-                      title: t("generationStackPhpTitle"),
-                      desc: t("generationStackPhpDesc"),
-                    },
-                    {
-                      id: "react" as const,
-                      title: t("generationStackReactTitle"),
-                      desc: t("generationStackReactDesc"),
-                    },
-                  ] as const
-                ).map((item) => {
-                  const selected = stack === item.id;
-                  return (
-                    <label
-                      key={item.id}
-                      className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition-colors ${
-                        selected
-                          ? "border-[#d1fe17]/55 bg-[#d1fe17]/[0.07] ring-1 ring-[#d1fe17]/35"
-                          : "border-union-border bg-union-bg/80 hover:border-white/20"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="generationStack"
-                        value={item.id}
-                        checked={selected}
-                        onChange={() => setStack(item.id)}
-                        className="sr-only"
-                      />
-                      <span
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                          selected
-                            ? "border-[#d1fe17] bg-[#d1fe17]"
-                            : "border-union-border bg-transparent"
-                        }`}
-                        aria-hidden
-                      >
-                        {selected ? <span className="h-2 w-2 rounded-full bg-black" /> : null}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-union-text">{item.title}</span>
-                        <span className="mt-0.5 block text-xs leading-relaxed text-union-muted">
-                          {item.desc}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
 
             <fieldset className="block space-y-2 md:col-span-2">
               <legend className="text-xs font-medium text-union-muted">{t("generationMode")}</legend>

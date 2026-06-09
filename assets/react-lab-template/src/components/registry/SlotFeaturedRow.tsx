@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { SlotHoverOverlay } from "./SlotHoverOverlay";
 import { resolveSlotImages, resolveSlotSrc } from "./slot-utils";
 
 type Props = {
@@ -48,9 +49,7 @@ export function SlotFeaturedRow({
               loading="lazy"
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand-bg/90 via-brand-bg/40 to-transparent p-4 text-sm font-semibold text-brand-text">
-              Слот #{i + 1}
-            </span>
+            <SlotHoverOverlay />
           </motion.a>
         ))}
       </div>

@@ -198,9 +198,46 @@ function SidebarLayout({
 }: Props & { side?: "left" | "right"; style?: SidebarChromeStyle }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isRight = side === "right";
-  const mainPad = isRight
-    ? `${style.mainPadClass.replace(/pl-/g, "pr-")} ${style.mainPadXlClass.replace(/pl-/g, "pr-")}`
-    : `${style.mainPadClass} ${style.mainPadXlClass}`;
+
+  const desktopAside = (
+    <aside
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col lg:flex ${style.widthCompactClass} ${style.widthExpandedClass} ${style.asideBg} ${
+        isRight ? `border-l ${style.asideBorder}` : `border-r ${style.asideBorder}`
+      }`}
+    >
+      <div className={`border-b border-brand-accent/15 px-4 ${style.logoPadding}`}>
+        <NavLink to="/" className="block" aria-label={BRAND_NAME}>
+          <img src={LOGO_SRC} alt="" className="site-brand-logo mx-auto xl:mx-0" width={140} height={32} />
+        </NavLink>
+      </div>
+
+      <nav
+        className={`flex flex-1 flex-col overflow-y-auto p-2 xl:p-3 ${style.navGap}`}
+        aria-label="Боковое меню"
+      >
+        <SidebarNavLinks style={style} />
+      </nav>
+
+      <div className="space-y-2 border-t border-brand-accent/15 p-2 xl:p-3">
+        <a
+          href={GATEWAY_URL}
+          className={`flex h-10 w-full items-center justify-center border border-brand-accent/25 text-brand-text hover:bg-brand-block xl:justify-start xl:gap-2 xl:px-3 ${style.ctaRadius}`}
+          title="Вход"
+        >
+          <LogIn className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="hidden text-sm xl:inline">Вход</span>
+        </a>
+        <a
+          href={GATEWAY_URL}
+          className={`btn-brand h-10 w-full gap-2 px-3 text-sm xl:justify-start ${style.ctaRadius}`}
+          title="Регистрация"
+        >
+          <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="hidden text-sm xl:inline">Регистрация</span>
+        </a>
+      </div>
+    </aside>
+  );
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
@@ -250,46 +287,10 @@ function SidebarLayout({
         ) : null}
       </AnimatePresence>
 
-      <div className="flex">
-        <aside
-          className={`fixed top-0 z-40 hidden h-screen shrink-0 flex-col lg:flex ${style.widthCompactClass} ${style.widthExpandedClass} ${style.asideBg} ${
-            isRight ? `right-0 border-l ${style.asideBorder}` : `left-0 border-r ${style.asideBorder}`
-          }`}
-        >
-          <div className={`border-b border-brand-accent/15 px-4 ${style.logoPadding}`}>
-            <NavLink to="/" className="block" aria-label={BRAND_NAME}>
-              <img src={LOGO_SRC} alt="" className="site-brand-logo mx-auto xl:mx-0" width={140} height={32} />
-            </NavLink>
-          </div>
+      <div className={`flex min-h-screen ${isRight ? "flex-row-reverse" : ""}`}>
+        {desktopAside}
 
-          <nav
-            className={`flex flex-1 flex-col overflow-y-auto p-2 xl:p-3 ${style.navGap}`}
-            aria-label="Боковое меню"
-          >
-            <SidebarNavLinks style={style} />
-          </nav>
-
-          <div className="space-y-2 border-t border-brand-accent/15 p-2 xl:p-3">
-            <a
-              href={GATEWAY_URL}
-              className={`flex h-10 w-full items-center justify-center border border-brand-accent/25 text-brand-text hover:bg-brand-block xl:justify-start xl:gap-2 xl:px-3 ${style.ctaRadius}`}
-              title="Вход"
-            >
-              <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="hidden text-sm xl:inline">Вход</span>
-            </a>
-            <a
-              href={GATEWAY_URL}
-              className={`btn-brand h-10 w-full gap-2 px-3 text-sm xl:justify-start ${style.ctaRadius}`}
-              title="Регистрация"
-            >
-              <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="hidden text-sm xl:inline">Регистрация</span>
-            </a>
-          </div>
-        </aside>
-
-        <div className={`min-w-0 flex-1 ${mainPad}`}>
+        <div className="min-w-0 flex-1">
           <motion.main
             key={typeof window !== "undefined" ? window.location.pathname : "main"}
             initial={{ opacity: 0, y: 8 }}

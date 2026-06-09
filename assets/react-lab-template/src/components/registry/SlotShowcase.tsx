@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { SlotHoverOverlay } from "./SlotHoverOverlay";
 import { resolveSlotImages, resolveSlotSrc } from "./slot-utils";
 
 type Props = {
@@ -44,9 +45,7 @@ export function SlotShowcase({
               loading="lazy"
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-brand-bg/80 to-transparent p-4 text-sm font-medium text-brand-text">
-              Играть сейчас
-            </span>
+            <SlotHoverOverlay />
           </motion.a>
         ) : null}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2">
@@ -65,6 +64,7 @@ export function SlotShowcase({
                 loading="lazy"
                 className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
+              <SlotHoverOverlay />
             </motion.a>
           ))}
         </div>

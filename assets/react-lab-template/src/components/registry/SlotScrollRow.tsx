@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
+import { SlotHoverOverlay } from "./SlotHoverOverlay";
 import { resolveSlotImages, resolveSlotSrc } from "./slot-utils";
 
 type Props = {
@@ -56,6 +57,7 @@ export function SlotScrollRow({
               loading="lazy"
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
+            <SlotHoverOverlay />
           </motion.a>
         ))}
       </div>

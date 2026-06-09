@@ -77,14 +77,19 @@ ${s.header}
 - На главной: один слот-блок (slot-grid | game-carousel | slot-showcase | slot-scroll | slot-featured).
 
 БАННЕРЫ И SPLIT:
-- HeroGradient: full-bleed bg-cover фон + текст поверх; ЗАПРЕЩЁН split (текст + баннер сбоку).
+- HeroGradient: full-bleed bg-cover фон + текст поверх; subtitle через «|» или highlights[] для ротации; лёгкие анимации допустимы; ЗАПРЕЩЁН split (текст + баннер сбоку).
 - PosterSlider: full-bleed bg-cover слайдер без рамки; title, intro и CTA поверх gradient overlay; ЗАПРЕЩЕНЫ object-contain и текст вне слайдера.
+- CtaBanner: backgroundImage + затемнённый overlay; текст и CTA поверх баннера.
 - ContentSplit / SectionWithBg: один абзац рядом с картинкой, остальные ниже.
+
+СЛОТЫ:
+- На hover карточки слота: затемнение + кнопка «Играть» (btn-brand) — встроено в SlotGrid/GameCarousel и др.
 
 ИКОНКИ ОПЛАТ:
 - PaymentMethodsRow variant="inline"; запрещены сырые <img src="./img/pay-*">.
 
 LAYOUT:
+- Sidebar — часть flex-лейаута (sticky), не fixed поверх контента.
 - Один chrome (SiteLayout); не дублируй header/sidebar в TSX страниц.
 - HOME_TEMPLATE фиксирован сборщиком — порядок секций не переставляй.
 - CTA: className="btn-brand".

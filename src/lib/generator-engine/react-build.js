@@ -57,9 +57,13 @@ import {
   FAQ_COMPONENT_IDS,
   SLOT_COMPONENT_IDS,
   pickInnerPageTemplate,
-  buildInnerTemplatesPlan,
-  formatInnerTemplatesPlanForArchitect,
 } from "@/lib/generator-engine/react-page-templates";
+import {
+  pickHomePageFramework,
+  buildPageFrameworksPlan,
+  formatPageFrameworksPlanForArchitect,
+  innerFrameworksMapFromPlan,
+} from "@/lib/generator-engine/react-page-frameworks.js";
 import {
   buildUiUxProMaxSystemBlock,
   buildUiUxProMaxUserHint,
@@ -384,14 +388,6 @@ function navLabelForPage(page, index) {
   return map[slug] || `Страница ${index + 1}`;
 }
 
-/** Home skeletons — one per build (seed); quality floor: hero, 3× prose, FAQ, CTA, games block. */
-function pickHomePageTemplate(seed, batchIndex = 0) {
-  const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
-  const idx =
-    (siteHash32(`${seed}|home_tpl`) + bi) % HOME_PAGE_TEMPLATES.length;
-  return HOME_PAGE_TEMPLATES[idx];
-}
-
 function rotateComponentIds(ids, pageIndex) {
   const arr = [...ids];
   if (arr.length < 2) return arr;
@@ -453,8 +449,18 @@ function finalizeComponentIds(ids) {
   );
 }
 
-function ensureRichPageComponents(pages, { homeTemplate, structureSeed, batchIndex = 0 }) {
+function resolveInnerFrameworkOrder(file, { structureSeed, batchIndex = 0, innerFrameworksByFile }) {
+  const key = String(file || "").trim().toLowerCase();
+  const fromPlan = innerFrameworksByFile?.get(key);
+  if (Array.isArray(fromPlan) && fromPlan.length) return fromPlan;
   const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
+  return pickInnerPageTemplate(file, structureSeed, bi).order;
+}
+
+function ensureRichPageComponents(
+  pages,
+  { homeTemplate, structureSeed, batchIndex = 0, innerFrameworksByFile }
+) {
   const homeOrder = homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order;
   return pages.map((page, i) => {
     let ids = [...page.componentIds];
@@ -465,20 +471,27 @@ function ensureRichPageComponents(pages, { homeTemplate, structureSeed, batchInd
       ids = mergeComponentOrder(homeOrder, ids);
       ids = ensureMinProseBlocks(ids, 3);
     } else {
-      const innerTpl = pickInnerPageTemplate(page.file, structureSeed, bi);
-      const tpl = innerTpl.order;
+      const tpl = resolveInnerFrameworkOrder(page.file, {
+        structureSeed,
+        batchIndex,
+        innerFrameworksByFile,
+      });
       for (const id of tpl) {
         if (!ids.includes(id)) ids.push(id);
       }
       ids = mergeComponentOrder(tpl, ids);
       ids = ensureMinProseBlocks(ids, 2);
-      ids = rotateComponentIds(ids, i + siteHash32(`${innerTpl.id}|${page.file}`));
+      ids = rotateComponentIds(ids, i + siteHash32(`${page.file}|${structureSeed}`));
     }
     return { ...page, componentIds: finalizeComponentIds(ids) };
   });
 }
 
-function normalizePagesPlan(rawPages, expectedFiles, { homeTemplate, structureSeed, batchIndex = 0 } = {}) {
+function normalizePagesPlan(
+  rawPages,
+  expectedFiles,
+  { homeTemplate, structureSeed, batchIndex = 0, innerFrameworksByFile } = {}
+) {
   const byFile = new Map();
   for (const p of Array.isArray(rawPages) ? rawPages : []) {
     const file = String(p?.file || "").trim().toLowerCase();
@@ -492,9 +505,12 @@ function normalizePagesPlan(rawPages, expectedFiles, { homeTemplate, structureSe
       if (i === 0) {
         componentIds = [...(homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order)];
       } else {
-        const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
         componentIds = [
-          ...pickInnerPageTemplate(file, structureSeed || "inner", bi).order,
+          ...resolveInnerFrameworkOrder(file, {
+            structureSeed: structureSeed || "inner",
+            batchIndex,
+            innerFrameworksByFile,
+          }),
         ];
       }
     }
@@ -511,7 +527,12 @@ function normalizePagesPlan(rawPages, expectedFiles, { homeTemplate, structureSe
       navLabel: navLabelForPage({ ...p, file, role }, i),
     };
   });
-  return ensureRichPageComponents(pages, { homeTemplate, structureSeed, batchIndex });
+  return ensureRichPageComponents(pages, {
+    homeTemplate,
+    structureSeed,
+    batchIndex,
+    innerFrameworksByFile,
+  });
 }
 
 const MIN_REACT_CSS_BYTES = 15000;
@@ -719,7 +740,7 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
 - title и description каждой страницы должны содержать «${themeBrandHint}» и SEO-ключи (если заданы выше), не общие фразы.
 - HOME_TEMPLATE (фиксирован сборщиком): «${homeTemplate?.id || "classic"}» — componentIds для index.php: ${homeOrder.join(" → ")}. Не урезай список; порядок сохраняй.
-${innerTemplatesBlock ? `${innerTemplatesBlock}\n` : ""}- Для каждой внутренней страницы componentIds = порядок из INNER_PAGE_TEMPLATES выше (не переставляй и не заменяй id).
+${innerTemplatesBlock ? `${innerTemplatesBlock}\n` : ""}- Для каждой внутренней страницы componentIds = порядок из PAGE_FRAMEWORKS выше (не переставляй и не заменяй id).
 - Минимум 2× prose-block + один FAQ (${FAQ_COMPONENT_IDS.join(" | ")}) + cta-banner на внутренних (уже в шаблонах).
 - Слоты: только на games.php / slots.php — один блок из ${SLOT_COMPONENT_IDS.join(" | ")} (уже в шаблоне).
 - payment-methods — только на payments.php (если в шаблоне).
@@ -826,6 +847,7 @@ function buildPageCodegenPrompt({
   const needsSlotScroll = page.componentIds.includes("slot-scroll");
   const needsSlotFeatured = page.componentIds.includes("slot-featured");
   const needsPoster = page.componentIds.includes("poster-slider");
+  const needsCtaBanner = page.componentIds.includes("cta-banner");
   const needsProse = page.componentIds.includes("prose-block");
   const needsHero = page.componentIds.includes("hero-gradient");
   const needsFaqAccordion = page.componentIds.includes("faq-accordion");
@@ -847,7 +869,8 @@ CTA на gateway: ${gatewayUrl}
 ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
 import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
-${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, subtitle (ОДНА строка), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
+${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, subtitle (2–3 короткие фразы через «|» для ротации, напр. «Бонус 350%|Регистрация за 30 сек|Каталог слотов»), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
+${needsCtaBanner ? `- Обязательно <CtaBanner title=\"…\" body=\"2–3 предложения\" backgroundImage={BANNER_IMAGE_PATHS[${Math.min(1, Math.max(0, bannerImages.length - 1))}]} ctaHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — затемнённый баннер на фоне, текст и CTA поверх; не plain bg-brand-block.` : ""}
 ${needsSlotGrid ? `- Обязательно <SlotGrid title=\"Популярные слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsCarousel ? `- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsSlotShowcase ? `- Обязательно <SlotShowcase title=\"Топ слоты ${brandName}\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — 1 крупный + сетка превью.` : ""}
@@ -1183,12 +1206,19 @@ export async function buildReactSite({
   const seoKeywords = parseSeoKeywords(brandKit?.seoKeywords);
   const batchIndex = Math.max(0, Math.trunc(Number(batchIndexInput) || 0));
   const batchSize = Math.max(1, Math.trunc(Number(batchSizeInput) || 1));
-  const homeTemplate = pickHomePageTemplate(siteSeed, batchIndex);
   const siteLayout = resolveSiteLayoutVariant(brandKit, `${safeName}|${siteSeed}`);
   const chromeKind = String(siteLayout).startsWith("sidebar") ? "sidebar" : "header";
-  let chromeTemplate = null;
+  let supabase = null;
   try {
-    const supabase = getSupabaseServerClient();
+    supabase = getSupabaseServerClient();
+  } catch (e) {
+    emitLog(onLog, `Supabase: ${String(e?.message || e).slice(0, 100)}`);
+  }
+  let chromeTemplate = null;
+  let homeTemplate = { id: "classic", order: [...HOME_PAGE_TEMPLATES[0].order] };
+  let innerTemplatesPlan = [];
+  let innerFrameworksByFile = new Map();
+  try {
     chromeTemplate = await pickChromeLayoutTemplate(supabase, {
       userId: String(userIdInput || "").trim(),
       chromeKind,
@@ -1203,6 +1233,26 @@ export async function buildReactSite({
       "@/lib/generator-engine/react-chrome-templates-catalog.js"
     );
     chromeTemplate = fallbackChromeTemplate(chromeKind, `${siteSeed}|chrome`);
+  }
+  try {
+    homeTemplate = await pickHomePageFramework(supabase, {
+      layoutKind: chromeKind,
+      seed: siteSeed,
+      batchIndex,
+      batchSize,
+      onLog,
+    });
+    innerTemplatesPlan = await buildPageFrameworksPlan(supabase, {
+      expectedFiles,
+      layoutKind: chromeKind,
+      structureSeed,
+      batchIndex,
+      batchSize,
+      onLog,
+    });
+    innerFrameworksByFile = innerFrameworksMapFromPlan(innerTemplatesPlan);
+  } catch (e) {
+    emitLog(onLog, `Page frameworks: ${String(e?.message || e).slice(0, 100)}`);
   }
   const seoPromptBlock = buildSeoPromptBlock({
     themeBrandHint,
@@ -1270,16 +1320,11 @@ export async function buildReactSite({
     emitLog(onLog, `source_articles (architect): ${String(e?.message || e).slice(0, 120)}`);
   }
 
-  const innerTemplatesPlan = buildInnerTemplatesPlan(
-    expectedFiles,
-    structureSeed,
-    batchIndex
-  );
-  const innerTemplatesBlock = formatInnerTemplatesPlanForArchitect(innerTemplatesPlan);
+  const innerTemplatesBlock = formatPageFrameworksPlanForArchitect(innerTemplatesPlan);
   if (innerTemplatesPlan.length) {
     emitLog(
       onLog,
-      `Inner templates: ${innerTemplatesPlan.map((r) => `${r.file}=${r.templateId}`).join(", ")}`
+      `Page frameworks: ${innerTemplatesPlan.map((r) => `${r.file}=${r.templateId}`).join(", ")}`
     );
   }
 
@@ -1316,6 +1361,7 @@ export async function buildReactSite({
       homeTemplate,
       structureSeed,
       batchIndex,
+      innerFrameworksByFile,
     }),
     brandName
   );

@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { SlotHoverOverlay } from "./SlotHoverOverlay";
 import { resolveSlotImages, resolveSlotSrc } from "./slot-utils";
 
 type Props = {
@@ -39,10 +40,7 @@ export function SlotGrid({ title = "Популярные слоты", intro, ima
               loading="lazy"
               className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-            <span
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-brand-bg/50 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-              aria-hidden
-            />
+            <SlotHoverOverlay />
           </motion.a>
         ))}
       </div>

@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type Props = {
   title: string;
   eyebrow?: string;
-  /** Одна короткая строка (теглайн). Длинные абзацы — только в ProseBlock ниже hero. */
+  /** Короткий теглайн. Несколько фраз через «|» — плавная ротация. */
   subtitle?: string;
+  /** Альтернатива subtitle: массив ротируемых строк. */
+  highlights?: string[];
   backgroundImage?: string;
   /** 2+ баннера — слайдер фона вместо одного изображения */
   images?: string[];
@@ -17,6 +19,22 @@ type Props = {
 
 function resolveSrc(src: string) {
   return src.startsWith("./") ? src : `./img/${src}`;
+}
+
+function parseRotatingLines(subtitle?: string, highlights?: string[]) {
+  if (Array.isArray(highlights) && highlights.length) {
+    return highlights.map((s) => String(s).trim()).filter(Boolean).slice(0, 6);
+  }
+  const raw = String(subtitle || "").trim();
+  if (!raw) return [];
+  if (raw.includes("|")) {
+    return raw
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+  }
+  return [raw];
 }
 
 function HeroBackground({ images, index }: { images: string[]; index: number }) {
@@ -41,10 +59,10 @@ function HeroBackground({ images, index }: { images: string[]; index: number }) 
         alt=""
         width={1280}
         height={720}
-        initial={{ opacity: 0, scale: 1.03 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.98 }}
-        transition={{ duration: 0.4 }}
+        initial={{ opacity: 0, scale: 1.04 }}
+        animate={{ opacity: 1, scale: 1.06 }}
+        exit={{ opacity: 0, scale: 1.02 }}
+        transition={{ opacity: { duration: 0.45 }, scale: { duration: 12, ease: "linear" } }}
         className="absolute inset-0 h-full w-full object-cover object-center"
       />
     </AnimatePresence>
@@ -105,6 +123,7 @@ export function HeroGradient({
   title,
   eyebrow,
   subtitle,
+  highlights,
   backgroundImage,
   images = [],
   ctaLabel = "Регистрация",
@@ -115,7 +134,12 @@ export function HeroGradient({
     images.length > 0 ? images : backgroundImage ? [backgroundImage] : [];
 
   const list = sliderImages.slice(0, 6);
+  const rotatingLines = useMemo(
+    () => parseRotatingLines(subtitle, highlights),
+    [subtitle, highlights]
+  );
   const [index, setIndex] = useState(0);
+  const [lineIndex, setLineIndex] = useState(0);
 
   const go = useCallback(
     (delta: number) => {
@@ -131,9 +155,19 @@ export function HeroGradient({
     return () => window.clearInterval(id);
   }, [go, list.length]);
 
+  useEffect(() => {
+    if (rotatingLines.length < 2) return;
+    const id = window.setInterval(() => {
+      setLineIndex((i) => (i + 1) % rotatingLines.length);
+    }, 4200);
+    return () => window.clearInterval(id);
+  }, [rotatingLines.length]);
+
   const overlayClass = reverse
     ? "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-l md:from-black/80 md:via-black/45 md:to-transparent"
     : "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-r md:from-black/80 md:via-black/45 md:to-transparent";
+
+  const activeLine = rotatingLines[lineIndex % rotatingLines.length] || "";
 
   return (
     <motion.section
@@ -152,21 +186,48 @@ export function HeroGradient({
       >
         <div className={`max-w-xl space-y-4 ${reverse ? "md:ml-auto" : ""}`}>
           {eyebrow ? (
-            <span
+            <motion.span
+              animate={{ opacity: [0.82, 1, 0.82] }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
               className={`inline-block w-fit rounded-full border border-brand-accent/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-accent ${
                 reverse ? "ml-auto" : ""
               }`}
             >
               {eyebrow}
-            </span>
+            </motion.span>
           ) : null}
-          <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">{title}</h1>
-          {subtitle ? (
-            <p className="text-base leading-relaxed text-white/85 md:text-lg">{subtitle}</p>
+          <motion.h1
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.05 }}
+            className="text-3xl font-bold tracking-tight text-white md:text-4xl"
+          >
+            {title}
+          </motion.h1>
+          {activeLine ? (
+            <div className="min-h-[3.5rem] md:min-h-[4rem]">
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={activeLine}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.35 }}
+                  className="text-base leading-relaxed text-white/85 md:text-lg"
+                >
+                  {activeLine}
+                </motion.p>
+              </AnimatePresence>
+            </div>
           ) : null}
-          <a href={ctaHref} className={`btn-brand mt-2 inline-flex px-6 py-2.5 text-sm ${reverse ? "ml-auto" : ""}`}>
+          <motion.a
+            href={ctaHref}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.98 }}
+            className={`btn-brand mt-2 inline-flex px-6 py-2.5 text-sm ${reverse ? "ml-auto" : ""}`}
+          >
             {ctaLabel}
-          </a>
+          </motion.a>
         </div>
       </div>
 
