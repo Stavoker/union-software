@@ -1235,6 +1235,7 @@ export async function buildReactSite({
   }
 
   const siteRules = buildSiteGenerationRulesBlock({
+    stack: "react",
     themeBrandHint,
     gameSlotPaths: gameImagePaths,
     bannerImagePaths,

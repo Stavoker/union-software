@@ -199,6 +199,8 @@
       "SOFTGEN_REACT_BUILD": "React Lab (Vite SPA): npm build на Union. 1 = вкл., 0 = выкл. (пусто = вкл.)",
       "SOFTGEN_REACT_NODE_MAX_MB": "Память Node для npm run build (МБ). 2GB RAM: 1024; 512MB: 280",
       "SOFTGEN_REACT_MIN_PAGE_WORDS": "Минимум слов на страницу React Lab (по умолч. 2000; для PHP — SOFTGEN_MIN_PAGE_WORDS)",
+      "SOFTGEN_PHP_CONVERSION_TEMPLATES": "PHP: фиксированные шаблоны секций (как React). 1 = вкл., 0 = выкл. (пусто = вкл.)",
+      "SOFTGEN_PHP_ETALON_CLONE": "PHP: клон HTML из u-bet162/u-spot064. 1 = старый режим; 0 = AI-генерация (пусто = выкл.)",
       "SPACESHIP_API_KEY": "Ключ Spaceship API",
       "SPACESHIP_API_SECRET": "Секрет Spaceship API",
       "SPACESHIP_CONTACT_ID": "Contact ID для регистрации домена",

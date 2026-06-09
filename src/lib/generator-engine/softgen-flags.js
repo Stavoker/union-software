@@ -43,3 +43,15 @@ export function usesPremiumIgamingLayout() {
 export function usesDualSiteTemplates() {
   return envOn("SOFTGEN_DUAL_SITE_TEMPLATES", "0");
 }
+
+/** PHP: фіксовані conversion-шаблони секцій (як React). Порожньо = увімкнено. */
+export function usesPhpConversionTemplates() {
+  return envOn("SOFTGEN_PHP_CONVERSION_TEMPLATES", "1");
+}
+
+/**
+ * PHP: клон DOM з u-bet162 / u-spot064. За замовчуванням вимкнено — HTML через Claude + conversion templates.
+ */
+export function usesPhpEtalonClone() {
+  return envOn("SOFTGEN_PHP_ETALON_CLONE", "0");
+}

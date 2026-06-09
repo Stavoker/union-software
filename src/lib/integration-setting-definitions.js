@@ -48,6 +48,8 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
   bool("SOFTGEN_REACT_BUILD", "generator"),
   def("SOFTGEN_REACT_NODE_MAX_MB", "generator"),
   def("SOFTGEN_REACT_MIN_PAGE_WORDS", "generator"),
+  bool("SOFTGEN_PHP_CONVERSION_TEMPLATES", "generator"),
+  bool("SOFTGEN_PHP_ETALON_CLONE", "generator"),
 
   def("SPACESHIP_API_KEY", "spaceship", { secret: true }),
   def("SPACESHIP_API_SECRET", "spaceship", { secret: true }),

@@ -19,6 +19,14 @@ import {
 } from "@/lib/brand-image-pools";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
 import {
+  pickPhpHomeTemplate,
+  pickPhpInnerPageTemplate,
+  buildPhpTemplatesPlan,
+  formatPhpTemplatesPlanForArchitect,
+  buildFaqPresentationPromptHint,
+  buildGamesPresentationPromptHint,
+} from "@/lib/generator-engine/php-page-templates";
+import {
   formatSourceArticlesPromptBlock,
   loadSourceArticlesContextForBuild,
   pickSourceArticlesFromPool,
@@ -113,6 +121,8 @@ import {
   usesTemplateChrome,
   usesPremiumIgamingLayout,
   usesDualSiteTemplates,
+  usesPhpConversionTemplates,
+  usesPhpEtalonClone,
 } from "@/lib/generator-engine/softgen-flags";
 import {
   applyEtalonCloneTransforms,
@@ -2549,6 +2559,21 @@ function padArchitectSectionOrderTokens(tokens, fallbackTokens, minLen, maxLen =
   return out.slice(0, maxLen);
 }
 
+function buildConversionPresentationPromptBlock(pageMeta) {
+  if (!pageMeta || typeof pageMeta !== "object") return "";
+  const faq = buildFaqPresentationPromptHint(pageMeta.faqPresentation);
+  const games = buildGamesPresentationPromptHint(pageMeta.gamesPresentation, {
+    isHome: isIndexPageFile(String(pageMeta.file || "")),
+  });
+  const tpl = String(pageMeta.conversionTemplateId || "").trim();
+  if (!tpl && !faq && !games) return "";
+  return `
+ПРЕЗЕНТАЦИЯ БЛОКОВ (шаблон ${tpl || "—"}):
+- ${faq}
+- ${games}
+`.trim();
+}
+
 function buildArchitectPageSkeletonPromptBlock(pageMeta, opts = {}) {
   if (!pageMeta || typeof pageMeta !== "object") return "";
   const referenceTemplateMode = Boolean(opts?.referenceTemplateMode);
@@ -2568,6 +2593,7 @@ function buildArchitectPageSkeletonPromptBlock(pageMeta, opts = {}) {
       ? "\n- Режим шаблона главной: токены **games**/**vip** и порядок в sectionOrder — **не** повод вставлять #lw-games / #lw-vip или переставлять секции, если этого **нет** во вставленном HTML шаблона референса."
       : "\n- На главной: токены **games** и **vip** в sectionOrder = блоки **#lw-games** и **#lw-vip** в <main> в указанном порядке относительно остальных секций; не переноси их в конец без причины из плана."
     : "";
+  const presentationBlock = buildConversionPresentationPromptBlock(pageMeta);
   if (referenceTemplateMode) {
     return `
 ПЛАН АРХИТЕКТОРА (**справка по смыслу, title/роли**; для index в режиме шаблона **приоритет у HTML шаблона референса** — не ломай и не перестраивай <main> под этот план):
@@ -2575,6 +2601,7 @@ function buildArchitectPageSkeletonPromptBlock(pageMeta, opts = {}) {
 - **sectionOrder** (из плана; **не** как обязательный порядок DOM на главной): ${so.length ? so.join(" → ") : "—"}
 - **mainComponents:** ${mc.length ? mc.join(", ") : "—"}
 - **structuralArchetypeIds** (идеи формулировок, **не** чеклист вёрстки): ${arch.length ? arch.join(" → ") : "—"}${homeNote}
+${presentationBlock ? `\n${presentationBlock}` : ""}
 `.trim();
   }
   return `
@@ -2583,6 +2610,7 @@ function buildArchitectPageSkeletonPromptBlock(pageMeta, opts = {}) {
 - **sectionOrder** (сверху вниз в <main>): ${so.length ? so.join(" → ") : "—"}
 - **mainComponents:** ${mc.length ? mc.join(", ") : "—"}
 - **structuralArchetypeIds** (в заданном порядке): ${arch.length ? arch.join(" → ") : "—"}${homeNote}
+${presentationBlock ? `\n${presentationBlock}` : ""}
 `.trim();
 }
 
@@ -3023,8 +3051,19 @@ function deriveDefaultPageTitle({ brandName, themeNorm, file, roleLine }) {
  * в первую очередь из полей JSON архитектора; при пустых/невалидных значениях — минимальное дополнение из seed
  * (порядок валидных токенов и id архитектора **сохраняется**, без перетасовки «ради отпечатка»).
  */
+
 function normalizePagesPlan(rawPages, expectedFiles, opts) {
-  const { brandName, themeNorm, seed, brandKey = "" } = opts;
+  const {
+    brandName,
+    themeNorm,
+    seed,
+    brandKey = "",
+    batchIndex = 0,
+    referenceTemplateMode = false,
+    useConversionTemplates =
+      usesPhpConversionTemplates() && !referenceTemplateMode,
+  } = opts;
+  const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
   const map = new Map(
     (Array.isArray(rawPages) ? rawPages : [])
       .map((p) => (p ? { ...p, file: canonicalMultipageFile(p.file) } : p))
@@ -3102,11 +3141,9 @@ function normalizePagesPlan(rawPages, expectedFiles, opts) {
     const structuralArchetypeIdsOrdered = [...archRaw];
     const innerBaseOrder =
       sectionsMap.get(file) || SECTION_ORDER_PRESETS[0];
-    /** Повне перемішування порядку секцій на внутрішніх URL — мінімізує повтори між білдами (fingerprints). */
-    const innerSectionOrder = shuffleWithSeed(
-      [...innerBaseOrder],
-      `${seed}|innerSoFp|${file}`
-    );
+    const innerSectionOrder = useConversionTemplates
+      ? pickPhpInnerPageTemplate(file, seed, bi).sectionOrder
+      : shuffleWithSeed([...innerBaseOrder], `${seed}|innerSoFp|${file}`);
     const innerCompsRaw = compsMap.get(file) || MAIN_COMPONENT_PRESETS[0];
     const innerMainComponents = shuffleWithSeed(
       [...innerCompsRaw],
@@ -3146,20 +3183,42 @@ function normalizePagesPlan(rawPages, expectedFiles, opts) {
       minSectionTokens,
       8
     );
-    const finalSectionOrder = isHome
+    let finalSectionOrder = isHome
       ? homePadded.length >= minSectionTokens
         ? homePadded
         : homeSections
       : innerPadded.length >= minSectionTokens
         ? innerPadded
         : innerSectionOrder;
+    let conversionTemplateId = "";
+    let faqPresentation = "accordion";
+    let gamesPresentation = "grid";
+    let conversionLayoutVariant = "";
+    if (useConversionTemplates) {
+      if (isHome) {
+        const homeTpl = pickPhpHomeTemplate(seed, bi);
+        finalSectionOrder = homeTpl.sectionOrder;
+        conversionTemplateId = homeTpl.id;
+        conversionLayoutVariant = homeTpl.layoutVariant || "";
+        faqPresentation = homeTpl.faqPresentation;
+        gamesPresentation = homeTpl.gamesPresentation;
+      } else {
+        const innerTpl = pickPhpInnerPageTemplate(file, seed, bi);
+        finalSectionOrder = innerTpl.sectionOrder;
+        conversionTemplateId = innerTpl.id;
+        faqPresentation = innerTpl.faqPresentation;
+        gamesPresentation = innerTpl.gamesPresentation;
+      }
+    }
     const homeFlowDescription = "";
     return {
       file,
       role,
       title,
       description,
-      layoutVariant: finalLayout,
+      layoutVariant: useConversionTemplates && conversionLayoutVariant && isHome
+        ? conversionLayoutVariant
+        : finalLayout,
       contentAngle: String(p.contentAngle || "").trim() || EDITORIAL_ANGLES[h % EDITORIAL_ANGLES.length],
       tone: String(p.tone || "").trim() || EDITORIAL_TONES[h % EDITORIAL_TONES.length],
       mainComponents: finalMainComponents,
@@ -3167,6 +3226,9 @@ function normalizePagesPlan(rawPages, expectedFiles, opts) {
       structuralArchetypeIds: archRaw,
       structuralArchetypeIdsOrdered,
       homeFlowDescription,
+      conversionTemplateId,
+      faqPresentation,
+      gamesPresentation,
     };
   }).map((p) => enforceZerkaloPageFocus(p, brandName, brandKey));
 }
@@ -3250,6 +3312,7 @@ function buildArchitectPrompt({
   referenceBlend = false,
   siteGenerationRulesBlock = "",
   sourceArticlesOverlay = "",
+  conversionTemplatesBlock = "",
 }) {
   const layoutCatalog = shuffleWithSeed(
     getLayoutVariantPool(),
@@ -3317,6 +3380,7 @@ URL: ${baseUrl}
 Обязательная страница: index.php. Остальные URL — внутренние разделы под тему «${theme}» (смысл role/title/description должен раскрывать тему, а не шаблон «зеркало»).
 
 ${architectSkeletonCatalog}
+${conversionTemplatesBlock ? `\n${conversionTemplatesBlock}\n` : ""}
 ${randomPolicy}
 ${diversityPackText}
 ${promptProfileOverlay ? `\n${promptProfileOverlay}\n` : ""}
@@ -3327,6 +3391,7 @@ ${referenceBlendPreamble}
 - Язык текстов: русский.
 - Корень JSON: только brandName и pages.
 - Для каждой страницы: file, role, title, description, contentAngle, tone, **layoutVariant**, **sectionOrder**, **mainComponents**, **structuralArchetypeIds** (см. блок «КАРКАС КАЖДОЙ СТРАНИЦЫ» выше).
+${conversionTemplatesBlock ? "- Если задан PHP_CONVERSION_TEMPLATES — **sectionOrder** для каждого file строго как в списке (не переставляй токены)." : ""}
 - Поле **role** (короткая строка для меню и плана): только **русский** язык, 2–7 слов; **запрещены** латинские слуги вроде onboarding/reviews/payments как единственный текст; **запрещены** варианты названий через «/» (например «X / Y»). Для зеркала — смысл «рабочее зеркало», «доступ», без дублирования бренда латиницей и кириллицей через слэш.
 - **Меню и внутренние ссылки:** только файлы из списка «Файлы страниц» (${fileList}). Не планируй и не упоминай games.php, payments.php, zerkalo.php и другие URL, если их **нет** в этом списке. role/title каждой страницы должны соответствовать её file (для vip.php — VIP, не «платежи»).
 - Без jsonLd, без комментариев, без лишних полей.
@@ -3607,7 +3672,11 @@ UI-АККУРАТНОСТЬ: у каждого CTA (<button> или <a>, офо�
           pageMeta.file,
           gtw,
           catalogSeedKey ||
-            `${structureFingerprint}|${buildNonce}|${pageMeta.file}`
+            `${structureFingerprint}|${buildNonce}|${pageMeta.file}`,
+          {
+            faqPresentation: pageMeta.faqPresentation,
+            gamesPresentation: pageMeta.gamesPresentation,
+          }
         )}\n${dualTplBlock || ""}${buildSiteChromeAuthoringBlock({ isFirstPage: isFirstSitePage && !pageSiteTemplate })}\n${buildSiteChromeReuseBlock(
           siteCanonicalChromeForTemplate || siteCanonicalChrome || {}
         )}\n`
@@ -7885,6 +7954,8 @@ export async function buildMultipageSite({
   referenceTemplateMode: referenceTemplateModeInput = false,
   generationMode: generationModeInput = "standard",
   etalonAlternatingIndex: etalonAlternatingIndexInput = 0,
+  batchIndex: batchIndexInput = 0,
+  batchSize: batchSizeInput = 1,
 }) {
   syncGeneratorLimitsFromEnv();
   const generationMode = normalizeGenerationMode(generationModeInput);
@@ -7999,6 +8070,8 @@ export async function buildMultipageSite({
   const logoSrcForBuild = pickLogoSrcForBuild(imageFiles, siteSeed);
   /** Окремий зерновий рядок для каркасу (порядок блоків, архетипи, режим головної) — завжди з унікальним structureSalt для відмінності між білдами (fingerprints). */
   const structureSeed = `${siteSeed}|fp|${structureSalt}`;
+  const batchIndex = Math.max(0, Math.trunc(Number(batchIndexInput) || 0));
+  const batchSize = Math.max(1, Math.trunc(Number(batchSizeInput) || 1));
   const structureFingerprint = `${structureSalt.slice(0, 8)}-${buildNonce.slice(0, 6)}`;
   const expectedFiles = pickExpectedMultipageFiles(structureSeed, pageCountInput);
   if (expectedFiles.length < 2) {
@@ -8054,6 +8127,21 @@ export async function buildMultipageSite({
   const referenceTemplateModeWanted =
     REFERENCE_TEMPLATE_MODE_DEFAULT || Boolean(referenceTemplateModeInput);
 
+  const phpConversionEnabled =
+    usesPhpConversionTemplates() && !referenceTemplateModeWanted;
+  const phpTemplatesPlan = phpConversionEnabled
+    ? buildPhpTemplatesPlan(expectedFiles, structureSeed, batchIndex)
+    : [];
+  const phpConversionTemplatesBlock = phpConversionEnabled
+    ? formatPhpTemplatesPlanForArchitect(phpTemplatesPlan)
+    : "";
+  if (phpTemplatesPlan.length) {
+    emitLog(
+      onLog,
+      `PHP conversion templates (batch ${batchIndex + 1}/${batchSize}): ${phpTemplatesPlan.map((r) => `${r.file}=${r.templateId}`).join(", ")}`
+    );
+  }
+
   let promptProfileOverlay = "";
   let referenceSiteOverlay = "";
   let referenceStructureOverlay = "";
@@ -8102,6 +8190,7 @@ export async function buildMultipageSite({
   }
 
   const siteRulesForArchitect = buildSiteGenerationRulesBlock({
+    stack: "php",
     themeBrandHint: themeBrandHintEarly,
     logoSrc: logoSrcForBuild,
     bannerImagePaths,
@@ -8113,7 +8202,8 @@ export async function buildMultipageSite({
   let clonedMainByFile = {};
   let clonedChrome = null;
 
-  const strictEtalonLayout = !usesDualSiteTemplates();
+  const strictEtalonLayout =
+    usesPhpEtalonClone() && !usesDualSiteTemplates();
 
   if (usesDualSiteTemplates()) {
     try {
@@ -8139,7 +8229,7 @@ export async function buildMultipageSite({
       );
       pageTemplatePlan = {};
     }
-  } else {
+  } else if (usesPhpEtalonClone()) {
     try {
       const altIdx = Math.max(
         0,
@@ -8194,6 +8284,11 @@ export async function buildMultipageSite({
         `Не удалось загрузить эталон — ${String(etalonErr?.message || etalonErr).slice(0, 240)}`
       );
     }
+  } else {
+    emitLog(
+      onLog,
+      "PHP AI: эталон u-bet162/u-spot064 отключён (SOFTGEN_PHP_ETALON_CLONE=0) — HTML через Claude + conversion templates."
+    );
   }
   try {
     if (
@@ -8410,6 +8505,7 @@ export async function buildMultipageSite({
     referenceBlend: referenceLocked,
     siteGenerationRulesBlock: siteRulesForArchitect,
     sourceArticlesOverlay: sourceArticlesArchitectBlock,
+    conversionTemplatesBlock: phpConversionTemplatesBlock,
   });
   let architectUser = architectUserBase;
   if (!referenceLocked) {
@@ -8584,6 +8680,8 @@ export async function buildMultipageSite({
     themeNorm,
     seed: structureSeed,
     brandKey: brandKeyNorm,
+    batchIndex,
+    referenceTemplateMode: referenceTemplateModeWanted,
   });
   if (
     referenceLocked &&
@@ -8692,6 +8790,7 @@ export async function buildMultipageSite({
       ? gameTabSlotBatches[0]
       : buildIndexedGameSlots(gameSourceFiles, siteSeed, 8);
   const siteGenerationRulesBlock = buildSiteGenerationRulesBlock({
+    stack: "php",
     themeBrandHint: themeBrandHintEarly,
     gameSlotPaths,
     bannerImagePaths,
@@ -8708,7 +8807,19 @@ export async function buildMultipageSite({
       `Превью слотов: в img/ найдено ${canonSlotCount}/${CANONICAL_SLOT_GAME_FILENAMES.length} канонических файлов — положите недостающие .webp в src/img-gen/ (копируются при сборке).`
     );
   }
-  const homeGamesMode = resolveHomeGamesMode(structureSeed);
+  const homePageMeta = pages.find((p) => isIndexPageFile(String(p?.file || "")));
+  const gamesPresentationToHomeMode = {
+    grid: "single-grid",
+    carousel: "carousel-snap",
+    showcase: "masonry-free",
+    scroll: "rail-editorial",
+    featured: "masonry-free",
+  };
+  const homeGamesMode =
+    homePageMeta?.gamesPresentation &&
+    gamesPresentationToHomeMode[homePageMeta.gamesPresentation]
+      ? gamesPresentationToHomeMode[homePageMeta.gamesPresentation]
+      : resolveHomeGamesMode(structureSeed);
   const siteChromeTemplateId = resolvePageSiteTemplate(
     { pageTemplateByFile: pageTemplatePlan },
     "index.php"

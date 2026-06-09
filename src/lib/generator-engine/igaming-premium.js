@@ -100,7 +100,27 @@ const CONTENT_BLOCKS = [
   },
   {
     id: "faq-accordion",
-    hint: "FAQ: details/summary або кнопки-вкладки з панелями.",
+    hint: "FAQ accordion: details/summary або кнопки + панелі; 6–8 пунктів.",
+  },
+  {
+    id: "faq-two-column",
+    hint: "FAQ дві колонки (desktop): accordion у кожній колонці + intro зверху.",
+  },
+  {
+    id: "faq-cards",
+    hint: "FAQ сітка карток: всі відповіді видимі (2–3 колонки), не accordion.",
+  },
+  {
+    id: "lw-games-showcase",
+    hint: "#lw-games showcase: 1 великий featured-слот + сітка 6 менших (object-cover).",
+  },
+  {
+    id: "lw-games-scroll",
+    hint: "#lw-games горизонтальний scroll-snap ряд + CTA «Все игры».",
+  },
+  {
+    id: "lw-games-featured",
+    hint: "#lw-games 3 вертикальні spotlight-картки в ряд.",
   },
   {
     id: "trust-signals",
@@ -160,8 +180,17 @@ function pageKind(file) {
   const f = String(file || "").toLowerCase();
   if (f === "index.php" || f === "index.html") return "home";
   if (f === "games.php") return "games";
+  if (f === "slots.php" || f === "slot.php") return "slots";
+  if (/bonus\.php$/i.test(f)) return "bonus";
+  if (/vip\.php$/i.test(f)) return "vip";
+  if (/promo\.php$/i.test(f)) return "promo";
+  if (/registration\.php$/i.test(f)) return "registration";
   if (/payments?\.php$/i.test(f)) return "payments";
   if (/zerkalo\.php$/i.test(f) || /mirror\.php$/i.test(f)) return "mirror";
+  if (/faq-page\.php$/i.test(f) || /faq\.php$/i.test(f)) return "faq";
+  if (/support\.php$/i.test(f)) return "support";
+  if (/about\.php$/i.test(f)) return "about";
+  if (/reviews\.php$/i.test(f)) return "reviews";
   return "inner";
 }
 
@@ -242,6 +271,82 @@ function contentCandidates(kind) {
       ].includes(b.id)
     );
   }
+  if (kind === "bonus" || kind === "promo") {
+    return all.filter((b) =>
+      [
+        "cta-banner",
+        "promo-trio",
+        "bonus-steps",
+        "stats-dashboard",
+        "perks-grid",
+        "faq-accordion",
+        "faq-cards",
+        "trust-signals",
+      ].includes(b.id)
+    );
+  }
+  if (kind === "vip") {
+    return all.filter((b) =>
+      [
+        "vip-tiers",
+        "perks-grid",
+        "stats-dashboard",
+        "trust-signals",
+        "faq-two-column",
+        "cta-banner",
+      ].includes(b.id)
+    );
+  }
+  if (kind === "slots") {
+    return all.filter((b) =>
+      [
+        "lw-games-grid",
+        "lw-games-showcase",
+        "lw-games-scroll",
+        "lw-games-featured",
+        "bento-categories",
+        "faq-accordion",
+        "cta-banner",
+      ].includes(b.id)
+    );
+  }
+  if (kind === "registration") {
+    return all.filter((b) =>
+      [
+        "timeline-steps",
+        "perks-grid",
+        "trust-signals",
+        "bonus-steps",
+        "faq-accordion",
+        "cta-banner",
+      ].includes(b.id)
+    );
+  }
+  if (kind === "faq" || kind === "support") {
+    return all.filter((b) =>
+      [
+        "faq-accordion",
+        "faq-two-column",
+        "faq-cards",
+        "perks-grid",
+        "trust-signals",
+        "cta-inline-strip",
+      ].includes(b.id)
+    );
+  }
+  if (kind === "about" || kind === "reviews") {
+    return all.filter((b) =>
+      [
+        "zigzag-media",
+        "prose-split",
+        "testimonials-row",
+        "trust-signals",
+        "stats-dashboard",
+        "faq-cards",
+        "cta-banner",
+      ].includes(b.id)
+    );
+  }
   return all.filter((b) => !["lw-games-grid", "mirror-access-cards"].includes(b.id));
 }
 
@@ -280,14 +385,35 @@ export function buildIgamingBlockCatalogIntro() {
 export function buildIgamingBlockSuggestionsForPage(
   pageFile,
   seedKey = "",
-  gatewayUrl = ""
+  gatewayUrl = "",
+  opts = {}
 ) {
   const gtw = String(gatewayUrl || "").trim() || "GATEWAY_URL";
   const kind = pageKind(pageFile);
   const seed = `${seedKey}|${pageFile}|${kind}`;
   const hero = pickN(heroCandidates(kind), 1, `${seed}|hero`)[0];
   const blockCount = 3 + (catalogHash32(`${seed}|extra`) % 2);
-  const blocks = pickN(contentCandidates(kind), blockCount, `${seed}|blocks`);
+  let blocks = pickN(contentCandidates(kind), blockCount, `${seed}|blocks`);
+  const faqPresentation = String(opts.faqPresentation || "").trim();
+  if (faqPresentation === "two-column") {
+    blocks = blocks.filter((b) => b.id !== "faq-accordion");
+    if (!blocks.some((b) => b.id === "faq-two-column")) {
+      blocks.push(CONTENT_BLOCKS.find((b) => b.id === "faq-two-column"));
+    }
+  } else if (faqPresentation === "cards") {
+    blocks = blocks.filter((b) => b.id !== "faq-accordion");
+    if (!blocks.some((b) => b.id === "faq-cards")) {
+      blocks.push(CONTENT_BLOCKS.find((b) => b.id === "faq-cards"));
+    }
+  }
+  const gamesPresentation = String(opts.gamesPresentation || "").trim();
+  if (gamesPresentation === "showcase" && (kind === "home" || kind === "games")) {
+    blocks.unshift(CONTENT_BLOCKS.find((b) => b.id === "lw-games-showcase"));
+  } else if (gamesPresentation === "scroll" && (kind === "home" || kind === "games")) {
+    blocks.unshift(CONTENT_BLOCKS.find((b) => b.id === "lw-games-scroll"));
+  } else if (gamesPresentation === "featured" && (kind === "home" || kind === "games")) {
+    blocks.unshift(CONTENT_BLOCKS.find((b) => b.id === "lw-games-featured"));
+  }
   const mustGames =
     kind === "home"
       ? "\n- На головній обов'язково реалізуй блок ігор (#lw-games) з каталогу."
@@ -351,6 +477,11 @@ export function buildPremiumIgamingPromptIntro() {
 }
 
 /** @deprecated використовуй buildIgamingBlockSuggestionsForPage */
-export function buildPremiumLayoutPromptBlock(pageFile, gatewayUrl = "", seedKey = "") {
-  return buildIgamingBlockSuggestionsForPage(pageFile, seedKey, gatewayUrl);
+export function buildPremiumLayoutPromptBlock(
+  pageFile,
+  gatewayUrl = "",
+  seedKey = "",
+  opts = {}
+) {
+  return buildIgamingBlockSuggestionsForPage(pageFile, seedKey, gatewayUrl, opts);
 }
