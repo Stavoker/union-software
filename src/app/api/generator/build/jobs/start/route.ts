@@ -129,7 +129,7 @@ export async function POST(req: Request) {
   const pageCount = clampMultipagePageCountTotal(body.pageCount);
   const siteCount = clampSiteCount(body.siteCount);
   const generationModeRaw = String(body.generationMode || "standard").trim();
-  const stackRaw = String(body.stack || "php").trim();
+  const stackRaw = String(body.stack ?? "").trim();
   const hostId = String(body.hostId || "").trim();
   const siteUrlInputGlobal = String(body.siteUrl || "").trim();
 
@@ -192,11 +192,17 @@ export async function POST(req: Request) {
       ? [safeBase]
       : Array.from({ length: siteCount }, (_, i) => `${safeBase}-s${i + 1}`);
 
-  let normalizedStack = "php";
+  let normalizedStack = "react";
   try {
-    const { normalizeGenerationStack, isReactGenerationStack, isReactBuildEnabled } =
-      await import("@/src/lib/generation-stack.js");
-    normalizedStack = normalizeGenerationStack(stackRaw);
+    const {
+      normalizeGenerationStack,
+      getDefaultGenerationStack,
+      isReactGenerationStack,
+      isReactBuildEnabled,
+    } = await import("@/src/lib/generation-stack.js");
+    normalizedStack = stackRaw
+      ? normalizeGenerationStack(stackRaw)
+      : getDefaultGenerationStack();
     if (isReactGenerationStack(normalizedStack) && !isReactBuildEnabled()) {
       return NextResponse.json(
         {

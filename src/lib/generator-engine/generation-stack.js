@@ -1,6 +1,13 @@
-/** Стек збірки: PHP (prod) або React Lab (Vite SPA). */
+/** Стек збірки: PHP (legacy) або React Lab (Vite SPA). */
 export const GENERATION_STACK_PHP = "php";
 export const GENERATION_STACK_REACT = "react";
+
+/** Default for UI and API when stack is omitted. PHP remains available via stack: "php". */
+export const GENERATION_STACK_DEFAULT = GENERATION_STACK_REACT;
+
+export function getDefaultGenerationStack() {
+  return GENERATION_STACK_DEFAULT;
+}
 
 export function normalizeGenerationStack(raw) {
   const v = String(raw || "")
