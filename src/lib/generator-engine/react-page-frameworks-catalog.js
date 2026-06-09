@@ -214,16 +214,92 @@ function expandOrders(baseOrders, layoutKind, pageKind, validator) {
   return unique.slice(0, VARIANTS_PER_KIND);
 }
 
+/** Distinct home skeletons — slot early/late, poster/stat placement, FAQ variant. */
+function buildProgrammaticHomeArchetypes() {
+  const archetypes = [
+    ["hero-gradient", "slot-grid", "prose-block", "feature-cards", "prose-block", "poster-slider", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "poster-slider", "stat-row", "slot-showcase", "prose-block", "content-split", "prose-block", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "prose-block", "stat-row", "game-carousel", "feature-cards", "prose-block", "faq-cards", "cta-banner"],
+    ["hero-gradient", "feature-cards", "prose-block", "slot-scroll", "section-with-bg", "prose-block", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "content-split", "prose-block", "slot-featured", "poster-slider", "prose-block", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "stat-row", "prose-block", "prose-block", "slot-showcase", "feature-cards", "faq-cards", "cta-banner"],
+    ["hero-gradient", "section-with-bg", "slot-grid", "prose-block", "content-split", "prose-block", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "prose-block", "poster-slider", "prose-block", "game-carousel", "stat-row", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "slot-showcase", "stat-row", "prose-block", "feature-cards", "prose-block", "faq-cards", "cta-banner"],
+    ["hero-gradient", "prose-block", "content-split", "slot-scroll", "stat-row", "prose-block", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "feature-cards", "poster-slider", "prose-block", "slot-grid", "prose-block", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "stat-row", "slot-featured", "prose-block", "section-with-bg", "prose-block", "faq-cards", "cta-banner"],
+    ["hero-gradient", "prose-block", "game-carousel", "content-split", "prose-block", "slot-grid", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "poster-slider", "prose-block", "feature-cards", "slot-scroll", "prose-block", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "content-split", "stat-row", "prose-block", "slot-showcase", "faq-cards", "cta-banner"],
+    ["hero-gradient", "prose-block", "section-with-bg", "prose-block", "game-carousel", "slot-featured", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "slot-grid", "content-split", "prose-block", "poster-slider", "prose-block", "faq-two-column", "cta-banner"],
+    ["hero-gradient", "feature-cards", "stat-row", "prose-block", "slot-showcase", "faq-cards", "cta-banner"],
+    ["hero-gradient", "prose-block", "slot-scroll", "feature-cards", "prose-block", "section-with-bg", "faq-accordion", "cta-banner"],
+    ["hero-gradient", "poster-slider", "prose-block", "slot-featured", "content-split", "prose-block", "faq-two-column", "cta-banner"],
+  ];
+  return archetypes.map((order, i) => {
+    const slot = SLOT_COMPONENT_IDS[i % SLOT_COMPONENT_IDS.length];
+    const faq = FAQ_COMPONENT_IDS[i % FAQ_COMPONENT_IDS.length];
+    let next = replaceFamily(order, SLOT_COMPONENT_IDS, slot);
+    next = replaceFamily(next, FAQ_COMPONENT_IDS, faq);
+    return next;
+  });
+}
+
+/** Extra inner archetypes per page_kind — more FAQ/slot/poster mixes. */
+function buildProgrammaticInnerArchetypes(pageKind) {
+  const faqCycle = FAQ_COMPONENT_IDS;
+  const slotCycle = SLOT_COMPONENT_IDS;
+  const needsSlot = pageKind === "games" || pageKind === "slots";
+  const needsPay = pageKind === "payments";
+  const faqFirst = pageKind === "faq-page";
+
+  const hooks = [
+    ["poster-slider", "prose-block", "feature-cards", "prose-block"],
+    ["stat-row", "content-split", "prose-block", "feature-cards"],
+    ["feature-cards", "prose-block", "section-with-bg", "prose-block"],
+    ["content-split", "stat-row", "prose-block", "poster-slider"],
+    ["prose-block", "stat-row", "feature-cards", "content-split"],
+    ["section-with-bg", "prose-block", "poster-slider", "prose-block"],
+    ["stat-row", "feature-cards", "content-split", "prose-block"],
+    ["poster-slider", "stat-row", "prose-block", "content-split"],
+    ["prose-block", "feature-cards", "stat-row", "section-with-bg"],
+    ["content-split", "prose-block", "poster-slider", "stat-row"],
+    ["feature-cards", "poster-slider", "prose-block", "stat-row"],
+    ["stat-row", "prose-block", "content-split", "feature-cards"],
+  ];
+
+  return hooks.map((hook, i) => {
+    const faq = faqCycle[i % faqCycle.length];
+    const slot = slotCycle[i % slotCycle.length];
+    let mid = [...hook];
+    if (needsPay && !mid.includes("payment-methods")) {
+      mid.splice(2, 0, "payment-methods");
+    }
+    if (needsSlot && !mid.some((id) => SLOT_COMPONENT_IDS.includes(id))) {
+      mid.push(slot);
+    }
+    if (faqFirst) {
+      return [faq, ...mid.filter((id) => !FAQ_COMPONENT_IDS.includes(id)), "cta-banner"];
+    }
+    return [...mid, faq, "cta-banner"];
+  });
+}
+
 function seedOrdersForPageKind(pageKind) {
   if (pageKind === "home") {
-    return HOME_PAGE_TEMPLATES.map((t) => [...t.order]);
+    return [
+      ...HOME_PAGE_TEMPLATES.map((t) => [...t.order]),
+      ...buildProgrammaticHomeArchetypes(),
+    ];
   }
   const fileKey = `${pageKind}.php`;
   const specific = PAGE_SPECIFIC_INNER_TEMPLATES[fileKey];
-  if (specific?.length) {
-    return specific.map((t) => [...t.order]);
-  }
-  return INNER_PAGE_TEMPLATES.map((order) => [...order]);
+  const bases = specific?.length
+    ? specific.map((t) => [...t.order])
+    : INNER_PAGE_TEMPLATES.map((order) => [...order]);
+  return [...bases, ...buildProgrammaticInnerArchetypes(pageKind)];
 }
 
 function generateVariants(layoutKind, pageKind) {
@@ -243,6 +319,14 @@ function generateVariants(layoutKind, pageKind) {
 
 /** @type {ReturnType<typeof buildPageFrameworksCatalog> | null} */
 let catalogCache = null;
+
+export function orderKeyForFramework(order) {
+  return orderKey(order);
+}
+
+export function invalidatePageFrameworksCatalogCache() {
+  catalogCache = null;
+}
 
 /**
  * @returns {Array<{ id: string, layout_kind: string, page_kind: string, variant_number: number, label: string, section_order: string[], meta_json: object }>}

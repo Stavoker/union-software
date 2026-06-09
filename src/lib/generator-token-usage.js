@@ -52,6 +52,13 @@ export async function recordGeneratorTokenUsageFromJob(job) {
   const chromeTemplateId = String(
     job?.result?.chromeTemplateId || job?.payload?.chromeTemplateId || ""
   ).trim();
+  const homePageFrameworkId = String(
+    job?.result?.homeTemplateId || job?.payload?.homeTemplateId || ""
+  ).trim();
+  const pageFrameworksJson =
+    job?.result?.pageFrameworksJson ||
+    job?.payload?.pageFrameworksJson ||
+    null;
 
   const row = {
     user_id: userId,
@@ -63,6 +70,8 @@ export async function recordGeneratorTokenUsageFromJob(job) {
     total_tokens: totalTokens,
     dry_run: dryRun,
     chrome_template_id: chromeTemplateId || null,
+    home_page_framework_id: homePageFrameworkId || null,
+    page_frameworks_json: pageFrameworksJson,
   };
 
   const { error } = await supabase.from("generator_token_usage").upsert(row, {

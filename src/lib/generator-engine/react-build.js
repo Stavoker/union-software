@@ -61,6 +61,7 @@ import {
 import {
   pickHomePageFramework,
   buildPageFrameworksPlan,
+  buildPageFrameworksUsagePayload,
   formatPageFrameworksPlanForArchitect,
   innerFrameworksMapFromPlan,
 } from "@/lib/generator-engine/react-page-frameworks.js";
@@ -869,7 +870,7 @@ CTA на gateway: ${gatewayUrl}
 ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
 import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
-${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, subtitle (2–3 короткие фразы через «|» для ротации, напр. «Бонус 350%|Регистрация за 30 сек|Каталог слотов»), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
+${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, body=\"3–4 предложения (40–70 слов) про бренд и оффер — статичный абзац под заголовком\", subtitle (опционально 2–3 короткие фразы через «|» для ротации), ctaHref={GATEWAY_URL}.` : ""}
 ${needsCtaBanner ? `- Обязательно <CtaBanner title=\"…\" body=\"2–3 предложения\" backgroundImage={BANNER_IMAGE_PATHS[${Math.min(1, Math.max(0, bannerImages.length - 1))}]} ctaHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — затемнённый баннер на фоне, текст и CTA поверх; не plain bg-brand-block.` : ""}
 ${needsSlotGrid ? `- Обязательно <SlotGrid title=\"Популярные слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsCarousel ? `- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
@@ -1234,10 +1235,13 @@ export async function buildReactSite({
     );
     chromeTemplate = fallbackChromeTemplate(chromeKind, `${siteSeed}|chrome`);
   }
+  const buildUserId = String(userIdInput || brandKit?.userId || "").trim();
+  let pageFrameworksJson = null;
   try {
     homeTemplate = await pickHomePageFramework(supabase, {
       layoutKind: chromeKind,
       seed: siteSeed,
+      userId: buildUserId,
       batchIndex,
       batchSize,
       onLog,
@@ -1246,11 +1250,13 @@ export async function buildReactSite({
       expectedFiles,
       layoutKind: chromeKind,
       structureSeed,
+      userId: buildUserId,
       batchIndex,
       batchSize,
       onLog,
     });
     innerFrameworksByFile = innerFrameworksMapFromPlan(innerTemplatesPlan);
+    pageFrameworksJson = buildPageFrameworksUsagePayload(homeTemplate, innerTemplatesPlan);
   } catch (e) {
     emitLog(onLog, `Page frameworks: ${String(e?.message || e).slice(0, 100)}`);
   }
@@ -1532,6 +1538,7 @@ export async function buildReactSite({
     pages: generatedPages.map((p) => p.file),
     chromeTemplateId: chromeTemplate?.id || "",
     homeTemplateId: homeTemplate.id,
+    pageFrameworksJson,
     siteLayout,
     manifest,
   };

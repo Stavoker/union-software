@@ -11,8 +11,8 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/HeroGradient",
     category: "hero",
     description:
-      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх с gradient overlay. subtitle через «|» или highlights[] — ротация строк; лёгкие анимации.",
-    props: ["title", "eyebrow", "subtitle", "highlights", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
+      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх. body — статичный абзац 3–4 предложения; subtitle/highlights — короткая ротация.",
+    props: ["title", "eyebrow", "body", "subtitle", "highlights", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
     tags: ["hero", "landing", "home"],
   },
   {

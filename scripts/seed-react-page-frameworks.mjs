@@ -12,7 +12,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { buildPageFrameworksCatalog } from "../src/lib/generator-engine/react-page-frameworks-catalog.js";
+import {
+  buildPageFrameworksCatalog,
+  invalidatePageFrameworksCatalogCache,
+} from "../src/lib/generator-engine/react-page-frameworks-catalog.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -60,6 +63,7 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url.replace(/\/+$/, ""), key);
+invalidatePageFrameworksCatalogCache();
 const catalog = buildPageFrameworksCatalog();
 
 const chunkSize = 200;

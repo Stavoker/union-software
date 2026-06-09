@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 type Props = {
   title: string;
   eyebrow?: string;
+  /** Статичный абзац под заголовком (2–4 предложения). */
+  body?: string;
   /** Короткий теглайн. Несколько фраз через «|» — плавная ротация. */
   subtitle?: string;
   /** Альтернатива subtitle: массив ротируемых строк. */
@@ -122,6 +124,7 @@ function HeroSliderControls({
 export function HeroGradient({
   title,
   eyebrow,
+  body,
   subtitle,
   highlights,
   backgroundImage,
@@ -204,8 +207,18 @@ export function HeroGradient({
           >
             {title}
           </motion.h1>
+          {body?.trim() ? (
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.12 }}
+              className="max-w-lg text-base leading-relaxed text-white/90 md:text-lg"
+            >
+              {body.trim()}
+            </motion.p>
+          ) : null}
           {activeLine ? (
-            <div className="min-h-[3.5rem] md:min-h-[4rem]">
+            <div className="min-h-[2.5rem] md:min-h-[3rem]">
               <AnimatePresence mode="wait">
                 <motion.p
                   key={activeLine}
