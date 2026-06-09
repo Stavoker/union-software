@@ -1,7 +1,7 @@
 import {
   buildChromeTemplatesCatalog,
   fallbackChromeTemplate,
-} from "@/src/lib/generator-engine/react-chrome-templates-catalog.js";
+} from "@/src/lib/react-chrome-templates-catalog.js";
 
 export { buildChromeTemplatesCatalog, fallbackChromeTemplate };
 
