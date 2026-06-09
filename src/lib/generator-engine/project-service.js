@@ -237,6 +237,9 @@ export async function buildProject(opts) {
       brandKey: opts.brandKey,
       brandKit: opts.brandKit || null,
       generationMode: opts.generationMode,
+      userId: opts.userId || "",
+      batchIndex: opts.batchIndex ?? 0,
+      batchSize: opts.batchSize ?? 1,
     };
     const result = isReactGenerationStack(opts.stack)
       ? await buildReactSite(buildOpts)

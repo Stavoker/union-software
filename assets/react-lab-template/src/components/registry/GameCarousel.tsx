@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { resolveSlotImages, resolveSlotSrc } from "./slot-utils";
 
 type Props = {
   title?: string;
@@ -7,17 +8,13 @@ type Props = {
   gatewayHref: string;
 };
 
-function resolveSrc(src: string) {
-  return src.startsWith("./") ? src : `./img/${src}`;
-}
-
 export function GameCarousel({
   title = "Популярные игры",
   intro,
   images,
   gatewayHref,
 }: Props) {
-  const list = (Array.isArray(images) ? images : []).slice(0, 16);
+  const list = resolveSlotImages(images, 16);
   const doubled = [...list, ...list];
 
   return (
@@ -41,18 +38,16 @@ export function GameCarousel({
               key={`${src}-${i}`}
               href={gatewayHref}
               whileHover={{ y: -4, scale: 1.03 }}
-              className="group shrink-0 overflow-hidden rounded-xl border border-brand-accent/15 bg-brand-card"
+              className="group relative block h-[120px] w-[176px] shrink-0 overflow-hidden rounded-xl border border-brand-accent/15 bg-brand-block"
             >
-              <div className="media-contain-frame h-[120px] w-[176px] p-2">
-                <img
-                  src={resolveSrc(src)}
-                  alt=""
-                  width={168}
-                  height={112}
-                  loading="lazy"
-                  className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
+              <img
+                src={resolveSlotSrc(src)}
+                alt=""
+                width={176}
+                height={120}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
             </motion.a>
           ))}
         </motion.div>

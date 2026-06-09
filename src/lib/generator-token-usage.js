@@ -49,6 +49,10 @@ export async function recordGeneratorTokenUsageFromJob(job) {
     return { ok: false, skipped: true, reason: "supabase_unavailable" };
   }
 
+  const chromeTemplateId = String(
+    job?.result?.chromeTemplateId || job?.payload?.chromeTemplateId || ""
+  ).trim();
+
   const row = {
     user_id: userId,
     job_id: job.id,
@@ -58,6 +62,7 @@ export async function recordGeneratorTokenUsageFromJob(job) {
     output_tokens: outputTokens,
     total_tokens: totalTokens,
     dry_run: dryRun,
+    chrome_template_id: chromeTemplateId || null,
   };
 
   const { error } = await supabase.from("generator_token_usage").upsert(row, {
@@ -153,6 +158,7 @@ function mapHistoryRow(r) {
     outputTokens: Number(r.output_tokens) || 0,
     totalTokens: Number(r.total_tokens) || 0,
     dryRun: Boolean(r.dry_run),
+    chromeTemplateId: r.chrome_template_id || "",
     createdAt: r.created_at,
   };
 }
@@ -256,7 +262,7 @@ export async function fetchGeneratorUsageForUser(supabase, userId, options = {})
   let historyQuery = supabase
     .from("generator_token_usage")
     .select(
-      "id, job_id, project_name, status, input_tokens, output_tokens, total_tokens, dry_run, created_at"
+      "id, job_id, project_name, status, input_tokens, output_tokens, total_tokens, dry_run, chrome_template_id, created_at"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })

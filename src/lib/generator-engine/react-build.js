@@ -43,12 +43,22 @@ import {
   isAcceptableClaudeApiKey,
 } from "@/lib/generator-llm-endpoint";
 import { stripModelJsonFences } from "@/lib/generator-engine/multipage-prompt-contract";
+import { pickChromeLayoutTemplate } from "@/lib/generator-engine/react-chrome-templates.js";
+import { getSupabaseServerClient } from "@/lib/admin-seo/supabaseServer";
 import {
   pickRegistryComponentsForArchitect,
   formatComponentRegistryForArchitect,
   formatComponentRegistryForCodegen,
   getRegistryComponentById,
 } from "@/src/lib/react-component-registry";
+import {
+  HOME_PAGE_TEMPLATES,
+  FAQ_COMPONENT_IDS,
+  SLOT_COMPONENT_IDS,
+  pickInnerPageTemplate,
+  buildInnerTemplatesPlan,
+  formatInnerTemplatesPlanForArchitect,
+} from "@/lib/generator-engine/react-page-templates";
 import {
   buildUiUxProMaxSystemBlock,
   buildUiUxProMaxUserHint,
@@ -204,6 +214,13 @@ async function callClaude({ apiKey, system, user, maxTokens = 8192, temperature 
     .join("\n")
     .trim();
   if (!text) throw new Error("Claude вернул пустой ответ.");
+  const usage = data?.usage;
+  if (usage && typeof onLog === "function") {
+    emitLog(
+      onLog,
+      `TOKENS Claude (запрос): input≈${usage.input_tokens ?? "?"}, output≈${usage.output_tokens ?? "?"}`
+    );
+  }
   return text;
 }
 
@@ -287,15 +304,20 @@ function parseSeoKeywords(raw) {
  * @param {Record<string, unknown> | null | undefined} brandKit
  * @param {string} seed
  */
+/** Chrome layouts exported to SiteLayout (auto picks from full pool). */
+const REACT_SITE_LAYOUTS = [
+  "sidebar-left",
+  "sidebar-right",
+  "top-nav",
+  "top-nav-inline",
+];
+
 function resolveSiteLayoutVariant(brandKit, seed) {
   const v = String(brandKit?.layoutVariant || "auto").trim();
+  if (REACT_SITE_LAYOUTS.includes(v)) return v;
   if (v === "sidebar-left" || v === "top-nav") return v;
-  let state = 0;
-  const s = String(seed || "layout");
-  for (let i = 0; i < s.length; i++) {
-    state = (state * 31 + s.charCodeAt(i)) >>> 0;
-  }
-  return state % 2 === 0 ? "sidebar-left" : "top-nav";
+  const idx = siteHash32(`${seed}|layout`) % REACT_SITE_LAYOUTS.length;
+  return REACT_SITE_LAYOUTS[idx];
 }
 
 function buildSeoPromptBlock({ themeBrandHint, seoKeywords, theme }) {
@@ -361,26 +383,13 @@ function navLabelForPage(page, index) {
   return map[slug] || `Страница ${index + 1}`;
 }
 
-const HOME_COMPONENT_ORDER = [
-  "hero-gradient",
-  "prose-block",
-  "poster-slider",
-  "game-carousel",
-  "slot-grid",
-  "prose-block",
-  "feature-cards",
-  "section-with-bg",
-  "prose-block",
-  "faq-accordion",
-  "cta-banner",
-];
-
-const INNER_PAGE_TEMPLATES = [
-  ["poster-slider", "prose-block", "content-split", "prose-block", "faq-accordion", "cta-banner"],
-  ["content-split", "prose-block", "poster-slider", "feature-cards", "prose-block", "faq-accordion"],
-  ["prose-block", "stat-row", "poster-slider", "content-split", "prose-block", "cta-banner", "faq-accordion"],
-  ["section-with-bg", "prose-block", "feature-cards", "poster-slider", "prose-block", "faq-accordion", "cta-banner"],
-];
+/** Home skeletons — one per build (seed); quality floor: hero, 3× prose, FAQ, CTA, games block. */
+function pickHomePageTemplate(seed, batchIndex = 0) {
+  const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
+  const idx =
+    (siteHash32(`${seed}|home_tpl`) + bi) % HOME_PAGE_TEMPLATES.length;
+  return HOME_PAGE_TEMPLATES[idx];
+}
 
 function rotateComponentIds(ids, pageIndex) {
   const arr = [...ids];
@@ -415,7 +424,15 @@ function ensureMinProseBlocks(ids, minCount) {
   return next;
 }
 
-/** Дедуплікація componentIds, але prose-block може повторюватись (кілька секцій на сторінці). */
+function collapseComponentFamily(ids, familyIds) {
+  const family = new Set(familyIds);
+  const present = ids.filter((id) => family.has(id));
+  if (present.length <= 1) return ids;
+  const winner = present[0];
+  return ids.filter((id) => !family.has(id) || id === winner);
+}
+
+/** Дедуплікація componentIds; prose-block може повторюватись; один FAQ і один слот-блок на сторінку. */
 function finalizeComponentIds(ids) {
   const seen = new Set();
   const out = [];
@@ -429,32 +446,38 @@ function finalizeComponentIds(ids) {
       seen.add(id);
     }
   }
-  return out;
+  return collapseComponentFamily(
+    collapseComponentFamily(out, FAQ_COMPONENT_IDS),
+    SLOT_COMPONENT_IDS
+  );
 }
 
-function ensureRichPageComponents(pages) {
+function ensureRichPageComponents(pages, { homeTemplate, structureSeed, batchIndex = 0 }) {
+  const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
+  const homeOrder = homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order;
   return pages.map((page, i) => {
     let ids = [...page.componentIds];
     if (i === 0) {
-      for (const id of HOME_COMPONENT_ORDER) {
+      for (const id of homeOrder) {
         if (!ids.includes(id)) ids.push(id);
       }
-      ids = mergeComponentOrder(HOME_COMPONENT_ORDER, ids);
+      ids = mergeComponentOrder(homeOrder, ids);
       ids = ensureMinProseBlocks(ids, 3);
     } else {
-      const tpl = INNER_PAGE_TEMPLATES[i % INNER_PAGE_TEMPLATES.length];
+      const innerTpl = pickInnerPageTemplate(page.file, structureSeed, bi);
+      const tpl = innerTpl.order;
       for (const id of tpl) {
         if (!ids.includes(id)) ids.push(id);
       }
       ids = mergeComponentOrder(tpl, ids);
       ids = ensureMinProseBlocks(ids, 2);
-      ids = rotateComponentIds(ids, i);
+      ids = rotateComponentIds(ids, i + siteHash32(`${innerTpl.id}|${page.file}`));
     }
     return { ...page, componentIds: finalizeComponentIds(ids) };
   });
 }
 
-function normalizePagesPlan(rawPages, expectedFiles) {
+function normalizePagesPlan(rawPages, expectedFiles, { homeTemplate, structureSeed, batchIndex = 0 } = {}) {
   const byFile = new Map();
   for (const p of Array.isArray(rawPages) ? rawPages : []) {
     const file = String(p?.file || "").trim().toLowerCase();
@@ -465,22 +488,14 @@ function normalizePagesPlan(rawPages, expectedFiles) {
     const route = phpFileToRoutePath(file);
     let componentIds = normalizeComponentIds(p.componentIds);
     if (!componentIds.length) {
-      componentIds =
-        i === 0
-          ? [
-              "hero-gradient",
-              "prose-block",
-              "poster-slider",
-              "game-carousel",
-              "slot-grid",
-              "prose-block",
-              "feature-cards",
-              "section-with-bg",
-              "prose-block",
-              "faq-accordion",
-              "cta-banner",
-            ]
-          : ["poster-slider", "content-split", "prose-block", "feature-cards", "prose-block", "faq-accordion", "cta-banner"];
+      if (i === 0) {
+        componentIds = [...(homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order)];
+      } else {
+        const bi = Math.max(0, Math.trunc(Number(batchIndex) || 0));
+        componentIds = [
+          ...pickInnerPageTemplate(file, structureSeed || "inner", bi).order,
+        ];
+      }
     }
     const role = String(p.role || (i === 0 ? "Главная" : "Раздел")).trim();
     return {
@@ -495,7 +510,7 @@ function normalizePagesPlan(rawPages, expectedFiles) {
       navLabel: navLabelForPage({ ...p, file, role }, i),
     };
   });
-  return ensureRichPageComponents(pages);
+  return ensureRichPageComponents(pages, { homeTemplate, structureSeed, batchIndex });
 }
 
 const MIN_REACT_CSS_BYTES = 15000;
@@ -676,15 +691,18 @@ function buildArchitectUserPrompt({
   minPageWords,
   sourceArticlesBlock,
   seoPromptBlock,
+  homeTemplate,
+  innerTemplatesBlock = "",
 }) {
+  const homeOrder = homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order;
   return `
 Тема сайта: ${theme}
 Бренд в текстах (СТРОГО): ${themeBrandHint}
 Базовый шлюз регистрации (CTA): ${gatewayUrl}
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
 Для каждой страницы укажи file (как в списке), role (короткая русская подпись для меню, 1–4 слова), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
-Стек: React + Vite + Tailwind + framer-motion + curated registry, SiteLayout (sidebar-left или top-nav) и профессиональный footer.
-Навигация задаётся в SiteLayout при сборке — в TSX страниц не дублируй header/sidebar.
+Стек: React + Vite + Tailwind + framer-motion + curated registry, SiteLayout (sidebar-left | sidebar-right | top-nav | top-nav-inline) и footer.
+Навигация только в SiteLayout — в TSX страниц не дублируй header, sidebar или nav.
 
 ${seoPromptBlock ? `${seoPromptBlock}\n\n` : ""}${registryBlock}
 
@@ -699,10 +717,11 @@ ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 Верни ТОЛЬКО JSON: { "brandName": string, "pages": [ { "file", "role", "title", "description", "contentAngle", "componentIds" } ] }
 - Поле **brandName** в корне — строго «${themeBrandHint}» (из /brand пользователя); запрещены «О нашем казино», «онлайн казино», {brand}.
 - title и description каждой страницы должны содержать «${themeBrandHint}» и SEO-ключи (если заданы выше), не общие фразы.
-- Для index.php: hero-gradient, минимум 3× prose-block, poster-slider, game-carousel, slot-grid, feature-cards, section-with-bg, faq-accordion (9–11 id).
-- Для внутренних: минимум 2× prose-block + poster-slider или content-split или section-with-bg (разный порядок).
-- Для внутренних страниц: другой порядок componentIds на каждой странице (не копируй одинаковую последовательность).
-- Порядок секций на разных file должен заметно отличаться (меняй первый блок: content-split / section-with-bg / prose-block).
+- HOME_TEMPLATE (фиксирован сборщиком): «${homeTemplate?.id || "classic"}» — componentIds для index.php: ${homeOrder.join(" → ")}. Не урезай список; порядок сохраняй.
+${innerTemplatesBlock ? `${innerTemplatesBlock}\n` : ""}- Для каждой внутренней страницы componentIds = порядок из INNER_PAGE_TEMPLATES выше (не переставляй и не заменяй id).
+- Минимум 2× prose-block + один FAQ (${FAQ_COMPONENT_IDS.join(" | ")}) + cta-banner на внутренних (уже в шаблонах).
+- Слоты: только на games.php / slots.php — один блок из ${SLOT_COMPONENT_IDS.join(" | ")} (уже в шаблоне).
+- payment-methods — только на payments.php (если в шаблоне).
 - role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
 - title/description планируй под объём не меньше ${minPageWords} слов контента на странице.
 Допустимые img: ${(imageFiles || []).slice(0, 20).join(", ")}
@@ -726,20 +745,27 @@ function detectWeakRegistryContentIssues(tsxCode, componentIds, minPageWords = 2
   const ids = new Set(idList);
   const expectedProseBlocks = idList.filter((id) => id === "prose-block").length;
 
-  if (ids.has("faq-accordion") && /FaqAccordion/i.test(code)) {
+  const faqId = FAQ_COMPONENT_IDS.find((id) => ids.has(id));
+  const faqTagById = {
+    "faq-accordion": "FaqAccordion",
+    "faq-two-column": "FaqTwoColumn",
+    "faq-cards": "FaqCardGrid",
+  };
+  const faqTag = faqId ? faqTagById[faqId] : "";
+  if (faqTag && new RegExp(faqTag, "i").test(code)) {
     const faqBlock =
-      code.match(/<FaqAccordion[\s\S]*?\/>/)?.[0] ||
-      code.match(/<FaqAccordion[\s\S]*?<\/FaqAccordion>/)?.[0] ||
+      code.match(new RegExp(`<${faqTag}[\\s\\S]*?\\/>`))?.[0] ||
+      code.match(new RegExp(`<${faqTag}[\\s\\S]*?<\\/${faqTag}>`))?.[0] ||
       "";
     if (/items=\{\s*\[\s*\]\s*\}/.test(faqBlock)) {
-      issues.push("FaqAccordion: items={[]} — пустой массив");
+      issues.push(`${faqTag}: items={[]} — пустой массив`);
     }
     if (/q:\s*""/.test(faqBlock) || /a:\s*""/.test(faqBlock)) {
-      issues.push("FaqAccordion: есть пункты с пустыми q или a");
+      issues.push(`${faqTag}: есть пункты с пустыми q или a`);
     }
     const qCount = (faqBlock.match(/\bq:\s*"/g) || []).length;
     if (qCount < 6) {
-      issues.push(`FaqAccordion: только ${qCount} вопросов (нужно 6–8 с непустыми q и a)`);
+      issues.push(`${faqTag}: только ${qCount} вопросов (нужно 6–8 с непустыми q и a)`);
     }
   }
 
@@ -790,14 +816,22 @@ function buildPageCodegenPrompt({
   designHint,
   minPageWords,
   sourceArticlesBlock,
+  heroBannerIndex = 0,
+  heroUsesSlider = false,
 }) {
   const needsSlotGrid = page.componentIds.includes("slot-grid");
   const needsCarousel = page.componentIds.includes("game-carousel");
+  const needsSlotShowcase = page.componentIds.includes("slot-showcase");
+  const needsSlotScroll = page.componentIds.includes("slot-scroll");
+  const needsSlotFeatured = page.componentIds.includes("slot-featured");
   const needsPoster = page.componentIds.includes("poster-slider");
   const needsProse = page.componentIds.includes("prose-block");
   const needsHero = page.componentIds.includes("hero-gradient");
-  const needsFaq = page.componentIds.includes("faq-accordion");
+  const needsFaqAccordion = page.componentIds.includes("faq-accordion");
+  const needsFaqTwoColumn = page.componentIds.includes("faq-two-column");
+  const needsFaqCards = page.componentIds.includes("faq-cards");
   const proseCount = page.componentIds.filter((id) => id === "prose-block").length;
+  const slotIntroHint = `intro=\"3–4 предложения про каталог ${brandName}\"`;
   const componentOrder = page.componentIds.join(" → ");
   return `
 Сгенерируй ОДИН React TSX-файл (functional component) для страницы.
@@ -812,14 +846,19 @@ CTA на gateway: ${gatewayUrl}
 ОБЯЗАТЕЛЬНЫЕ ИМПОРТЫ:
 import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
-${needsHero ? `- HeroGradient: backgroundImage={BANNER_IMAGE_PATHS[0]} (или [1]), title, eyebrow, subtitle (ОДНА короткая строка), ctaHref={GATEWAY_URL}. ЗАПРЕЩЕНО paragraphs в HeroGradient — длинный текст только в ProseBlock сразу после hero.` : ""}
-${needsSlotGrid ? "- Обязательно <SlotGrid title=\"Популярные слоты\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
-${needsCarousel ? "- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />." : ""}
+${needsHero ? `- HeroGradient: split-макет (текст + баннер сбоку, НЕ bg-cover на весь блок). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер баннеров справа.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один баннер справа.`} title, eyebrow, subtitle (ОДНА строка), ctaHref={GATEWAY_URL}. Длинный текст — только в ProseBlock ниже.` : ""}
+${needsSlotGrid ? `- Обязательно <SlotGrid title=\"Популярные слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
+${needsCarousel ? `- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
+${needsSlotShowcase ? `- Обязательно <SlotShowcase title=\"Топ слоты ${brandName}\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — 1 крупный + сетка превью.` : ""}
+${needsSlotScroll ? `- Обязательно <SlotScrollRow title=\"Новинки слотов\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — горизонтальный scroll-snap.` : ""}
+${needsSlotFeatured ? `- Обязательно <SlotFeaturedRow title=\"Рекомендуемые слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS.slice(0, 3)} gatewayHref={GATEWAY_URL} /> — 3 вертикальные карточки.` : ""}
 ${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — слайдер баннеров, не дублируй SectionWithBg на той же странице.` : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 3 ? "три" : proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ … ]} /> — в КАЖДОМ ProseBlock 4–6 абзацев, каждый абзац 4–6 полных предложений, уникальный SEO-текст с ${brandName}.` : ""}
-${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 2–4 предложения\" }, … ]} /> — РОВНО 6–8 объектов; у КАЖДОГО q минимум 8 символов и a минимум 40 символов; запрещены пустые строки, заглушки «вопрос»/«ответ»/«текст».` : ""}
+${needsFaqAccordion ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 3–5 предложений\" }, … ]} /> — 6–8 объектов; q и a непустые.` : ""}
+${needsFaqTwoColumn ? `- Обязательно <FaqTwoColumn title=\"…\" intro=\"1–2 предложения\" items={[ { q, a }, … ]} /> — 6–8 пар; ответ каждый 3–5 предложений.` : ""}
+${needsFaqCards ? `- Обязательно <FaqCardGrid title=\"…\" intro=\"2–3 предложения\" items={[ { q, a }, … ]} /> — 6–8 карточек; все ответы видимы (не accordion).` : ""}
 
-Игровые превью (только SlotGrid/GameCarousel): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
+Игровые превью (SlotGrid / GameCarousel / SlotShowcase / SlotScrollRow / SlotFeaturedRow): ${gameImages.join(", ") || "GAME_IMAGE_PATHS из site-routes"}
 Баннеры (HeroGradient, PosterSlider, SectionWithBg, ContentSplit): ${bannerImages.join(", ") || "BANNER_IMAGE_PATHS из site-routes"}
 Иконки оплат: ${paymentImages.join(", ") || "PAYMENT_IMAGE_PATHS из site-routes"} — только <PaymentMethodsRow title="…" intro="…" variant="inline" />; запрещены сырые <img> для pay-* и w-full на иконках оплат.
 Пути картинок: ./img/имя_файла — только из списка билда.
@@ -830,8 +869,9 @@ ${needsFaq ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q:
 
 ОБЪЁМ (КРИТИЧНО): минимум ${minPageWords} слов видимого русского текста на странице — считай абзацы ProseBlock, FAQ, карточки, intro карусели.
 - ProseBlock — основной объём: 4–6 абзацев в paragraphs, каждый 4–6 предложений; главная — 3 ProseBlock, внутренние — 2 ProseBlock с разными темами.
-- ContentSplit: paragraphs={[...]} — 3–4 абзаца по 3–5 предложений; imageSrc={BANNER_IMAGE_PATHS[n]}.
-- FaqAccordion: 6–8 пар { q, a }; ответ каждый 3–5 предложений.
+- ContentSplit: paragraphs={[p1, p2, p3, p4]} — рядом с imageSrc только p1; p2–p4 выводятся ниже на всю ширину. imageSrc={BANNER_IMAGE_PATHS[n]}, reverse по желанию.
+- SectionWithBg: body разбей на абзацы через \\n\\n — первый рядом с картинкой, остальные ниже; НЕ full-bleed background.
+- FAQ (FaqAccordion / FaqTwoColumn / FaqCardGrid): 6–8 пар { q, a }; ответ каждый 3–5 предложений.
 - FeatureCards: items body 3–5 предложений (минимум 3 карточки).
 - SectionWithBg: body 5–7 предложений; CtaBanner body 3–4 предложения.
 - GameCarousel intro: 4–5 предложений, не одна строка.
@@ -921,6 +961,10 @@ async function writeSiteRoutesModule(
     logoSrc,
     pages,
     pageImports,
+    heroBannerIndex = 0,
+    homeTemplateId = "classic",
+    chromeTemplateId = "",
+    chromeStyleJson = {},
   }
 ) {
   const lines = [
@@ -932,6 +976,10 @@ async function writeSiteRoutesModule(
     `export const LOGO_SRC = ${JSON.stringify(logoSrc || "./img/logo.png")};`,
     `export const GAME_IMAGE_PATHS = ${JSON.stringify(gameImagePaths || [])};`,
     `export const BANNER_IMAGE_PATHS = ${JSON.stringify(bannerImagePaths || [])};`,
+    `export const HERO_BANNER_INDEX = ${Number(heroBannerIndex) || 0};`,
+    `export const HOME_TEMPLATE_ID = ${JSON.stringify(homeTemplateId || "classic")};`,
+    `export const LAYOUT_CHROME_TEMPLATE_ID = ${JSON.stringify(chromeTemplateId || "")};`,
+    `export const LAYOUT_CHROME_STYLE = ${JSON.stringify(chromeStyleJson || {})};`,
     `export const PAYMENT_IMAGE_PATHS = ${JSON.stringify(paymentImagePaths || [])};`,
     `export const SITE_LAYOUT = ${JSON.stringify(siteLayout || "sidebar-left")};`,
     `export const SEO_KEYWORDS = ${JSON.stringify(seoKeywords || [])};`,
@@ -1026,6 +1074,9 @@ export async function buildReactSite({
   brandKey: brandKeyInput,
   brandKit: brandKitInput = null,
   generationMode: generationModeInput = "standard",
+  userId: userIdInput = "",
+  batchIndex: batchIndexInput = 0,
+  batchSize: batchSizeInput = 1,
 }) {
   if (!isReactBuildEnabled()) {
     throw new Error(
@@ -1114,15 +1165,43 @@ export async function buildReactSite({
   const gameImageFiles = resolveGameImageFiles(imageFiles, imagePools, brandKit);
   const gameImages = pickGameImages(gameImageFiles, { seed: siteSeed, max: 12 });
   const gameImagePaths = gameImages.map((f) => `./img/${f}`);
-  const bannerImagePaths = resolveBannerImageFiles(imageFiles, imagePools).map(
+  let bannerImagePaths = resolveBannerImageFiles(imageFiles, imagePools).map(
     (f) => `./img/${f}`
   );
+  bannerImagePaths = shuffleWithSeed(bannerImagePaths, `${siteSeed}|bannerorder`);
+  const heroBannerIndex = bannerImagePaths.length
+    ? siteHash32(`${siteSeed}|herobanner`) % bannerImagePaths.length
+    : 0;
+  const heroUsesSlider =
+    bannerImagePaths.length >= 2 && siteHash32(`${siteSeed}|heroslider`) % 3 !== 0;
   const paymentImagePaths = resolvePaymentImageFiles(imageFiles, imagePools).map(
     (f) => `./img/${f}`
   );
   const brandPromptOverlay = formatBrandPromptOverlay(brandKit?.promptOverlay);
   const seoKeywords = parseSeoKeywords(brandKit?.seoKeywords);
+  const batchIndex = Math.max(0, Math.trunc(Number(batchIndexInput) || 0));
+  const batchSize = Math.max(1, Math.trunc(Number(batchSizeInput) || 1));
+  const homeTemplate = pickHomePageTemplate(siteSeed, batchIndex);
   const siteLayout = resolveSiteLayoutVariant(brandKit, `${safeName}|${siteSeed}`);
+  const chromeKind = String(siteLayout).startsWith("sidebar") ? "sidebar" : "header";
+  let chromeTemplate = null;
+  try {
+    const supabase = getSupabaseServerClient();
+    chromeTemplate = await pickChromeLayoutTemplate(supabase, {
+      userId: String(userIdInput || "").trim(),
+      chromeKind,
+      seed: `${siteSeed}|chrome`,
+      batchIndex,
+      batchSize,
+      onLog,
+    });
+  } catch (e) {
+    emitLog(onLog, `Chrome template: ${String(e?.message || e).slice(0, 100)}`);
+    const { fallbackChromeTemplate } = await import(
+      "@/lib/generator-engine/react-chrome-templates-catalog.js"
+    );
+    chromeTemplate = fallbackChromeTemplate(chromeKind, `${siteSeed}|chrome`);
+  }
   const seoPromptBlock = buildSeoPromptBlock({
     themeBrandHint,
     seoKeywords: brandKit?.seoKeywords,
@@ -1131,7 +1210,7 @@ export async function buildReactSite({
   const minPageWords = REACT_MIN_PAGE_WORDS;
   emitLog(
     onLog,
-    `Layout: ${siteLayout}; SEO keywords: ${seoKeywords.length || "—"} (theme: ${themeNorm.slice(0, 48)}${themeNorm.length > 48 ? "…" : ""})`
+    `Layout: ${siteLayout}; chrome: ${chromeTemplate?.id || "—"} (batch ${batchIndex + 1}/${batchSize}); home: ${homeTemplate.id}; баннеры: ${bannerImagePaths.length} (hero idx ${heroBannerIndex}${heroUsesSlider ? ", slider" : ""}); SEO keywords: ${seoKeywords.length || "—"} (theme: ${themeNorm.slice(0, 48)}${themeNorm.length > 48 ? "…" : ""})`
   );
 
   let profilePrompt = "";
@@ -1165,7 +1244,7 @@ export async function buildReactSite({
     minPageWords,
   });
 
-  const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 10);
+  const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 14);
   const registryBlock = formatComponentRegistryForArchitect(registryPool);
   const designSystemBlock = buildUiUxProMaxSystemBlock({
     theme: themeNorm,
@@ -1188,6 +1267,19 @@ export async function buildReactSite({
     emitLog(onLog, `source_articles (architect): ${String(e?.message || e).slice(0, 120)}`);
   }
 
+  const innerTemplatesPlan = buildInnerTemplatesPlan(
+    expectedFiles,
+    structureSeed,
+    batchIndex
+  );
+  const innerTemplatesBlock = formatInnerTemplatesPlanForArchitect(innerTemplatesPlan);
+  if (innerTemplatesPlan.length) {
+    emitLog(
+      onLog,
+      `Inner templates: ${innerTemplatesPlan.map((r) => `${r.file}=${r.templateId}`).join(", ")}`
+    );
+  }
+
   ensureNotStopped();
   emitLog(onLog, "Архитектор JSON (Claude)…");
   const architectRaw = await callClaude({
@@ -1207,6 +1299,8 @@ export async function buildReactSite({
       minPageWords,
       sourceArticlesBlock: sourceArticlesArchitectBlock,
       seoPromptBlock,
+      homeTemplate,
+      innerTemplatesBlock,
     }),
     maxTokens: 4096,
     temperature: 0.5,
@@ -1215,7 +1309,11 @@ export async function buildReactSite({
   const architectPlan = extractJsonObject(architectRaw);
   const brandName = resolveReactBrandName({ brandKit });
   const pages = sanitizePagesForBrand(
-    normalizePagesPlan(architectPlan?.pages, expectedFiles),
+    normalizePagesPlan(architectPlan?.pages, expectedFiles, {
+      homeTemplate,
+      structureSeed,
+      batchIndex,
+    }),
     brandName
   );
   emitLog(onLog, `Бренд: ${brandName}; страниц: ${pages.length}; мин. слов: ${minPageWords}`);
@@ -1264,6 +1362,8 @@ export async function buildReactSite({
       designHint: pageDesignHint,
       minPageWords,
       sourceArticlesBlock: sourceArticlesPageBlock,
+      heroBannerIndex,
+      heroUsesSlider,
     });
     let pageRaw = await callClaude({
       apiKey: claudeKey,
@@ -1306,6 +1406,10 @@ export async function buildReactSite({
     logoSrc,
     pages: generatedPages,
     pageImports: generatedPages,
+    heroBannerIndex,
+    homeTemplateId: homeTemplate.id,
+    chromeTemplateId: chromeTemplate?.id || "",
+    chromeStyleJson: chromeTemplate?.style_json || {},
   });
   await writeBrandPaletteForBuild(reactSrcDir, brandKit?.palette);
   emitLog(
@@ -1344,6 +1448,9 @@ export async function buildReactSite({
     theme: themeNorm,
     baseUrl,
     buildNonce,
+    homeTemplateId: homeTemplate.id,
+    siteLayout,
+    chromeTemplateId: chromeTemplate?.id || "",
     brandName,
     pages: generatedPages.map((p) => ({
       file: p.file,
@@ -1372,6 +1479,9 @@ export async function buildReactSite({
     theme: themeNorm,
     baseUrl,
     pages: generatedPages.map((p) => p.file),
+    chromeTemplateId: chromeTemplate?.id || "",
+    homeTemplateId: homeTemplate.id,
+    siteLayout,
     manifest,
   };
 }

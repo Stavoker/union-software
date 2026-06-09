@@ -318,6 +318,7 @@
     "colInput": "Input",
     "colOutput": "Output",
     "colTotal": "Всего",
+    "colChrome": "Chrome",
     "statusDone": "Готово",
     "statusError": "Ошибка",
     "statusCancelled": "Отменено",

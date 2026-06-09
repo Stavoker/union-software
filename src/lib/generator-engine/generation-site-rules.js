@@ -54,18 +54,19 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - Изображения: max-width:100%; height:auto везде, кроме блока слотов (см. ниже).
 
 ИГРОВЫЕ ИЗОБРАЖЕНИЯ (загруженные фото = превью слотов):
-- Используй эти файлы ТОЛЬКО внутри #lw-games, SlotGrid, GameCarousel и сеток слотов — не в hero, не в HeroGradient и не как полноэкранный фон.
-- На главной обязательно SlotGrid или GameCarousel с images={GAME_IMAGE_PATHS} и gatewayHref={GATEWAY_URL}.
+- Используй эти файлы ТОЛЬКО внутри #lw-games, SlotGrid, GameCarousel, SlotShowcase, SlotScrollRow, SlotFeaturedRow — не в hero, не в HeroGradient и не как полноэкранный фон.
+- На главной обязательно один слот-блок (slot-grid | game-carousel | slot-showcase | slot-scroll | slot-featured) с images={GAME_IMAGE_PATHS} и gatewayHref={GATEWAY_URL}.
 - Допустимые пути (пример): ${slotLines}
-- Превью слотов: фиксированный размер ~168×112px, object-fit:cover; не растягивать на пол-экрана.
+- Превью слотов (SlotGrid, GameCarousel): изображение на весь блок карточки, object-fit:cover; без padding и рамки внутри.
 - GameCarousel: горизонтальный autoplay-слайдер с framer-motion; каждая карточка — ссылка на gateway.
 - Запрещено: slot-превью в первом экране (hero); подмена src на favicon или внешние URL.
 
-ФОНОВЫЕ ИЗОБРАЖЕНИЯ В БЛОКАХ (баннеры):
-- HeroGradient, SectionWithBg: backgroundImage только из баннеров — ${bannerLines}.
-- Запрещено: slot-* / game-* в hero; logo.png и favicon.png — ТОЛЬКО в SiteLayout/SiteFooter, никогда в hero/баннерах/ContentSplit.
-- ContentSplit: imageSrc из BANNER_IMAGE_PATHS[n], высота до ~200px.
-- HeroGradient: title + eyebrow + subtitle (1 строка) + CTA; длинные абзацы — в ProseBlock сразу после hero, не внутри hero.
+БАННЕРЫ И SPLIT-СЕКЦИИ:
+- Баннеры только из: ${bannerLines}. Порядок BANNER_IMAGE_PATHS перемешивается на каждой сборке — hero берёт HERO_BANNER_INDEX или слайдер images.
+- HeroGradient: split (текст + баннер сбоку) или images={BANNER_IMAGE_PATHS} для слайдера; ЗАПРЕЩЕНО bg-cover на весь hero.
+- ContentSplit / SectionWithBg: один абзац рядом с картинкой, остальные ниже на всю ширину; object-cover в рамке, не full-bleed фон.
+- Запрещено: slot-* / game-* в hero; logo.png и favicon.png — ТОЛЬКО в SiteLayout/SiteFooter.
+- HeroGradient: title + eyebrow + subtitle (1 строка) + CTA; длинные абзацы — в ProseBlock сразу после hero.
 
 ИКОНКИ ОПЛАТ:
 - Footer и страница payments: <PaymentMethodsRow variant="inline" /> — ${paymentLines}.
@@ -74,7 +75,8 @@ export function buildSiteGenerationRulesBlock(opts = {}) {
 - Не используй pay-* в карусели слотов и hero.
 
 LAYOUT И КНОПКИ:
-- Навигация только в левом сайдбаре; header — только Вход/Регистрация (SiteLayout).
+- Один chrome на сайт: sidebar-left, sidebar-right, top-nav или top-nav-inline (SiteLayout). Не дублируй header и sidebar в TSX страниц.
+- HOME_TEMPLATE_ID фиксирован сборщиком — порядок секций на главной не переставляй в codegen.
 - Рядом с логотипом не дублируй текстовое имя бренда.
 - Все CTA: className="btn-brand" без bg-* text-white на кнопках.
 - ProseBlock и ContentSplit — без рамок; рамки допустимы у hero, SectionWithBg, FAQ, FeatureCards.
@@ -84,13 +86,14 @@ LAYOUT И КНОПКИ:
 - Запрещены пустые секции, заглушки «текст», «описание», «Lorem ipsum», незаполненные {brand} и плейсхолдеры.
 - ProseBlock — главный носитель текста: на главной 3 блока, на внутренних 2 блока; в каждом 4–6 абзацев по 4–6 предложений.
 - Каждый блок registry (FeatureCards, ContentSplit, FaqAccordion, CtaBanner и т.д.) — с развёрнутым уникальным копирайтом (3–5 предложений в карточке/абзаце).
-- FaqAccordion: items={[ { q, a }, … ]} — 6–8 пунктов; q и a строго непустые; ответ каждый 3–5 предложений; пустые строки в аккордеоне недопустимы.
+- FAQ (faq-accordion | faq-two-column | faq-cards): items={[ { q, a }, … ]} — 6–8 пунктов; q и a строго непустые; ответ каждый 3–5 предложений; для faq-cards и faq-two-column добавь intro (1–3 предложения).
 - Имя бренда «${brand}» должно встречаться в тексте естественно (не реже чем в каждой 2–3 секции).
 
 СЛОТЫ И ВИЗУАЛ:
-- На главной: slot-grid и/или game-carousel в componentIds; poster-slider для баннеров (BANNER_IMAGE_PATHS).
-- SlotGrid, GameCarousel, PosterSlider, ContentSplit: изображения только object-contain внутри рамки — без object-cover и без чёрных полос.
-- На страницах games/slots: обязательно SlotGrid или GameCarousel.
+- На главной: один слот-блок из slot-grid | game-carousel | slot-showcase | slot-scroll | slot-featured; poster-slider для баннеров (BANNER_IMAGE_PATHS).
+- Все слот-компоненты: object-cover на всю карточку. PosterSlider и ContentSplit: object-contain внутри рамки.
+- games.php / slots.php: слот-блок из шаблона (один на страницу). payments.php: PaymentMethodsRow. bonus/vip/promo: визуальный hook (poster-slider / section-with-bg) в начале.
+- INNER_PAGE_TEMPLATES фиксированы по file — не переставляй секции; UX: hook → ценность/доверие → prose → FAQ → CTA.
 - SectionWithBg: развёрнутый body (4–6 предложений), не пустой блок.
 - Анимации: framer-motion whileInView / whileHover на 4–6 секциях; чередуй poster-slider, content-split, section-with-bg между страницами.
 `.trim();

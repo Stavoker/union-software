@@ -262,6 +262,8 @@ export async function POST(req: Request) {
 
     const jobPayload: Record<string, unknown> = {
       userId: user.id,
+      batchIndex: i,
+      batchSize: projectNames.length,
       projectName,
       windowId,
       theme,

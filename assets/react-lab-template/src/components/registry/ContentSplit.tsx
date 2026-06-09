@@ -18,49 +18,70 @@ export function ContentSplit({
   reverse = false,
 }: Props) {
   const blocks = paragraphs.length ? paragraphs : body ? [body] : [];
+  const lead = blocks[0] || "";
+  const rest = blocks.slice(1);
   const imgSrc = imageSrc
     ? imageSrc.startsWith("./")
       ? imageSrc
       : `./img/${imageSrc}`
     : "";
 
+  const textCol = (
+    <div className="min-w-0">
+      {lead ? (
+        <p className="leading-relaxed text-brand-muted">{lead}</p>
+      ) : (
+        <p className="text-sm text-brand-muted">—</p>
+      )}
+    </div>
+  );
+
+  const imageCol = imgSrc ? (
+    <motion.div
+      initial={{ opacity: 0, x: reverse ? -16 : 16 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.45 }}
+      className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-brand-accent/15 bg-brand-block"
+    >
+      <img
+        src={imgSrc}
+        alt={imageAlt}
+        width={480}
+        height={300}
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    </motion.div>
+  ) : (
+    <div className="aspect-[16/10] w-full rounded-2xl bg-brand-block" aria-hidden />
+  );
+
   return (
     <motion.section
       initial={{ opacity: 0 }}
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
-      className={`grid items-center gap-8 md:grid-cols-2 ${reverse ? "md:[&>*:first-child]:order-2" : ""}`}
+      className="space-y-6"
     >
-      <div>
-        <h2 className="text-2xl font-semibold text-brand-text">{title}</h2>
-        <div className="mt-4 space-y-4">
-          {blocks.map((p) => (
+      <h2 className="text-2xl font-semibold text-brand-text">{title}</h2>
+
+      <div
+        className={`grid items-start gap-6 md:grid-cols-2 ${reverse ? "md:[&>*:first-child]:order-2" : ""}`}
+      >
+        {textCol}
+        {imageCol}
+      </div>
+
+      {rest.length > 0 ? (
+        <div className="space-y-4 border-t border-brand-accent/10 pt-6">
+          {rest.map((p) => (
             <p key={p.slice(0, 48)} className="leading-relaxed text-brand-muted">
               {p}
             </p>
           ))}
         </div>
-      </div>
-      {imgSrc ? (
-        <motion.div
-          initial={{ opacity: 0, x: reverse ? -16 : 16 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.45 }}
-          className="media-contain-frame mx-auto aspect-[16/10] w-full max-w-md rounded-2xl border border-brand-accent/15 p-3"
-        >
-          <img
-            src={imgSrc}
-            alt={imageAlt}
-            width={480}
-            height={280}
-            loading="lazy"
-            className="max-h-full max-w-full object-contain"
-          />
-        </motion.div>
-      ) : (
-        <div className="mx-auto h-48 w-full max-w-md rounded-2xl bg-brand-block" aria-hidden />
-      )}
+      ) : null}
     </motion.section>
   );
 }

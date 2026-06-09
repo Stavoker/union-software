@@ -31,6 +31,7 @@ type HistoryRow = {
   outputTokens: number;
   totalTokens: number;
   dryRun: boolean;
+  chromeTemplateId: string;
   createdAt: string;
 };
 
@@ -280,19 +281,20 @@ export function UsageDashboard() {
                 <th className="px-5 py-3 font-medium">{t("colStatus")}</th>
                 <th className="px-5 py-3 text-right font-medium">{t("colInput")}</th>
                 <th className="px-5 py-3 text-right font-medium">{t("colOutput")}</th>
+                <th className="px-5 py-3 font-medium">{t("colChrome")}</th>
                 <th className="px-5 py-3 text-right font-medium">{t("colTotal")}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-union-muted">
+                  <td colSpan={7} className="px-5 py-8 text-center text-union-muted">
                     {t("loading")}
                   </td>
                 </tr>
               ) : history.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-union-muted">
+                  <td colSpan={7} className="px-5 py-8 text-center text-union-muted">
                     {emptyMessage}
                   </td>
                 </tr>
@@ -309,6 +311,9 @@ export function UsageDashboard() {
                       {row.projectName}
                     </td>
                     <td className="px-5 py-3 text-union-muted">{statusLabel(row)}</td>
+                    <td className="max-w-[120px] truncate px-5 py-3 font-mono text-xs text-union-muted">
+                      {row.chromeTemplateId || "—"}
+                    </td>
                     <td className="px-5 py-3 text-right tabular-nums text-union-text">
                       {formatTokens(row.inputTokens, locale)}
                     </td>

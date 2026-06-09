@@ -318,6 +318,7 @@
     "colInput": "Input",
     "colOutput": "Output",
     "colTotal": "Total",
+    "colChrome": "Chrome",
     "statusDone": "Done",
     "statusError": "Error",
     "statusCancelled": "Cancelled",
