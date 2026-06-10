@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { BannerTextOverlay } from "./BannerTextOverlay";
 
 type Props = {
   title: string;
@@ -44,10 +45,7 @@ export function CtaBanner({
         <div className="absolute inset-0 bg-brand-block" aria-hidden />
       )}
 
-      <div
-        className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/70 to-black/55"
-        aria-hidden
-      />
+      <BannerTextOverlay variant="cta" />
 
       <div className="relative z-10 flex min-h-[220px] flex-col items-center justify-center px-6 py-8 text-center md:min-h-[260px]">
         <h2 className="text-xl font-bold text-white md:text-2xl">{title}</h2>

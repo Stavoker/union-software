@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BannerTextOverlay } from "./BannerTextOverlay";
 
 type Props = {
   title: string;
@@ -214,10 +215,6 @@ export function HeroGradient({
     return () => window.clearInterval(id);
   }, [rotatingLines.length]);
 
-  const overlayClass = reverse
-    ? "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-l md:from-black/80 md:via-black/45 md:to-transparent"
-    : "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-r md:from-black/80 md:via-black/45 md:to-transparent";
-
   const activeBody = rotatingBodies[bodyIndex % rotatingBodies.length] || "";
   const activeLine = rotatingLines[lineIndex % rotatingLines.length] || "";
 
@@ -229,7 +226,7 @@ export function HeroGradient({
     >
       <HeroBackground images={sliderImages} index={index} />
 
-      <div className={`absolute inset-0 ${overlayClass}`} aria-hidden />
+      <BannerTextOverlay variant="hero" />
 
       <div
         className={`relative z-10 flex min-h-[360px] flex-col justify-end p-6 md:min-h-[480px] md:justify-center md:p-8 lg:p-10 ${
@@ -252,7 +249,7 @@ export function HeroGradient({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.05 }}
-            className="text-3xl font-bold tracking-tight text-white md:text-4xl"
+            className="text-3xl font-bold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.65)] md:text-4xl"
           >
             {title}
           </motion.h1>
@@ -265,7 +262,7 @@ export function HeroGradient({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.35 }}
-                  className="max-w-lg text-base leading-relaxed text-white/90 md:text-lg"
+                  className="max-w-lg text-base leading-relaxed text-white/95 drop-shadow-[0_1px_8px_rgba(0,0,0,0.55)] md:text-lg"
                 >
                   {activeBody}
                 </motion.p>

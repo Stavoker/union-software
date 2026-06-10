@@ -81,19 +81,27 @@ function GatewayCtas({ className = "" }: { className?: string }) {
 function TopNavLinks({
   className = "",
   itemClassName = "rounded-lg px-3 py-2",
+  onNavigate,
+  vertical = false,
 }: {
   className?: string;
   itemClassName?: string;
+  onNavigate?: () => void;
+  vertical?: boolean;
 }) {
   return (
-    <nav className={className} aria-label="Основное меню">
+    <nav
+      className={`${className} ${vertical ? "flex flex-col gap-1" : ""}`}
+      aria-label="Основное меню"
+    >
       {siteRoutes.map((r) => (
         <NavLink
           key={r.path}
           to={r.path}
           end={r.path === "/"}
+          onClick={onNavigate}
           className={({ isActive }) =>
-            `whitespace-nowrap text-sm font-medium transition-colors ${itemClassName} ${
+            `${vertical ? "block w-full" : "whitespace-nowrap"} text-sm font-medium transition-colors ${itemClassName} ${
               isActive
                 ? "bg-brand-accent/12 text-brand-accent"
                 : "text-brand-muted hover:bg-brand-block hover:text-brand-text"
@@ -109,18 +117,20 @@ function TopNavLinks({
 
 function TopNavLayout({ children, inline = false }: Props & { inline?: boolean }) {
   const hc = headerChrome;
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-brand-bg text-brand-text">
       <header
         className={`sticky top-0 z-50 ${hc.headerBg} ${hc.borderBottom ? "border-b border-brand-accent/15" : ""} ${hc.blur ? "backdrop-blur-md" : ""}`}
       >
-        <div className={`mx-auto flex ${hc.height} ${hc.maxWidth} items-center gap-4 px-4 lg:px-8`}>
+        <div className={`mx-auto flex ${hc.height} ${hc.maxWidth} items-center gap-3 px-4 lg:px-8`}>
           <NavLink to="/" className="flex shrink-0 items-center" aria-label={BRAND_NAME}>
             <img src={LOGO_SRC} alt="" className="site-brand-logo" width={140} height={32} />
           </NavLink>
 
           <TopNavLinks
-            className={`hidden min-w-0 flex-1 items-center overflow-x-auto md:flex ${hc.navGap} ${
+            className={`hidden min-w-0 flex-1 items-center overflow-x-auto lg:flex ${hc.navGap} ${
               inline || hc.navAlign === "start"
                 ? "justify-start"
                 : hc.navAlign === "end"
@@ -130,9 +140,52 @@ function TopNavLayout({ children, inline = false }: Props & { inline?: boolean }
             itemClassName={`${hc.navItemRadius} ${hc.navItemPadding}`}
           />
 
-          <GatewayCtas className={`ml-auto hidden shrink-0 sm:flex ${hc.ctaGap}`} />
+          <GatewayCtas className={`ml-auto hidden shrink-0 lg:flex ${hc.ctaGap}`} />
+
+          <button
+            type="button"
+            className="ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-brand-accent/20 text-brand-text lg:hidden"
+            aria-label={mobileOpen ? "Закрыть меню" : "Открыть меню"}
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((v) => !v)}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </header>
+
+      <AnimatePresence>
+        {mobileOpen ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 top-14 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+              onClick={() => setMobileOpen(false)}
+              aria-hidden
+            />
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              className="fixed bottom-0 left-0 top-14 z-50 flex w-[min(18rem,88vw)] flex-col border-r border-brand-accent/15 bg-brand-card p-3 shadow-xl lg:hidden"
+            >
+              <nav className="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label="Мобильное меню">
+                <TopNavLinks
+                  vertical
+                  onNavigate={() => setMobileOpen(false)}
+                  itemClassName="rounded-lg px-3 py-2.5"
+                />
+              </nav>
+              <div className="space-y-2 border-t border-brand-accent/15 pt-3">
+                <GatewayCtas className="flex-col [&_a]:w-full [&_a]:justify-center" />
+              </div>
+            </motion.aside>
+          </>
+        ) : null}
+      </AnimatePresence>
 
       <motion.main
         key={typeof window !== "undefined" ? window.location.pathname : "main"}

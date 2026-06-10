@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BannerTextOverlay } from "./BannerTextOverlay";
 
 type Props = {
   title?: string;
@@ -135,10 +136,7 @@ export function PosterSlider({
     >
       <SlideBackground images={list} index={index} />
 
-      <div
-        className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-r md:from-black/80 md:via-black/45 md:to-transparent"
-        aria-hidden
-      />
+      <BannerTextOverlay variant="hero" />
 
       <div className="relative z-10 flex min-h-[360px] flex-col justify-end p-6 md:min-h-[420px] md:justify-center md:p-8 lg:p-10">
         <div className="max-w-xl space-y-4">
