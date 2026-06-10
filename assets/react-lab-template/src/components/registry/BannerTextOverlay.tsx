@@ -2,7 +2,7 @@ type Variant = "hero" | "slider" | "cta";
 
 /**
  * Затемнення баннера під текст. Різна інтенсивність:
- * - hero: помірне (текст зліва, банер частково видно)
+ * - hero: помірне+ (текст зліва читається, банер справа видно)
  * - slider: легке (банер має читатися)
  * - cta: легке рівномірне (центрований текст, фон видно)
  */
@@ -33,13 +33,13 @@ export function BannerTextOverlay({ variant = "hero" }: { variant?: Variant }) {
 
   return (
     <>
-      <div className="absolute inset-0 bg-black/25" aria-hidden />
+      <div className="absolute inset-0 bg-black/32" aria-hidden />
       <div
-        className="absolute inset-0 bg-gradient-to-t from-black/78 via-black/48 to-black/22"
+        className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/55 to-black/28"
         aria-hidden
       />
       <div
-        className="absolute inset-0 bg-gradient-to-r from-black/62 via-black/38 to-black/18"
+        className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/48 to-black/22"
         aria-hidden
       />
     </>
