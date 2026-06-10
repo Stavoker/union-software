@@ -11,8 +11,8 @@ export const REACT_COMPONENT_REGISTRY = [
     importFrom: "../components/registry/HeroGradient",
     category: "hero",
     description:
-      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх. body — статичный абзац 3–4 предложения; subtitle/highlights — короткая ротация.",
-    props: ["title", "eyebrow", "body", "subtitle", "highlights", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
+      "Hero full-bleed: баннер на фоне (bg-cover), текст поверх. body — 3–4 абзаца через «||» (макс. 3 предложения каждый, ротация); subtitle/highlights — короткие фразы через «|».",
+    props: ["title", "eyebrow", "body", "bodyParagraphs", "subtitle", "highlights", "backgroundImage", "images", "ctaLabel", "ctaHref", "reverse"],
     tags: ["hero", "landing", "home"],
   },
   {
@@ -143,7 +143,7 @@ export const REACT_COMPONENT_REGISTRY = [
     name: "ContentSplit",
     importFrom: "../components/registry/ContentSplit",
     category: "content",
-    description: "Перший абзац + imageSrc в одному ряду; інші абзаци — нижче на всю ширину.",
+    description: "Перший абзац + imageSrc в одному ряду (картинка по высоте абзаца); інші абзаци — нижче на всю ширину.",
     props: ["title", "paragraphs", "body", "imageSrc", "imageAlt", "reverse"],
     tags: ["split", "about", "reviews"],
   },

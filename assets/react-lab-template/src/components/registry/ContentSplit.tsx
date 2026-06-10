@@ -27,7 +27,7 @@ export function ContentSplit({
     : "";
 
   const textCol = (
-    <div className="min-w-0">
+    <div className="flex min-h-0 flex-col justify-center">
       {lead ? (
         <p className="leading-relaxed text-brand-muted">{lead}</p>
       ) : (
@@ -42,7 +42,7 @@ export function ContentSplit({
       whileInView={{ opacity: 1, x: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.45 }}
-      className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-brand-accent/15 bg-brand-block"
+      className="relative min-h-[10rem] w-full overflow-hidden rounded-2xl border border-brand-accent/15 bg-brand-block md:h-full md:min-h-[8rem]"
     >
       <img
         src={imgSrc}
@@ -54,7 +54,7 @@ export function ContentSplit({
       />
     </motion.div>
   ) : (
-    <div className="aspect-[16/10] w-full rounded-2xl bg-brand-block" aria-hidden />
+    <div className="min-h-[10rem] w-full rounded-2xl bg-brand-block md:h-full" aria-hidden />
   );
 
   return (
@@ -67,7 +67,7 @@ export function ContentSplit({
       <h2 className="text-2xl font-semibold text-brand-text">{title}</h2>
 
       <div
-        className={`grid items-start gap-6 md:grid-cols-2 ${reverse ? "md:[&>*:first-child]:order-2" : ""}`}
+        className={`grid items-stretch gap-6 md:grid-cols-2 ${reverse ? "md:[&>*:first-child]:order-2" : ""}`}
       >
         {textCol}
         {imageCol}

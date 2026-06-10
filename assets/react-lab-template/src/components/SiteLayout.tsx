@@ -259,22 +259,25 @@ function SidebarLayout({
 
       <AnimatePresence>
         {mobileOpen ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-brand-bg/80 backdrop-blur-sm lg:hidden"
-            onClick={() => setMobileOpen(false)}
-          >
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 top-14 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+              onClick={() => setMobileOpen(false)}
+              aria-hidden
+            />
             <motion.aside
               initial={{ x: isRight ? "100%" : "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: isRight ? "100%" : "-100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
-              className={`flex h-full w-[min(18rem,88vw)] flex-col bg-brand-card p-3 ${
-                isRight ? "ml-auto border-l border-brand-accent/15" : "border-r border-brand-accent/15"
+              className={`fixed bottom-0 top-14 z-50 flex w-[min(18rem,88vw)] flex-col bg-brand-card p-3 shadow-xl lg:hidden ${
+                isRight
+                  ? "right-0 border-l border-brand-accent/15"
+                  : "left-0 border-r border-brand-accent/15"
               }`}
-              onClick={(e) => e.stopPropagation()}
             >
               <nav className={`flex flex-1 flex-col overflow-y-auto ${style.navGap}`} aria-label="Мобильное меню">
                 <SidebarNavLinks onNavigate={() => setMobileOpen(false)} style={style} />
@@ -283,7 +286,7 @@ function SidebarLayout({
                 <GatewayCtas className="flex-col [&_a]:w-full [&_a]:justify-center" />
               </div>
             </motion.aside>
-          </motion.div>
+          </>
         ) : null}
       </AnimatePresence>
 

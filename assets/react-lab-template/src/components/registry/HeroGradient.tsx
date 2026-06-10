@@ -5,8 +5,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 type Props = {
   title: string;
   eyebrow?: string;
-  /** Статичный абзац под заголовком (2–4 предложения). */
+  /** Один абзац или несколько через «||» — ротация (макс. 3 предложения на абзац). */
   body?: string;
+  /** Альтернатива body: массив ротируемых абзацев. */
+  bodyParagraphs?: string[];
   /** Короткий теглайн. Несколько фраз через «|» — плавная ротация. */
   subtitle?: string;
   /** Альтернатива subtitle: массив ротируемых строк. */
@@ -18,6 +20,9 @@ type Props = {
   ctaHref?: string;
   reverse?: boolean;
 };
+
+const SLIDE_MS = 5200;
+const FADE_S = 0.55;
 
 function resolveSrc(src: string) {
   return src.startsWith("./") ? src : `./img/${src}`;
@@ -39,6 +44,22 @@ function parseRotatingLines(subtitle?: string, highlights?: string[]) {
   return [raw];
 }
 
+function parseRotatingBodies(body?: string, bodyParagraphs?: string[]) {
+  if (Array.isArray(bodyParagraphs) && bodyParagraphs.length) {
+    return bodyParagraphs.map((s) => String(s).trim()).filter(Boolean).slice(0, 5);
+  }
+  const raw = String(body || "").trim();
+  if (!raw) return [];
+  if (raw.includes("||")) {
+    return raw
+      .split("||")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+  }
+  return [raw];
+}
+
 function HeroBackground({ images, index }: { images: string[]; index: number }) {
   const list = images.slice(0, 6);
 
@@ -51,23 +72,29 @@ function HeroBackground({ images, index }: { images: string[]; index: number }) 
     );
   }
 
-  const active = list[index % list.length];
-
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.img
-        key={active}
-        src={resolveSrc(active)}
-        alt=""
-        width={1280}
-        height={720}
-        initial={{ opacity: 0, scale: 1.04 }}
-        animate={{ opacity: 1, scale: 1.06 }}
-        exit={{ opacity: 0, scale: 1.02 }}
-        transition={{ opacity: { duration: 0.45 }, scale: { duration: 12, ease: "linear" } }}
-        className="absolute inset-0 h-full w-full object-cover object-center"
-      />
-    </AnimatePresence>
+    <div className="absolute inset-0 overflow-hidden" aria-hidden>
+      {list.map((src, i) => (
+        <motion.img
+          key={src}
+          src={resolveSrc(src)}
+          alt=""
+          width={1280}
+          height={720}
+          initial={false}
+          animate={{
+            opacity: i === index ? 1 : 0,
+            scale: i === index ? 1.05 : 1,
+          }}
+          transition={{
+            opacity: { duration: FADE_S, ease: "easeInOut" },
+            scale: { duration: SLIDE_MS / 1000, ease: "linear" },
+          }}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+          style={{ zIndex: i === index ? 1 : 0 }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -125,6 +152,7 @@ export function HeroGradient({
   title,
   eyebrow,
   body,
+  bodyParagraphs,
   subtitle,
   highlights,
   backgroundImage,
@@ -137,11 +165,16 @@ export function HeroGradient({
     images.length > 0 ? images : backgroundImage ? [backgroundImage] : [];
 
   const list = sliderImages.slice(0, 6);
+  const rotatingBodies = useMemo(
+    () => parseRotatingBodies(body, bodyParagraphs),
+    [body, bodyParagraphs]
+  );
   const rotatingLines = useMemo(
     () => parseRotatingLines(subtitle, highlights),
     [subtitle, highlights]
   );
   const [index, setIndex] = useState(0);
+  const [bodyIndex, setBodyIndex] = useState(0);
   const [lineIndex, setLineIndex] = useState(0);
 
   const go = useCallback(
@@ -153,16 +186,31 @@ export function HeroGradient({
   );
 
   useEffect(() => {
+    list.forEach((src) => {
+      const img = new Image();
+      img.src = resolveSrc(src);
+    });
+  }, [list]);
+
+  useEffect(() => {
     if (list.length < 2) return;
-    const id = window.setInterval(() => go(1), 4800);
+    const id = window.setInterval(() => go(1), SLIDE_MS);
     return () => window.clearInterval(id);
   }, [go, list.length]);
+
+  useEffect(() => {
+    if (rotatingBodies.length < 2) return;
+    const id = window.setInterval(() => {
+      setBodyIndex((i) => (i + 1) % rotatingBodies.length);
+    }, 4500);
+    return () => window.clearInterval(id);
+  }, [rotatingBodies.length]);
 
   useEffect(() => {
     if (rotatingLines.length < 2) return;
     const id = window.setInterval(() => {
       setLineIndex((i) => (i + 1) % rotatingLines.length);
-    }, 4200);
+    }, 3800);
     return () => window.clearInterval(id);
   }, [rotatingLines.length]);
 
@@ -170,6 +218,7 @@ export function HeroGradient({
     ? "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-l md:from-black/80 md:via-black/45 md:to-transparent"
     : "bg-gradient-to-t from-black/85 via-black/50 to-black/30 md:bg-gradient-to-r md:from-black/80 md:via-black/45 md:to-transparent";
 
+  const activeBody = rotatingBodies[bodyIndex % rotatingBodies.length] || "";
   const activeLine = rotatingLines[lineIndex % rotatingLines.length] || "";
 
   return (
@@ -207,26 +256,32 @@ export function HeroGradient({
           >
             {title}
           </motion.h1>
-          {body?.trim() ? (
-            <motion.p
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.12 }}
-              className="max-w-lg text-base leading-relaxed text-white/90 md:text-lg"
-            >
-              {body.trim()}
-            </motion.p>
-          ) : null}
-          {activeLine ? (
-            <div className="min-h-[2.5rem] md:min-h-[3rem]">
+          {activeBody ? (
+            <div className="min-h-[4.5rem] md:min-h-[5rem]">
               <AnimatePresence mode="wait">
                 <motion.p
-                  key={activeLine}
+                  key={activeBody}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.35 }}
-                  className="text-base leading-relaxed text-white/85 md:text-lg"
+                  className="max-w-lg text-base leading-relaxed text-white/90 md:text-lg"
+                >
+                  {activeBody}
+                </motion.p>
+              </AnimatePresence>
+            </div>
+          ) : null}
+          {activeLine ? (
+            <div className="min-h-[1.75rem] md:min-h-[2rem]">
+              <AnimatePresence mode="wait">
+                <motion.p
+                  key={activeLine}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.3 }}
+                  className="text-sm font-medium text-brand-accent md:text-base"
                 >
                   {activeLine}
                 </motion.p>

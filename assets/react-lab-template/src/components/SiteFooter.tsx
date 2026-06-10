@@ -1,3 +1,4 @@
+import { NavLink } from "react-router-dom";
 import { GATEWAY_URL, BRAND_NAME, LOGO_SRC, PAYMENT_IMAGE_PATHS, siteRoutes } from "../lib/site-routes";
 import { PaymentMethodsRow } from "./registry/PaymentMethodsRow";
 
@@ -49,12 +50,17 @@ export function SiteFooter() {
                   <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2">
                     {navLinks.map((r) => (
                       <li key={r.path}>
-                        <a
-                          href={r.path === "/" ? "./" : `.${r.path}`}
-                          className="text-sm text-brand-text transition-colors hover:text-brand-accent"
+                        <NavLink
+                          to={r.path}
+                          end={r.path === "/"}
+                          className={({ isActive }) =>
+                            `text-sm transition-colors hover:text-brand-accent ${
+                              isActive ? "text-brand-accent" : "text-brand-text"
+                            }`
+                          }
                         >
                           {r.navLabel}
-                        </a>
+                        </NavLink>
                       </li>
                     ))}
                   </ul>
