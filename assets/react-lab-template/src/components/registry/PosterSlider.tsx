@@ -136,13 +136,17 @@ export function PosterSlider({
     >
       <SlideBackground images={list} index={index} />
 
-      <BannerTextOverlay variant="hero" />
+      <BannerTextOverlay variant="slider" />
 
       <div className="relative z-10 flex min-h-[360px] flex-col justify-end p-6 md:min-h-[420px] md:justify-center md:p-8 lg:p-10">
         <div className="max-w-xl space-y-4">
-          <h2 className="text-2xl font-bold tracking-tight text-white md:text-3xl">{title}</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] md:text-3xl">
+            {title}
+          </h2>
           {intro ? (
-            <p className="text-base leading-relaxed text-white/85 md:text-lg">{intro}</p>
+            <p className="text-base leading-relaxed text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)] md:text-lg">
+              {intro}
+            </p>
           ) : null}
           <a href={gatewayHref} className="btn-brand mt-2 inline-flex px-6 py-2.5 text-sm">
             {ctaLabel}

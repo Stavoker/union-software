@@ -48,8 +48,12 @@ export function CtaBanner({
       <BannerTextOverlay variant="cta" />
 
       <div className="relative z-10 flex min-h-[220px] flex-col items-center justify-center px-6 py-8 text-center md:min-h-[260px]">
-        <h2 className="text-xl font-bold text-white md:text-2xl">{title}</h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-white/85 md:text-base">{text}</p>
+        <h2 className="text-xl font-bold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] md:text-2xl">
+          {title}
+        </h2>
+        <p className="mx-auto mt-3 max-w-xl text-sm text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.45)] md:text-base">
+          {text}
+        </p>
         <a href={ctaHref} className="btn-brand mt-5 px-6 py-2.5 text-sm">
           {ctaLabel}
         </a>

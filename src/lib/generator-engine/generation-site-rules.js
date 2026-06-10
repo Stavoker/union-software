@@ -83,7 +83,7 @@ ${s.header}
 - HeroGradient: full-bleed bg-cover фон + текст поверх (затемнение BannerTextOverlay в шаблоне); body — 3–4 абзаца через «||», каждый макс. 3 предложения (ротация); subtitle/highlights — короткие фразы через «|»; ЗАПРЕЩЁН один длинный абзац и split (текст + баннер сбоку).
 - ContentSplit: картинка справа/слева по высоте первого абзаца (items-stretch), не фиксированный aspect-ratio.
 - PosterSlider: full-bleed bg-cover слайдер без рамки; title, intro и CTA поверх gradient overlay; ЗАПРЕЩЕНЫ object-contain и текст вне слайдера.
-- CtaBanner / PosterSlider: backgroundImage + сильное затемнение (BannerTextOverlay); текст и CTA поверх баннера.
+- HeroGradient: умеренное затемнение (BannerTextOverlay hero); PosterSlider — легче (slider); CtaBanner — легче (cta), баннер должен оставаться видимым.
 - ContentSplit / SectionWithBg: один абзац рядом с картинкой, остальные ниже.
 
 СЛОТЫ:
