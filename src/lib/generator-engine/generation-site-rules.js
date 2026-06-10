@@ -2,7 +2,7 @@
  * Обовʼязкові правила збірки для промптів architect/page (бренд, img слотів, адаптив).
  */
 
-import { getSiteContentLanguageSpec } from "@/src/lib/generator-engine/generation-content-language";
+import { getSiteContentLanguageSpec } from "@/lib/generator-engine/generation-content-language";
 
 function buildSharedSiteRules(opts = {}) {
   const brand = String(opts.themeBrandHint || "").trim() || "из темы и brandKit текущей сборки";

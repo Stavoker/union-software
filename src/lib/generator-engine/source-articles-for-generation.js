@@ -3,7 +3,7 @@ import { applyBrandPlaceholder } from "@/src/lib/generation-prompt-profiles";
 import {
   getSiteContentLanguageSpec,
   resolveSiteContentLanguage,
-} from "@/src/lib/generator-engine/generation-content-language";
+} from "@/lib/generator-engine/generation-content-language";
 
 const TABLE = "source_articles";
 
