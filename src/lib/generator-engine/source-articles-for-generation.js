@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
 import { applyBrandPlaceholder } from "@/src/lib/generation-prompt-profiles";
+import {
+  getSiteContentLanguageSpec,
+  resolveSiteContentLanguage,
+} from "@/src/lib/generator-engine/generation-content-language";
 
 const TABLE = "source_articles";
 
@@ -23,7 +27,7 @@ export function resolveSourceArticlesSettings(env = process.env) {
   const enabledRaw = String(env.SOFTGEN_SOURCE_ARTICLES_ENABLED ?? "1").trim();
   return {
     enabled: enabledRaw !== "0",
-    language: String(env.SOFTGEN_SOURCE_ARTICLES_LANGUAGE ?? "ru").trim() || "ru",
+    language: String(env.SOFTGEN_SOURCE_ARTICLES_LANGUAGE ?? "en").trim() || "en",
     countPerPage: readCountEnv("SOFTGEN_SOURCE_ARTICLES_COUNT", 2, 0, 4),
     poolLimit: readCountEnv("SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT", 40, 5, 120),
   };
@@ -133,12 +137,29 @@ export function formatSourceArticlesPromptBlock(articles, opts = {}) {
   const brand = String(opts.themeBrandHint || "").trim() || "из темы сборки";
   const maxChars = readCountEnv("SOFTGEN_SOURCE_ARTICLE_EXCERPT_CHARS", 1100, 300, 2500);
   const page = String(opts.pageFile || "").trim();
+  const siteLang = getSiteContentLanguageSpec(
+    opts.siteContentLanguage ?? resolveSiteContentLanguage(process.env)
+  );
+  const refLang = String(
+    opts.referenceLanguage ??
+      list.map((r) => String(r.language || "").trim()).find(Boolean) ??
+      resolveSourceArticlesSettings(process.env).language
+  )
+    .trim()
+    .toLowerCase();
+  const crossLanguage =
+    refLang && refLang !== siteLang.code && refLang !== siteLang.htmlLang;
 
   const lines = [
     "=== РЕФЕРЕНС ТЕКСТОВ (source_articles, только стиль и глубина; не копировать дословно) ===",
     `Бренд текущей сборки: «${brand}». В примерах ниже чужие бренды заменены на «${brand}» — не восстанавливай Laki/Лаки и не подставляй «О нашем казино».`,
     "Используй примеры как ориентир по тону, структуре абзацев и iGaming-лексике; факты адаптируй под тему страницы.",
   ];
+  if (crossLanguage) {
+    lines.push(
+      `Примеры ниже на языке «${refLang}» — перенеси структуру, тон и глубину; весь итоговый текст сайта только на ${siteLang.contentLabel}, без английских/чужих фраз и без дословного перевода заголовков.`
+    );
+  }
   if (page) lines.push(`Страница сборки: ${page}`);
 
   list.forEach((row, i) => {
@@ -208,9 +229,11 @@ export async function loadSourceArticlesContextForBuild(opts) {
     const block = formatSourceArticlesPromptBlock(picked, {
       themeBrandHint: opts.themeBrandHint,
       pageFile: opts.pageFile,
+      siteContentLanguage: resolveSiteContentLanguage(process.env),
+      referenceLanguage: settings.language,
     });
     onLog?.(
-      `source_articles: пул ${pool.length}, в промпт ${picked.length} (ids: ${picked.map((r) => r.id).join(", ")})`
+      `source_articles: пул ${pool.length} (${settings.language}), в промпт ${picked.length} (ids: ${picked.map((r) => r.id).join(", ")}); контент сайта: ${resolveSiteContentLanguage(process.env)}`
     );
     return { pool, block, picked };
   } catch (e) {

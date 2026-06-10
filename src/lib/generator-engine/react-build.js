@@ -24,6 +24,12 @@ import {
   formatGenerationPromptProfileBlock,
 } from "@/src/lib/generation-prompt-profiles";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
+import {
+  buildSiteContentLanguagePromptBlock,
+  countCyrillicWordsInText,
+  getSiteContentLanguageSpec,
+  resolveSiteContentLanguage,
+} from "@/lib/generator-engine/generation-content-language";
 import { writeBuildProgress } from "@/lib/generator-engine/job-progress";
 import { normalizePalette } from "@/lib/generator-brand-palette";
 import { loadSourceArticlesContextForBuild } from "@/lib/generator-engine/source-articles-for-generation";
@@ -716,14 +722,17 @@ function buildArchitectUserPrompt({
   seoPromptBlock,
   homeTemplate,
   innerTemplatesBlock = "",
+  contentLanguageBlock = "",
+  contentLangSpec,
 }) {
   const homeOrder = homeTemplate?.order || HOME_PAGE_TEMPLATES[0].order;
+  const lang = contentLangSpec || getSiteContentLanguageSpec("ru");
   return `
 Тема сайта: ${theme}
 Бренд в текстах (СТРОГО): ${themeBrandHint}
 Базовый шлюз регистрации (CTA): ${gatewayUrl}
 Страницы пакета (ровно ${expectedFiles.length}): ${expectedFiles.join(", ")}
-Для каждой страницы укажи file (как в списке), role (короткая русская подпись для меню, 1–4 слова), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
+Для каждой страницы укажи file (как в списке), role (короткая ${lang.roleLanguageHint} подпись для меню, 1–4 слова, напр. ${lang.exampleRoles}), title, description, contentAngle, componentIds (6–8 id на главной, 4–6 на внутренних).
 Стек: React + Vite + Tailwind + framer-motion + curated registry, SiteLayout (sidebar-left | sidebar-right | top-nav | top-nav-inline) и footer.
 Навигация только в SiteLayout — в TSX страниц не дублируй header, sidebar или nav.
 
@@ -733,7 +742,7 @@ ${siteRules}
 
 ${designHint}
 
-${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
+${contentLanguageBlock ? `${contentLanguageBlock}\n\n` : ""}${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
 ${brandPromptOverlay ? `=== БРЕНД КЛИЕНТА ===\n${brandPromptOverlay}\n` : ""}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
@@ -745,19 +754,18 @@ ${innerTemplatesBlock ? `${innerTemplatesBlock}\n` : ""}- Для каждой в
 - Минимум 2× prose-block + один FAQ (${FAQ_COMPONENT_IDS.join(" | ")}) + cta-banner на внутренних (уже в шаблонах).
 - Слоты: только на games.php / slots.php — один блок из ${SLOT_COMPONENT_IDS.join(" | ")} (уже в шаблоне).
 - payment-methods — только на payments.php (если в шаблоне).
-- role — короткое меню («Главная», «Бонусы», «Платежи»), не длинный SEO-заголовок.
+- role — короткое меню (${lang.exampleRoles}), не длинный SEO-заголовок.
 - title/description планируй под объём не меньше ${minPageWords} слов контента на странице.
 Допустимые img: ${(imageFiles || []).slice(0, 20).join(", ")}
 `.trim();
 }
 
-/** Підрахунок видимих слів у російських рядках TSX (для валідації обсягу). */
+/** Підрахунок видимих слів у кириличних рядках TSX (ru/uk, для валідації обсягу). */
 function countVisibleWordsInTsx(tsxCode) {
   const strings = [...String(tsxCode || "").matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) =>
     m[1].replace(/\\n/g, " ").replace(/\\"/g, '"')
   );
-  const cyrillicText = strings.filter((s) => /[А-Яа-яЁё]/.test(s)).join(" ");
-  return cyrillicText.split(/\s+/).filter((w) => /[А-Яа-яЁё]/.test(w)).length;
+  return countCyrillicWordsInText(strings.filter((s) => /[А-Яа-яЁёІіЇїЄєҐґ]/.test(s)).join(" "));
 }
 
 /** @returns {string[]} human-readable issues */
@@ -841,7 +849,10 @@ function buildPageCodegenPrompt({
   sourceArticlesBlock,
   heroBannerIndex = 0,
   heroUsesSlider = false,
+  contentLanguageBlock = "",
+  contentLangSpec,
 }) {
+  const lang = contentLangSpec || getSiteContentLanguageSpec("ru");
   const needsSlotGrid = page.componentIds.includes("slot-grid");
   const needsCarousel = page.componentIds.includes("game-carousel");
   const needsSlotShowcase = page.componentIds.includes("slot-showcase");
@@ -862,7 +873,7 @@ function buildPageCodegenPrompt({
 Экспорт: export function ${page.componentName}() { ... }
 Без default export. Без import React unless needed.
 Tailwind utility classes, framer-motion для 4–6 секций (motion.section / whileInView / whileHover).
-Язык контента: русский. Бренд в текстах: **${brandName}** (везде вместо {brand} и общих фраз). Тема: ${theme}.
+Язык контента: ${lang.contentLabel}. Бренд в текстах: **${brandName}** (везде вместо {brand} и общих фраз). Тема: ${theme}.
 Страница: file=${page.file}, route=${page.route}, title=${page.title}, description=${page.description}, angle=${page.contentAngle}.
 CTA на gateway: ${gatewayUrl}
 Порядок секций на странице (соблюдай): ${componentOrder}
@@ -871,13 +882,13 @@ CTA на gateway: ${gatewayUrl}
 import { GATEWAY_URL, BRAND_NAME, GAME_IMAGE_PATHS, BANNER_IMAGE_PATHS, PAYMENT_IMAGE_PATHS } from "../lib/site-routes";
 - Используй BRAND_NAME в заголовках и абзацах (не «О нашем казино», не плейсхолдеры).
 ${needsHero ? `- HeroGradient: full-bleed hero — баннер на фоне (bg-cover), текст поверх с gradient overlay; ЗАПРЕЩЁН split (текст + баннер сбоку). ${heroUsesSlider && bannerImages.length >= 2 ? `images={BANNER_IMAGE_PATHS.slice(0, ${Math.min(4, bannerImages.length)})} — слайдер фоновых баннеров.` : `backgroundImage={BANNER_IMAGE_PATHS[${heroBannerIndex}]} — один фоновый баннер.`} title, eyebrow, body=\"3–4 коротких абзаца через «||» (каждый макс. 3 предложения, 25–45 слов) — ротация как у subtitle; НЕ один длинный абзац\", subtitle=\"короткие фразы через | (напр. «Слоты и live-игры|Поддержка 24/7|Бонусы и кэшбэк»)\", ctaHref={GATEWAY_URL}.` : ""}
-${needsCtaBanner ? `- Обязательно <CtaBanner title=\"…\" body=\"2–3 предложения\" backgroundImage={BANNER_IMAGE_PATHS[${Math.min(1, Math.max(0, bannerImages.length - 1))}]} ctaHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — затемнённый баннер на фоне, текст и CTA поверх; не plain bg-brand-block.` : ""}
+${needsCtaBanner ? `- Обязательно <CtaBanner title=\"…\" body=\"2–3 предложения\" backgroundImage={BANNER_IMAGE_PATHS[${Math.min(1, Math.max(0, bannerImages.length - 1))}]} ctaHref={GATEWAY_URL} ctaLabel=\"${lang.ctaRegister}\" /> — затемнённый баннер на фоне, текст и CTA поверх; не plain bg-brand-block.` : ""}
 ${needsSlotGrid ? `- Обязательно <SlotGrid title=\"Популярные слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsCarousel ? `- Обязательно <GameCarousel title=\"Популярные игры\" intro=\"4–5 предложений с ${brandName}\" images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} />.` : ""}
 ${needsSlotShowcase ? `- Обязательно <SlotShowcase title=\"Топ слоты ${brandName}\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — 1 крупный + сетка превью.` : ""}
 ${needsSlotScroll ? `- Обязательно <SlotScrollRow title=\"Новинки слотов\" ${slotIntroHint} images={GAME_IMAGE_PATHS} gatewayHref={GATEWAY_URL} /> — горизонтальный scroll-snap.` : ""}
 ${needsSlotFeatured ? `- Обязательно <SlotFeaturedRow title=\"Рекомендуемые слоты\" ${slotIntroHint} images={GAME_IMAGE_PATHS.slice(0, 3)} gatewayHref={GATEWAY_URL} /> — 3 вертикальные карточки.` : ""}
-${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"Регистрация\" /> — full-bleed слайдер: баннеры bg-cover на всю секцию, title+intro+CTA поверх (как HeroGradient); ЗАПРЕЩЕНЫ рамка, object-contain и текст над/под слайдером. Не дублируй SectionWithBg на той же странице.` : ""}
+${needsPoster ? `- Обязательно <PosterSlider title=\"…\" intro=\"2–3 предложения\" images={BANNER_IMAGE_PATHS} gatewayHref={GATEWAY_URL} ctaLabel=\"${lang.ctaRegister}\" /> — full-bleed слайдер: баннеры bg-cover на всю секцию, title+intro+CTA поверх (как HeroGradient); ЗАПРЕЩЕНЫ рамка, object-contain и текст над/под слайдером. Не дублируй SectionWithBg на той же странице.` : ""}
 ${needsProse ? `- Обязательно ${proseCount >= 3 ? "три" : proseCount >= 2 ? "два" : "один"} <ProseBlock title=\"…\" paragraphs={[ … ]} /> — в КАЖДОМ ProseBlock 4–6 абзацев, каждый абзац 4–6 полных предложений, уникальный SEO-текст с ${brandName}.` : ""}
 ${needsFaqAccordion ? `- Обязательно <FaqAccordion title=\"…\" items={[ { q: \"полный вопрос про ${brandName}?\", a: \"развёрнутый ответ 3–5 предложений\" }, … ]} /> — 6–8 объектов; q и a непустые.` : ""}
 ${needsFaqTwoColumn ? `- Обязательно <FaqTwoColumn title=\"…\" intro=\"1–2 предложения\" items={[ { q, a }, … ]} /> — 6–8 пар; ответ каждый 3–5 предложений.` : ""}
@@ -892,7 +903,7 @@ ${needsFaqCards ? `- Обязательно <FaqCardGrid title=\"…\" intro=\"2
 Все CTA-кнопки: className="btn-brand ..." — НЕ задавай bg-[#...] text-white на кнопках.
 Оберни контент в <div className="space-y-10"> с секциями из registry.
 
-ОБЪЁМ (КРИТИЧНО): минимум ${minPageWords} слов видимого русского текста на странице — считай абзацы ProseBlock, FAQ, карточки, intro карусели.
+ОБЪЁМ (КРИТИЧНО): минимум ${minPageWords} слов видимого ${lang.visibleTextLabel} текста на странице — считай абзацы ProseBlock, FAQ, карточки, intro карусели.
 - ProseBlock — основной объём: 4–6 абзацев в paragraphs, каждый 4–6 предложений; главная — 3 ProseBlock, внутренние — 2 ProseBlock с разными темами.
 - ContentSplit: paragraphs={[p1, p2, p3, p4]} — рядом с imageSrc только p1; p2–p4 выводятся ниже на всю ширину. imageSrc={BANNER_IMAGE_PATHS[n]}, reverse по желанию.
 - SectionWithBg: body разбей на абзацы через \\n\\n — первый рядом с картинкой, остальные ниже; НЕ full-bleed background.
@@ -906,7 +917,7 @@ ${registryCodegenBlock}
 
 ${siteRules}
 ${designHint}
-${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
+${contentLanguageBlock ? `${contentLanguageBlock}\n\n` : ""}${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
 ${brandPromptOverlay ? `=== БРЕНД КЛИЕНТА ===\n${brandPromptOverlay}\n` : ""}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
 
@@ -1043,9 +1054,16 @@ function escapeHtmlAttr(value) {
     .replace(/</g, "&lt;");
 }
 
-async function writePageHeadMeta(reactSrcDir, pages, { seoKeywords = [] } = {}) {
+async function writePageHeadMeta(reactSrcDir, pages, { seoKeywords = [], htmlLang = "ru" } = {}) {
   const indexPage = pages.find((p) => p.route === "/") || pages[0];
   let html = await fs.readFile(path.join(reactSrcDir, "index.html"), "utf8");
+  const langAttr = String(htmlLang || "ru").trim() || "ru";
+  if (/<html\b/i.test(html)) {
+    html = html.replace(/<html\b([^>]*)>/i, (m, attrs) => {
+      const cleaned = String(attrs || "").replace(/\s+lang=(["'])[^"']*\1/i, "");
+      return `<html lang="${langAttr}"${cleaned}>`;
+    });
+  }
   const title = indexPage?.title || "Сайт";
   const desc = indexPage?.description || "";
   const kwList = Array.isArray(seoKeywords) ? seoKeywords.filter(Boolean) : [];
@@ -1292,6 +1310,11 @@ export async function buildReactSite({
     emitLog(onLog, `Профиль: пропуск (${String(e?.message || e).slice(0, 120)})`);
   }
 
+  const siteContentLanguage = resolveSiteContentLanguage(process.env);
+  const contentLangSpec = getSiteContentLanguageSpec(siteContentLanguage);
+  const contentLanguageBlock = buildSiteContentLanguagePromptBlock(contentLangSpec);
+  emitLog(onLog, `Мова контенту сайту: ${contentLangSpec.contentLabel} (${contentLangSpec.code})`);
+
   const siteRules = buildSiteGenerationRulesBlock({
     stack: "react",
     themeBrandHint,
@@ -1301,6 +1324,7 @@ export async function buildReactSite({
     logoSrc,
     sitePalette: brandKit?.palette || undefined,
     minPageWords,
+    contentLanguage: siteContentLanguage,
   });
 
   const registryPool = pickRegistryComponentsForArchitect(`${siteSeed}|registry`, 14);
@@ -1355,6 +1379,8 @@ export async function buildReactSite({
       seoPromptBlock,
       homeTemplate,
       innerTemplatesBlock,
+      contentLanguageBlock,
+      contentLangSpec,
     }),
     maxTokens: 4096,
     temperature: 0.5,
@@ -1420,6 +1446,8 @@ export async function buildReactSite({
       sourceArticlesBlock: sourceArticlesPageBlock,
       heroBannerIndex,
       heroUsesSlider,
+      contentLanguageBlock,
+      contentLangSpec,
     });
     let pageRaw = await callClaude({
       apiKey: claudeKey,
@@ -1436,7 +1464,7 @@ export async function buildReactSite({
       pageRaw = await callClaude({
         apiKey: claudeKey,
         system: `${designSystemBlock}\n\nТы senior React+Tailwind инженер. Исправь TSX: больше текста (минимум ${minPageWords} слов), 2–3 ProseBlock с длинными абзацами. Верни только TSX.`,
-        user: `${pageCodegenBase}\n\nОШИБКИ ПРЕДЫДУЩЕЙ ВЕРСИИ:\n${contentIssues.map((x) => `- ${x}`).join("\n")}\n\nПерепиши компонент целиком. Минимум ${minPageWords} русских слов. ProseBlock — 4–6 абзацев по 4–6 предложений. FAQ — полные ответы про ${brandName}.`,
+        user: `${pageCodegenBase}\n\nОШИБКИ ПРЕДЫДУЩЕЙ ВЕРСИИ:\n${contentIssues.map((x) => `- ${x}`).join("\n")}\n\nПерепиши компонент целиком. Минимум ${minPageWords} слов на ${contentLangSpec.contentLabel}. ProseBlock — 4–6 абзацев по 4–6 предложений. FAQ — полные ответы про ${brandName}.`,
         maxTokens: 16000,
         temperature: 0.55,
         onLog,
@@ -1473,7 +1501,10 @@ export async function buildReactSite({
     onLog,
     `Палитра /brand: accent=${brandKit?.palette?.accent || "default"}, bg=${brandKit?.palette?.bg || "default"}, text=${brandKit?.palette?.text || "default"}`
   );
-  await writePageHeadMeta(reactSrcDir, generatedPages, { seoKeywords });
+  await writePageHeadMeta(reactSrcDir, generatedPages, {
+    seoKeywords,
+    htmlLang: contentLangSpec.htmlLang,
+  });
 
   ensureNotStopped();
   await runNpmBuild(reactSrcDir, onLog);

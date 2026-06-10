@@ -2,6 +2,8 @@
  * Обовʼязкові правила збірки для промптів architect/page (бренд, img слотів, адаптив).
  */
 
+import { getSiteContentLanguageSpec } from "@/src/lib/generator-engine/generation-content-language";
+
 function buildSharedSiteRules(opts = {}) {
   const brand = String(opts.themeBrandHint || "").trim() || "из темы и brandKit текущей сборки";
   const logo = String(opts.logoSrc || "./img/logo.png").trim();
@@ -27,6 +29,7 @@ function buildSharedSiteRules(opts = {}) {
   const accent = pal.accent || "#c8e600";
   const bg = pal.bg || "#0a0a0a";
   const minWords = Number(opts.minPageWords) || 2000;
+  const contentLang = getSiteContentLanguageSpec(opts.contentLanguage);
 
   return {
     brand,
@@ -51,7 +54,7 @@ function buildSharedSiteRules(opts = {}) {
 - CTA и пункты меню: зона нажатия не меньше ~44px по высоте на мобильных.
 
 ОБЪЁМ И КАЧЕСТВО ТЕКСТА:
-- Минимум ${minWords} слов видимого русского текста на странице.
+- Минимум ${minWords} слов видимого ${contentLang.visibleTextLabel} текста на странице.
 - Запрещены пустые секции, заглушки «текст», «описание», «Lorem ipsum», незаполненные {brand}.
 - Имя бренда «${brand}» должно встречаться в тексте естественно (не реже чем в каждой 2–3 секции).
 
@@ -146,6 +149,7 @@ SEO:
  *   logoSrc?: string;
  *   sitePalette?: Record<string, string>;
  *   minPageWords?: number;
+ *   contentLanguage?: string;
  * }} [opts]
  * @returns {string}
  */

@@ -14,6 +14,7 @@ export function getPublicIntegrationDefinitions() {
     secret: d.secret,
     kind: d.kind || "text",
     hint: d.hint || "",
+    options: Array.isArray(d.options) ? d.options : undefined,
   }));
 }
 

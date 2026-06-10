@@ -7,11 +7,16 @@ function def(key, section, opts = {}) {
     secret: !!opts.secret,
     kind: opts.kind || "text",
     hint: opts.hint || "",
+    options: Array.isArray(opts.options) ? opts.options : undefined,
   };
 }
 
 function bool(key, section) {
   return def(key, section, { kind: "bool" });
+}
+
+function select(key, section, options) {
+  return def(key, section, { kind: "select", options });
 }
 
 function claudeKeySlots(max = 10) {
@@ -42,7 +47,15 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
   def("AURORA_GENERATION_TEMPERATURE", "generator"),
   bool("SOFTGEN_QUALITY_REGEN_ENABLED", "generator"),
   bool("SOFTGEN_SOURCE_ARTICLES_ENABLED", "generator"),
-  def("SOFTGEN_SOURCE_ARTICLES_LANGUAGE", "generator"),
+  select("SOFTGEN_SOURCE_ARTICLES_LANGUAGE", "generator", [
+    { value: "en", labelKey: "langEn" },
+    { value: "ru", labelKey: "langRu" },
+    { value: "uk", labelKey: "langUk" },
+  ]),
+  select("SOFTGEN_SITE_CONTENT_LANGUAGE", "generator", [
+    { value: "ru", labelKey: "langRu" },
+    { value: "uk", labelKey: "langUk" },
+  ]),
   def("SOFTGEN_SOURCE_ARTICLES_COUNT", "generator"),
   def("SOFTGEN_SOURCE_ARTICLES_POOL_LIMIT", "generator"),
   bool("SOFTGEN_REACT_BUILD", "generator"),

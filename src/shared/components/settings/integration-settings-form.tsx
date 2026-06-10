@@ -75,6 +75,31 @@ function IntegrationFieldInput({
   const hasStored = !!stored;
   const isEditing = editingKeys.has(def.key);
 
+  if (def.kind === "select" && Array.isArray(def.options) && def.options.length) {
+    const current = fields[def.key] ?? stored ?? "";
+    const optionLabel = (opt) => {
+      const key = `selectOptions.${opt.labelKey || opt.value}`;
+      if (typeof t.has === "function" && t.has(key)) return t(key);
+      return opt.label || opt.value;
+    };
+    return (
+      <select
+        id={`int-${def.key}`}
+        className="w-full rounded-xl border border-union-border bg-union-bg/80 px-3 py-2 text-sm text-union-text outline-none ring-union-ring focus:ring-2 disabled:opacity-50"
+        value={current}
+        onChange={(e) => onChange(def.key, e.target.value)}
+        disabled={saving}
+      >
+        <option value="">{t("selectUnset")}</option>
+        {def.options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {optionLabel(opt)}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   if (def.kind === "bool") {
     if (hasStored && !isEditing) {
       const label =
