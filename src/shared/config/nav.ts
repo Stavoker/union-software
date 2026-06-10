@@ -7,6 +7,7 @@ export type DashboardNavItem = {
     | "seo"
     | "buyDomain"
     | "usage"
+    | "generatorAnalytics"
     | "users"
     | "settings";
   /** Якщо true — пункт показується лише для role === admin */
@@ -19,6 +20,7 @@ export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
   { href: "/dashboard/seo", labelKey: "seo" },
   { href: "/dashboard/domain", labelKey: "buyDomain" },
   { href: "/dashboard/usage", labelKey: "usage" },
+  { href: "/dashboard/generator-analytics", labelKey: "generatorAnalytics", adminOnly: true },
   { href: "/dashboard/users", labelKey: "users", adminOnly: true },
   { href: "/dashboard/settings", labelKey: "settings" },
 ];

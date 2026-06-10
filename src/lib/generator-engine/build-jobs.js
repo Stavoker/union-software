@@ -337,6 +337,14 @@ async function persistTokenUsageForJob(job) {
   } catch (e) {
     console.error("[build-jobs] token usage persist:", e?.message || e);
   }
+  try {
+    const { recordGeneratorSiteSkeletonFromJob } = await import(
+      "@/lib/generator-site-skeleton.js"
+    );
+    await recordGeneratorSiteSkeletonFromJob(job);
+  } catch (e) {
+    console.error("[build-jobs] site skeleton persist:", e?.message || e);
+  }
 }
 
 function buildJobDeployNotifyFields(job) {

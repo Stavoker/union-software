@@ -50,6 +50,13 @@ export default async function DashboardHomePage() {
       adminOnly: false as const,
     },
     {
+      id: "generatorAnalytics" as const,
+      href: "/dashboard/generator-analytics",
+      navKey: "generatorAnalytics" as const,
+      cardDescKey: "cards.generatorAnalytics" as const,
+      adminOnly: true as const,
+    },
+    {
       id: "users" as const,
       href: "/dashboard/users",
       navKey: "users" as const,

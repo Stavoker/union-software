@@ -31,6 +31,7 @@ export type DashboardCardId =
   | "seo"
   | "domain"
   | "usage"
+  | "generatorAnalytics"
   | "users"
   | "settings";
 
@@ -40,6 +41,7 @@ const PREVIEW_BG_OBJECT_POSITION: Record<DashboardCardId, string> = {
   seo: "object-[82%_48%]",
   domain: "object-[50%_12%]",
   usage: "object-[50%_88%]",
+  generatorAnalytics: "object-[72%_28%]",
   users: "object-[12%_18%]",
   settings: "object-[88%_82%]",
 };
@@ -81,6 +83,17 @@ const CARD_META: Record<DashboardCardId, CardMeta> = {
     tagKeys: ["tags.usage.t1", "tags.usage.t2", "tags.usage.t3"],
     tagIcons: [Zap, BarChart3, Clock],
   },
+  generatorAnalytics: {
+    icon: BarChart3,
+    visualIcon: Layers,
+    badgeKey: "badges.generatorAnalytics",
+    tagKeys: [
+      "tags.generatorAnalytics.t1",
+      "tags.generatorAnalytics.t2",
+      "tags.generatorAnalytics.t3",
+    ],
+    tagIcons: [Layers, Users, BarChart3],
+  },
   users: {
     icon: Users,
     visualIcon: Users,
@@ -100,7 +113,14 @@ const CARD_META: Record<DashboardCardId, CardMeta> = {
 type Props = {
   id: DashboardCardId;
   href: string;
-  navKey: "generator" | "seo" | "buyDomain" | "usage" | "users" | "settings";
+  navKey:
+    | "generator"
+    | "seo"
+    | "buyDomain"
+    | "usage"
+    | "generatorAnalytics"
+    | "users"
+    | "settings";
   descKey: string;
   index: number;
 };

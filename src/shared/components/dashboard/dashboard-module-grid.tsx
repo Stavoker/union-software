@@ -5,7 +5,14 @@ import { DashboardModuleCard, type DashboardCardId } from "./dashboard-module-ca
 export type DashboardCardConfig = {
   id: DashboardCardId;
   href: string;
-  navKey: "generator" | "seo" | "buyDomain" | "usage" | "users" | "settings";
+  navKey:
+    | "generator"
+    | "seo"
+    | "buyDomain"
+    | "usage"
+    | "generatorAnalytics"
+    | "users"
+    | "settings";
   cardDescKey: string;
 };
 
