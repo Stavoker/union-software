@@ -6,6 +6,7 @@ import {
   fixDeployedSitePermissions,
   syncNginxVhostForDomain,
 } from "./hostNginxSslDeploy.js";
+import { notifyAutoscriptAfterDeploy } from "./autoscriptWebhook.js";
 import { listRemoteProjectHostsOnServer, upsertSeoDomainForUser } from "./seoDomainsRepository.js";
 
 /** Дозволені всередині порожньої папки домену (лише SSL / ACME). */
@@ -232,6 +233,23 @@ export async function deployGeneratedSiteToDomainFolder({
       projectName: slug,
       setDeployedAt: true,
     });
+  }
+
+  try {
+    const webhook = await notifyAutoscriptAfterDeploy({
+      userId,
+      domain: normalizedDomain,
+      remotePath,
+      projectName: slug,
+      host,
+    });
+    if (webhook.ok) {
+      log("[deploy] auto-script-v2 webhook queued verification");
+    } else if (!webhook.skipped) {
+      log(`[deploy] auto-script-v2 webhook failed: ${webhook.reason || "unknown"}`);
+    }
+  } catch (webhookErr) {
+    log(`[deploy] auto-script-v2 webhook error: ${String(webhookErr?.message || webhookErr).slice(0, 160)}`);
   }
 
   return {

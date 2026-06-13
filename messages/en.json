@@ -125,7 +125,11 @@
     "selectOptions": {
       "langEn": "en — English (reference articles)",
       "langRu": "ru — Russian",
-      "langUk": "uk — Ukrainian"
+      "langUk": "uk — Ukrainian",
+      "yandexHtmlFile": "HTML file yandex_{uin}.html in site root",
+      "yandexMeta": "Meta tag yandex-verification in index",
+      "googleMeta": "Meta tag google-site-verification",
+      "googleHtmlFile": "HTML file google*.html in site root"
     },
     "loadError": "Failed to load: {message}",
     "saveError": "Failed to save: {message}",
@@ -137,6 +141,7 @@
       "ssl": "SSL (Let's Encrypt)",
       "host": "Host / deploy (SSH, nginx)",
       "seo": "SEO (Yandex)",
+      "indexing": "Indexing (Yandex Webmaster + Google)",
       "autoscript": "auto-script-v2 (webhook)"
     },
     "telegram": {
@@ -256,6 +261,10 @@
       "SUBDOMAIN_HOST_NGINX_RELOAD_CMD": "nginx reload command",
       "SUBDOMAIN_HOST_PHP_FPM_SOCKET": "PHP-FPM socket (fastcgi_pass)",
       "YANDEX_XML_STOCK_BASE_URL": "Yandex XML base URL (search positions)",
+      "YANDEX_ACCESS_TOKEN": "Yandex Webmaster OAuth token (verify + recrawl)",
+      "YANDEX_VERIFICATION_METHOD": "Yandex verification method",
+      "GOOGLE_SERVICE_ACCOUNT_JSON": "Google service account JSON (Search Console + Indexing API)",
+      "GOOGLE_VERIFICATION_METHOD": "Google verification method",
       "AUTOSCRIPT_WEBHOOK_URL": "auto-script-v2 webhook after site generation",
       "AUTOSCRIPT_WEBHOOK_SECRET": "auto-script webhook secret"
     }

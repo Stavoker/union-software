@@ -125,7 +125,11 @@
     "selectOptions": {
       "langEn": "en — английский (референсы)",
       "langRu": "ru — русский",
-      "langUk": "uk — украинский"
+      "langUk": "uk — украинский",
+      "yandexHtmlFile": "HTML-файл yandex_{uin}.html в корне сайта",
+      "yandexMeta": "Meta-тег yandex-verification в index",
+      "googleMeta": "Meta-тег google-site-verification",
+      "googleHtmlFile": "HTML-файл google*.html в корне"
     },
     "loadError": "Не удалось загрузить: {message}",
     "saveError": "Не удалось сохранить: {message}",
@@ -137,6 +141,7 @@
       "ssl": "SSL (Let's Encrypt)",
       "host": "Хост / деплой (SSH, nginx)",
       "seo": "SEO (Yandex)",
+      "indexing": "Индексация (Yandex Webmaster + Google)",
       "autoscript": "auto-script-v2 (webhook)"
     },
     "telegram": {
@@ -256,6 +261,10 @@
       "SUBDOMAIN_HOST_NGINX_RELOAD_CMD": "Команда reload nginx",
       "SUBDOMAIN_HOST_PHP_FPM_SOCKET": "Сокет PHP-FPM (fastcgi_pass)",
       "YANDEX_XML_STOCK_BASE_URL": "Базовый URL Yandex XML (позиции в поиске)",
+      "YANDEX_ACCESS_TOKEN": "OAuth-токен Яндекс Вебмастер (верификация + переобход)",
+      "YANDEX_VERIFICATION_METHOD": "Способ подтверждения прав в Яндекс",
+      "GOOGLE_SERVICE_ACCOUNT_JSON": "JSON service account Google (Search Console + Indexing API)",
+      "GOOGLE_VERIFICATION_METHOD": "Способ подтверждения прав в Google",
       "AUTOSCRIPT_WEBHOOK_URL": "Webhook auto-script-v2 после генерации сайта",
       "AUTOSCRIPT_WEBHOOK_SECRET": "Секрет webhook auto-script"
     }

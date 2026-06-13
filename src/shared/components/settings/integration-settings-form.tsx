@@ -20,6 +20,7 @@ const SECTION_ORDER = [
   "ssl",
   "host",
   "seo",
+  "indexing",
   "autoscript",
 ];
 const STATIC_DEFINITIONS = getPublicIntegrationDefinitions();

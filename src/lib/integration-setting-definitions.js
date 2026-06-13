@@ -109,6 +109,17 @@ export const INTEGRATION_SETTING_DEFINITIONS = [
 
   def("YANDEX_XML_STOCK_BASE_URL", "seo"),
 
+  def("YANDEX_ACCESS_TOKEN", "indexing", { secret: true }),
+  select("YANDEX_VERIFICATION_METHOD", "indexing", [
+    { value: "html_file", labelKey: "yandexHtmlFile" },
+    { value: "meta", labelKey: "yandexMeta" },
+  ]),
+  def("GOOGLE_SERVICE_ACCOUNT_JSON", "indexing", { secret: true }),
+  select("GOOGLE_VERIFICATION_METHOD", "indexing", [
+    { value: "meta", labelKey: "googleMeta" },
+    { value: "html_file", labelKey: "googleHtmlFile" },
+  ]),
+
   def("AUTOSCRIPT_WEBHOOK_URL", "autoscript"),
   def("AUTOSCRIPT_WEBHOOK_SECRET", "autoscript", { secret: true }),
 ];
