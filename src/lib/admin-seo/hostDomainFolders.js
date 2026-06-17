@@ -244,7 +244,11 @@ export async function deployGeneratedSiteToDomainFolder({
       host,
     });
     if (webhook.ok) {
-      log("[deploy] auto-script-v2 webhook queued verification");
+      if (webhook.mode === "queue" || String(webhook.mode || "").startsWith("queue")) {
+        log("[deploy] auto-script-v2 queued for SEO verification (Supabase)");
+      } else {
+        log("[deploy] auto-script-v2 webhook queued verification");
+      }
     } else if (!webhook.skipped) {
       log(`[deploy] auto-script-v2 webhook failed: ${webhook.reason || "unknown"}`);
     }

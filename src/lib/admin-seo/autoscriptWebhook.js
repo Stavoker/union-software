@@ -1,9 +1,9 @@
 import { loadIntegrationSettingsForUser } from "@/lib/account-integration-settings";
-import { getSupabaseServerClient } from "./supabaseServer.js";
+import { enqueueAutoscriptDeploy } from "./autoscriptQueue.js";
 
 /**
- * Після деплою на хост — POST у auto-script-v2 webhook (верифікація Yandex/Google).
- * Помилка webhook не ламає деплой.
+ * Після деплою на хост — черга Supabase для auto-script-v2 Cron.
+ * Опційно: миттєвий POST на webhook, якщо AUTOSCRIPT_WEBHOOK_URL заданий.
  */
 export async function notifyAutoscriptAfterDeploy({
   userId,
@@ -19,10 +19,23 @@ export async function notifyAutoscriptAfterDeploy({
     return { ok: false, skipped: true, reason: "missing_fields" };
   }
 
+  const queued = await enqueueAutoscriptDeploy({
+    userId: uid,
+    domain: normalizedDomain,
+    remotePath: remoteDir,
+    projectName,
+    host,
+  });
+
+  if (!queued.ok && !queued.skipped) {
+    return queued;
+  }
+
   let webhookUrl = String(process.env.AUTOSCRIPT_WEBHOOK_URL || "").trim();
   let webhookSecret = String(process.env.AUTOSCRIPT_WEBHOOK_SECRET || "").trim();
 
   try {
+    const { getSupabaseServerClient } = await import("./supabaseServer.js");
     const supabase = getSupabaseServerClient();
     const userEnv = await loadIntegrationSettingsForUser(supabase, uid);
     webhookUrl = String(userEnv.AUTOSCRIPT_WEBHOOK_URL || webhookUrl).trim();
@@ -32,7 +45,12 @@ export async function notifyAutoscriptAfterDeploy({
   }
 
   if (!webhookUrl) {
-    return { ok: false, skipped: true, reason: "no_webhook_url" };
+    return {
+      ok: Boolean(queued.ok),
+      skipped: false,
+      mode: "queue",
+      queueId: queued.queueId || null,
+    };
   }
 
   const body = {
@@ -63,17 +81,26 @@ export async function notifyAutoscriptAfterDeploy({
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return {
-        ok: false,
+        ok: Boolean(queued.ok),
         skipped: false,
+        mode: "queue+webhook_failed",
+        queueId: queued.queueId || null,
         status: res.status,
         reason: text.slice(0, 200) || `http_${res.status}`,
       };
     }
-    return { ok: true, skipped: false };
+    return {
+      ok: true,
+      skipped: false,
+      mode: "queue+webhook",
+      queueId: queued.queueId || null,
+    };
   } catch (e) {
     return {
-      ok: false,
+      ok: Boolean(queued.ok),
       skipped: false,
+      mode: "queue+webhook_error",
+      queueId: queued.queueId || null,
       reason: e?.message || String(e),
     };
   }

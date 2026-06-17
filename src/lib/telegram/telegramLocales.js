@@ -214,6 +214,48 @@ const EVENT_BUILDERS = {
       en: `❌ Domain error\n🔗 ${d.domain || "—"}\n⚠️ ${d.error}`,
       ru: `❌ Домен: ошибка\n🔗 ${d.domain || "—"}\n⚠️ ${d.error}`,
     }),
+  seo_verify_queued: (loc, d) =>
+    L(loc, {
+      uk: `🔎 SEO у черзі\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nВерифікація Яндекс / Google запуститься незабаром.`,
+      en: `🔎 SEO queued\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nYandex / Google verification will start shortly.`,
+      ru: `🔎 SEO в очереди\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nВерификация Яндекс / Google скоро начнётся.`,
+    }),
+  seo_verify_started: (loc, d) =>
+    L(loc, {
+      uk: `🔎 SEO: старт\n🔗 ${d.domain}\n📦 ${d.project || d.domain}`,
+      en: `🔎 SEO: started\n🔗 ${d.domain}\n📦 ${d.project || d.domain}`,
+      ru: `🔎 SEO: старт\n🔗 ${d.domain}\n📦 ${d.project || d.domain}`,
+    }),
+  seo_yandex_verified: (loc, d) =>
+    L(loc, {
+      uk: `🟢 Яндекс Вебмайстер\n🔗 ${d.domain}\n✅ Права підтверджено\n🔄 Переобхід у черзі`,
+      en: `🟢 Yandex Webmaster\n🔗 ${d.domain}\n✅ Ownership verified\n🔄 Recrawl queued`,
+      ru: `🟢 Яндекс Вебмастер\n🔗 ${d.domain}\n✅ Права подтверждены\n🔄 Переобход в очереди`,
+    }),
+  seo_yandex_pending: (loc, d) =>
+    L(loc, {
+      uk: `🟡 Яндекс Вебмайстер\n🔗 ${d.domain}\n⏳ Очікуємо підтвердження (${d.state || "…"})`,
+      en: `🟡 Yandex Webmaster\n🔗 ${d.domain}\n⏳ Waiting for verification (${d.state || "…"})`,
+      ru: `🟡 Яндекс Вебмастер\n🔗 ${d.domain}\n⏳ Ожидаем подтверждения (${d.state || "…"})`,
+    }),
+  seo_google_verified: (loc, d) =>
+    L(loc, {
+      uk: `🟢 Google Search Console\n🔗 ${d.domain}\n✅ Сайт підтверджено\n📨 Запит на індексацію надіслано`,
+      en: `🟢 Google Search Console\n🔗 ${d.domain}\n✅ Site verified\n📨 Indexing request sent`,
+      ru: `🟢 Google Search Console\n🔗 ${d.domain}\n✅ Сайт подтверждён\n📨 Запрос на индексацию отправлен`,
+    }),
+  seo_google_pending: (loc, d) =>
+    L(loc, {
+      uk: `🟡 Google Search Console\n🔗 ${d.domain}\n⏳ Очікуємо підтвердження (${d.state || "…"})`,
+      en: `🟡 Google Search Console\n🔗 ${d.domain}\n⏳ Waiting for verification (${d.state || "…"})`,
+      ru: `🟡 Google Search Console\n🔗 ${d.domain}\n⏳ Ожидаем подтверждения (${d.state || "…"})`,
+    }),
+  seo_verify_error: (loc, d) =>
+    L(loc, {
+      uk: `❌ SEO: помилка\n🔗 ${d.domain || "—"}\n📦 ${d.project || "—"}\n⚠️ ${d.error}`,
+      en: `❌ SEO error\n🔗 ${d.domain || "—"}\n📦 ${d.project || "—"}\n⚠️ ${d.error}`,
+      ru: `❌ SEO: ошибка\n🔗 ${d.domain || "—"}\n📦 ${d.project || "—"}\n⚠️ ${d.error}`,
+    }),
 };
 
 /** @type {Record<string, Record<TelegramLocale, (d: Record<string, unknown>) => string>>} */
