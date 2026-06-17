@@ -1,8 +1,9 @@
 import { getSupabaseServerClient } from "./supabaseServer.js";
+import { getQueuePositionForRow } from "./autoscriptQueueRepository.js";
 import { notifyUserTelegram } from "@/lib/telegram/telegramNotify.js";
 
 /**
- * Поставити сайт у чергу auto-script-v2 (Supabase). Cron worker забирає pending.
+ * Поставити сайт у спільну чергу auto-script-v2 (Supabase). Cron worker забирає pending FIFO.
  */
 export async function enqueueAutoscriptDeploy({
   userId,
@@ -32,21 +33,39 @@ export async function enqueueAutoscriptDeploy({
       ssh_user: String(host?.sshUser || "").trim() || null,
       status: "pending",
     })
-    .select("id")
+    .select("id,created_at")
     .single();
 
   if (error) {
     return { ok: false, skipped: false, reason: error.message };
   }
 
+  let position = null;
+  let totalPending = 0;
+  try {
+    const pos = await getQueuePositionForRow(data?.id, data?.created_at);
+    position = pos.position;
+    totalPending = pos.totalPending;
+  } catch {
+    /* optional */
+  }
+
   try {
     await notifyUserTelegram(uid, "seo_verify_queued", {
       domain: normalizedDomain,
       project: String(projectName || "").trim() || normalizedDomain,
+      position,
+      totalPending,
     });
   } catch {
     /* optional telegram */
   }
 
-  return { ok: true, skipped: false, queueId: data?.id || null };
+  return {
+    ok: true,
+    skipped: false,
+    queueId: data?.id || null,
+    position,
+    totalPending,
+  };
 }

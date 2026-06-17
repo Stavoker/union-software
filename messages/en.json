@@ -161,6 +161,19 @@
       "codeFailed": "Failed to create code",
       "toastDismiss": "Dismiss"
     },
+    "seoQueue": {
+      "title": "SEO queue (Yandex / Google)",
+      "hint": "Shared queue for all Union users. After deploy your site is added here; one worker processes jobs FIFO.",
+      "loading": "Loading queue…",
+      "empty": "No active SEO jobs. After deploy your queue position will appear here.",
+      "globalSummary": "Global queue: {pending} waiting · {processing} in progress",
+      "yourPosition": "your position #{position} of {total}",
+      "statusPending": "Waiting",
+      "statusProcessing": "Processing",
+      "statusDone": "Done",
+      "statusFailed": "Failed",
+      "recentTitle": "Recently completed"
+    },
     "hosts": {
       "title": "SSH servers for deploy",
       "hint": "Add multiple servers (SSH + sites directory, e.g. /var/www). On the domain page, pick one from the list.",

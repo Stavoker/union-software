@@ -214,12 +214,27 @@ const EVENT_BUILDERS = {
       en: `❌ Domain error\n🔗 ${d.domain || "—"}\n⚠️ ${d.error}`,
       ru: `❌ Домен: ошибка\n🔗 ${d.domain || "—"}\n⚠️ ${d.error}`,
     }),
-  seo_verify_queued: (loc, d) =>
-    L(loc, {
-      uk: `🔎 SEO у черзі\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nВерифікація Яндекс / Google запуститься незабаром.`,
-      en: `🔎 SEO queued\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nYandex / Google verification will start shortly.`,
-      ru: `🔎 SEO в очереди\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n\nВерификация Яндекс / Google скоро начнётся.`,
-    }),
+  seo_verify_queued: (loc, d) => {
+    const pos = Number(d.position);
+    const total = Number(d.totalPending);
+    const posLine =
+      Number.isFinite(pos) && pos > 0 && Number.isFinite(total) && total > 0
+        ? L(loc, {
+            uk: `📊 Черга: #${pos} з ${total} (спільна для всіх користувачів)`,
+            en: `📊 Queue: #${pos} of ${total} (shared global queue)`,
+            ru: `📊 Очередь: #${pos} из ${total} (общая для всех пользователей)`,
+          })
+        : L(loc, {
+            uk: "📊 Додано в спільну чергу SEO",
+            en: "📊 Added to the shared SEO queue",
+            ru: "📊 Добавлено в общую очередь SEO",
+          });
+    return L(loc, {
+      uk: `🔎 SEO у черзі\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n${posLine}\n\nВерифікація Яндекс / Google — незабаром.`,
+      en: `🔎 SEO queued\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n${posLine}\n\nYandex / Google verification coming soon.`,
+      ru: `🔎 SEO в очереди\n🔗 ${d.domain}\n📦 ${d.project || d.domain}\n${posLine}\n\nВерификация Яндекс / Google — скоро.`,
+    });
+  },
   seo_verify_started: (loc, d) =>
     L(loc, {
       uk: `🔎 SEO: старт\n🔗 ${d.domain}\n📦 ${d.project || d.domain}`,
