@@ -24,7 +24,9 @@ export function AppHeader({
   const t = useTranslations("nav");
   const pathname = usePathname() ?? "";
 
-  const navItems = DASHBOARD_NAV.filter((item) => !item.adminOnly || isAdmin);
+  const navItems = DASHBOARD_NAV.filter(
+    (item) => (!item.adminOnly || isAdmin) && (!item.userOnly || !isAdmin)
+  );
 
   return (
     <header className="sticky top-0 z-40 border-b border-union-border bg-union-bg/80 backdrop-blur-xl">

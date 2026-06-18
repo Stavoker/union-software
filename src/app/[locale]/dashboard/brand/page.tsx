@@ -27,9 +27,13 @@ export default async function UserBrandPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email, display_name")
+    .select("email, display_name, role")
     .eq("id", user.id)
     .maybeSingle();
+
+  if (profile?.role === "admin") {
+    redirect(`/${locale}/dashboard/users`);
+  }
 
   let brand = null;
   try {

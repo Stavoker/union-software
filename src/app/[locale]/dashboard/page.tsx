@@ -34,6 +34,7 @@ export default async function DashboardHomePage() {
       navKey: "brand" as const,
       cardDescKey: "cards.brand" as const,
       adminOnly: false as const,
+      userOnly: true as const,
     },
     {
       id: "seo" as const,
@@ -77,7 +78,7 @@ export default async function DashboardHomePage() {
       cardDescKey: "cards.settings" as const,
       adminOnly: false as const,
     },
-  ].filter((c) => !c.adminOnly || isAdmin);
+  ].filter((c) => (!c.adminOnly || isAdmin) && (!("userOnly" in c && c.userOnly) || !isAdmin));
 
   return (
     <div className="py-10">
