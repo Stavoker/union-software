@@ -7,6 +7,7 @@ export type DashboardCardConfig = {
   href: string;
   navKey:
     | "generator"
+    | "brand"
     | "seo"
     | "buyDomain"
     | "usage"

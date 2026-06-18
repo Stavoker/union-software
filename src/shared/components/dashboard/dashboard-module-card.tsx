@@ -15,6 +15,7 @@ import {
   Sparkles,
   Users,
   Zap,
+  Palette,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -28,6 +29,7 @@ const dashboardPreviewBadge =
 
 export type DashboardCardId =
   | "generator"
+  | "brand"
   | "seo"
   | "domain"
   | "usage"
@@ -38,6 +40,7 @@ export type DashboardCardId =
 /** Slight crop shift so the same bg asset reads differently per card. */
 const PREVIEW_BG_OBJECT_POSITION: Record<DashboardCardId, string> = {
   generator: "object-[18%_50%]",
+  brand: "object-[35%_62%]",
   seo: "object-[82%_48%]",
   domain: "object-[50%_12%]",
   usage: "object-[50%_88%]",
@@ -61,6 +64,13 @@ const CARD_META: Record<DashboardCardId, CardMeta> = {
     badgeKey: "badges.generator",
     tagKeys: ["tags.generator.t1", "tags.generator.t2", "tags.generator.t3"],
     tagIcons: [Layers, Zap, Sparkles],
+  },
+  brand: {
+    icon: Palette,
+    visualIcon: Palette,
+    badgeKey: "badges.brand",
+    tagKeys: ["tags.brand.t1", "tags.brand.t2", "tags.brand.t3"],
+    tagIcons: [Palette, Globe, Search],
   },
   seo: {
     icon: Search,
@@ -115,6 +125,7 @@ type Props = {
   href: string;
   navKey:
     | "generator"
+    | "brand"
     | "seo"
     | "buyDomain"
     | "usage"

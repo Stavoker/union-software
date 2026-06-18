@@ -31,6 +31,7 @@
     "cardFeaturesAria": "Module features",
     "badges": {
       "generator": "AI",
+      "brand": "SEO",
       "seo": "Yandex",
       "domain": "DNS",
       "usage": "Claude",
@@ -43,6 +44,11 @@
         "t1": "Architect",
         "t2": "Website",
         "t3": "No reference"
+      },
+      "brand": {
+        "t1": "Geo",
+        "t2": "Keywords",
+        "t3": "Logo"
       },
       "seo": {
         "t1": "Keywords",
