@@ -32,6 +32,7 @@ export function brandRowToKit(row) {
     defaultThemeText: String(row.default_theme_text || "").trim(),
     promptOverlay: String(row.prompt_overlay || "").trim(),
     seoKeywords: String(row.seo_keywords || "").trim(),
+    geo: String(row.geo || "").trim().toLowerCase(),
     layoutVariant: String(row.layout_variant || "auto").trim() || "auto",
     assets: [],
   };

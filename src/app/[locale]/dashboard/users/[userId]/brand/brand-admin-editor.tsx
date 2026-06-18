@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 
 import { normalizePaletteCore } from "@/lib/generator-brand-palette";
+import { GeoRegionPicker } from "@/shared/components/brand/geo-region-picker";
 import { seoBtnPrimary, seoCard, seoInput } from "@/shared/components/seo/seo-ui";
 import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 
@@ -35,6 +36,7 @@ type ThemeRow = {
 type BrandState = {
   brandName: string;
   notes: string;
+  geo: string;
   defaultThemeText: string;
   promptOverlay: string;
   layoutVariant: LayoutVariant;
@@ -49,6 +51,8 @@ type Props = {
   userEmail: string;
   initialBrand: BrandState | null;
   initialThemes: ThemeRow[];
+  /** admin = /api/admin/generator-brand; user = /api/generator/brand */
+  apiMode?: "admin" | "user";
 };
 
 const PALETTE_FIELDS: { key: keyof Palette; labelKey: "paletteAccent" | "paletteBg" | "paletteText" }[] = [
@@ -75,13 +79,18 @@ export function BrandAdminEditor({
   userEmail,
   initialBrand,
   initialThemes,
+  apiMode = "admin",
 }: Props) {
   const t = useTranslations("generatorBrand");
+  const apiBase =
+    apiMode === "user" ? "/api/generator/brand" : `/api/admin/generator-brand/${userId}`;
+  const uploadBase = `${apiBase}/upload`;
 
   const [brand, setBrand] = useState<BrandState>(
     initialBrand || {
       brandName: "",
       notes: "",
+      geo: "",
       defaultThemeText: "",
       promptOverlay: "",
       layoutVariant: "auto",
@@ -100,13 +109,14 @@ export function BrandAdminEditor({
     setSaving(true);
     setToast({ message: "", lime: true });
     try {
-      const res = await fetch(`/api/admin/generator-brand/${userId}`, {
+      const res = await fetch(apiBase, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brandName: brand.brandName,
           notes: brand.notes,
+          geo: brand.geo,
           defaultThemeText: brand.defaultThemeText,
           promptOverlay: brand.promptOverlay,
           layoutVariant: brand.layoutVariant,
@@ -128,6 +138,7 @@ export function BrandAdminEditor({
         setBrand({
           brandName: data.brand.brandName || "",
           notes: data.brand.notes || "",
+          geo: data.brand.geo || "",
           defaultThemeText: data.brand.defaultThemeText || "",
           promptOverlay: data.brand.promptOverlay || "",
           layoutVariant: normalizeLayoutVariant(data.brand.layoutVariant),
@@ -143,7 +154,7 @@ export function BrandAdminEditor({
     } finally {
       setSaving(false);
     }
-  }, [brand, themes, t, userId]);
+  }, [apiBase, brand, themes, t]);
 
   async function uploadFile(file: File, kind: string, slot?: string) {
     setUploading(true);
@@ -153,7 +164,7 @@ export function BrandAdminEditor({
       fd.append("file", file);
       fd.append("kind", kind);
       if (slot) fd.append("slot", slot);
-      const res = await fetch(`/api/admin/generator-brand/${userId}/upload`, {
+      const res = await fetch(uploadBase, {
         method: "POST",
         credentials: "include",
         body: fd,
@@ -190,7 +201,7 @@ export function BrandAdminEditor({
   async function deleteAsset(assetId: string) {
     setToast({ message: "", lime: true });
     const res = await fetch(
-      `/api/admin/generator-brand/${userId}?assetId=${encodeURIComponent(assetId)}`,
+      `${apiBase}?assetId=${encodeURIComponent(assetId)}`,
       { method: "DELETE", credentials: "include" }
     );
     const data = await res.json();
@@ -218,15 +229,17 @@ export function BrandAdminEditor({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <Link
-          href="/dashboard/users"
+          href={apiMode === "user" ? "/dashboard" : "/dashboard/users"}
           className="text-sm font-medium text-[#d1fe17] hover:opacity-85"
         >
-          ← {t("backUsers")}
+          ← {apiMode === "user" ? t("backDashboard") : t("backUsers")}
         </Link>
       </div>
 
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-union-text">{t("title")}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-union-text">
+          {apiMode === "user" ? t("titleSelf") : t("title")}
+        </h1>
         <p className="mt-1 text-sm text-union-muted">
           {userEmail} · <span className="font-mono text-xs">{userId}</span>
         </p>
@@ -243,6 +256,16 @@ export function BrandAdminEditor({
               onChange={(e) => setBrand((b) => ({ ...b, brandName: e.target.value }))}
             />
           </label>
+          <div className="md:col-span-1">
+            <GeoRegionPicker
+              value={brand.geo}
+              onChange={(code) => setBrand((b) => ({ ...b, geo: code }))}
+              label={t("geoTarget")}
+              placeholder={t("geoPlaceholder")}
+              searchPlaceholder={t("geoSearch")}
+              emptyLabel={t("geoEmpty")}
+            />
+          </div>
           <label className="block space-y-1 md:col-span-2">
             <span className="text-xs text-union-muted">{t("defaultTheme")}</span>
             <input
@@ -459,6 +482,7 @@ export function BrandAdminEditor({
           <div>
             <h2 className="text-base font-semibold text-union-text">{t("sectionThemes")}</h2>
             <p className="mt-1 text-xs text-union-muted">{t("themeSeoKeywordsHint")}</p>
+            <p className="mt-1 text-xs text-union-muted">{t("themeSeoKeywordsSplitHint")}</p>
           </div>
           <button
             type="button"

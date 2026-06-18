@@ -17,6 +17,8 @@ import {
   resolveGameImageFiles,
   resolvePaymentImageFiles,
 } from "@/lib/brand-image-pools";
+import { geoLabelForSeoPrompt } from "@/lib/generator-brand-geo";
+import { parseSeoKeywords, attachSeoKeywordsToPages } from "@/lib/generator-brand-seo";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
 import {
   pickPhpHomeTemplate,
@@ -3557,6 +3559,7 @@ function buildPagePrompt({
   projectSlug = "",
   siteGenerationRulesBlock = "",
   sourceArticlesOverlay = "",
+  geoLabel = "",
 }) {
   const gtw = String(gatewayUrl || DEFAULT_GATEWAY_URL).trim() || DEFAULT_GATEWAY_URL;
   const allowedPageFiles = (Array.isArray(allPages) ? allPages : [])
@@ -3625,7 +3628,13 @@ function buildPagePrompt({
     accentOn: sitePaletteIn?.accentOn ?? "#101710",
     gradEnd: sitePaletteIn?.gradEnd ?? BRAND_BLOCK,
   };
-  const keywordHint = buildSeoKeywordHint(theme, pageMeta.file, pageMeta.role);
+  const keywordHint = buildSeoKeywordHint(
+    theme,
+    pageMeta.file,
+    pageMeta.role,
+    pageMeta.seoKeywords,
+    geoLabel
+  );
   const antiClicheRuBlock = `
 АНТИ-КЛИШЕ (текст <main>): не используй буквально и не копируй «шаблонные» формулировки, часто повторяемые между лендингами: «без рекламного тумана», «читайте по диагонали», «миллионы за клик», «редакция проверила», «всё по делу / без воды» как рефрен, «честная игра на реальные деньги» как заголовок секции. Вместо этого — конкретные шаги, нейтральный справочный тон, разные метафоры под тему страницы.
 `;
@@ -5307,7 +5316,12 @@ function buildInteractionRuntime(gatewayUrl = DEFAULT_GATEWAY_URL) {
 })();`;
 }
 
-function buildSeoKeywordHint(theme, file, role) {
+function buildSeoKeywordHint(theme, file, role, pageSeoKeywords = [], geoLabel = "") {
+  const fromPage = (pageSeoKeywords || []).filter(Boolean);
+  if (fromPage.length) {
+    const geo = geoLabel ? `Гео: ${geoLabel}. ` : "";
+    return `${geo}${fromPage.join("; ")}`;
+  }
   const base = String(theme || "").trim();
   const f = String(file || "").toLowerCase();
   const r = String(role || "").toLowerCase();
@@ -6614,6 +6628,7 @@ async function generatePageBundle(
     projectSlug: ctx.projectSlug || "",
     siteGenerationRulesBlock: ctx.siteGenerationRulesBlock || "",
     sourceArticlesOverlay,
+    geoLabel: ctx.geoLabel || "",
   });
 
   let user = userBase;
@@ -8671,6 +8686,8 @@ export async function buildMultipageSite({
     batchIndex,
     referenceTemplateMode: referenceTemplateModeWanted,
   });
+  pages = attachSeoKeywordsToPages(pages, parseSeoKeywords(brandKit?.seoKeywords));
+  const buildGeoLabel = geoLabelForSeoPrompt(brandKit?.geo);
   if (
     referenceLocked &&
     referenceStructureSignals?.sectionRoleSequence?.length >= 2
@@ -8862,6 +8879,7 @@ export async function buildMultipageSite({
     promptProfileOverlay: finalPromptOverlay,
     sourceArticlesPool,
     siteGenerationRulesBlock,
+    geoLabel: buildGeoLabel,
     allPages: pages,
     sitePalette,
     totalPages: pages.length,

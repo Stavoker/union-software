@@ -32,6 +32,13 @@ import {
 } from "@/lib/generator-engine/generation-content-language";
 import { writeBuildProgress } from "@/lib/generator-engine/job-progress";
 import { normalizePalette } from "@/lib/generator-brand-palette";
+import { geoLabelForSeoPrompt } from "@/lib/generator-brand-geo";
+import {
+  parseSeoKeywords,
+  attachSeoKeywordsToPages,
+  buildArchitectSeoPromptBlock,
+  buildPageSeoPromptBlock,
+} from "@/lib/generator-brand-seo";
 import { loadSourceArticlesContextForBuild } from "@/lib/generator-engine/source-articles-for-generation";
 import { normalizeGenerationMode } from "@/src/lib/generation-modes";
 import { isReactBuildEnabled } from "@/src/lib/generation-stack";
@@ -303,15 +310,6 @@ function resolveReactBrandName({ brandKit }) {
   return "Бренд";
 }
 
-/** @param {string} raw */
-function parseSeoKeywords(raw) {
-  return String(raw || "")
-    .split(/[\n,;]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 24);
-}
-
 /**
  * @param {Record<string, unknown> | null | undefined} brandKit
  * @param {string} seed
@@ -332,17 +330,20 @@ function resolveSiteLayoutVariant(brandKit, seed) {
   return REACT_SITE_LAYOUTS[idx];
 }
 
-function buildSeoPromptBlock({ themeBrandHint, seoKeywords, theme }) {
+function buildSeoPromptBlock({ themeBrandHint, seoKeywords, theme, pages, geoLabel }) {
+  if (Array.isArray(pages) && pages.some((p) => (p.seoKeywords || []).length)) {
+    return buildArchitectSeoPromptBlock({ themeBrandHint, theme, pages, geoLabel });
+  }
   const kws = parseSeoKeywords(seoKeywords);
   if (!kws.length) return "";
+  const geoLine = geoLabel ? `Гео: ${geoLabel}.\n` : "";
   return `
 === SEO (обязательно для title/description страниц) ===
 Бренд: ${themeBrandHint}. Тема: ${theme}.
-Ключевые слова (включай естественно в title и description каждой pages[]):
+${geoLine}Ключевые слова (распредели по страницам pages[]):
 ${kws.map((k) => `- ${k}`).join("\n")}
-- title главной: 50–65 символов, бренд + 1–2 ключа + intent (регистрация, бонусы, скачать и т.д.).
-- description: 140–165 символов, бренд + гео/интент + CTA-смысл.
-- Внутренние страницы: уникальные title/description с разными ключами из списка.
+- title главной: 50–65 символов, бренд + 1–2 ключа + intent.
+- description: 140–165 символов, бренд + гео/интент + CTA.
 `.trim();
 }
 
@@ -851,6 +852,7 @@ function buildPageCodegenPrompt({
   heroUsesSlider = false,
   contentLanguageBlock = "",
   contentLangSpec,
+  pageSeoBlock = "",
 }) {
   const lang = contentLangSpec || getSiteContentLanguageSpec("ru");
   const needsSlotGrid = page.componentIds.includes("slot-grid");
@@ -916,7 +918,7 @@ ${needsFaqCards ? `- Обязательно <FaqCardGrid title=\"…\" intro=\"2
 ${registryCodegenBlock}
 
 ${siteRules}
-${designHint}
+${pageSeoBlock ? `${pageSeoBlock}\n\n` : ""}${designHint}
 ${contentLanguageBlock ? `${contentLanguageBlock}\n\n` : ""}${sourceArticlesBlock ? `${sourceArticlesBlock}\n` : ""}
 ${brandPromptOverlay ? `=== БРЕНД КЛИЕНТА ===\n${brandPromptOverlay}\n` : ""}
 ${profilePrompt ? `=== ПРОМПТ ПРОФИЛЯ ===\n${profilePrompt}` : ""}
@@ -1056,6 +1058,10 @@ function escapeHtmlAttr(value) {
 
 async function writePageHeadMeta(reactSrcDir, pages, { seoKeywords = [], htmlLang = "ru" } = {}) {
   const indexPage = pages.find((p) => p.route === "/") || pages[0];
+  const indexKw =
+    Array.isArray(indexPage?.seoKeywords) && indexPage.seoKeywords.length
+      ? indexPage.seoKeywords
+      : seoKeywords;
   let html = await fs.readFile(path.join(reactSrcDir, "index.html"), "utf8");
   const langAttr = String(htmlLang || "ru").trim() || "ru";
   if (/<html\b/i.test(html)) {
@@ -1066,7 +1072,7 @@ async function writePageHeadMeta(reactSrcDir, pages, { seoKeywords = [], htmlLan
   }
   const title = indexPage?.title || "Сайт";
   const desc = indexPage?.description || "";
-  const kwList = Array.isArray(seoKeywords) ? seoKeywords.filter(Boolean) : [];
+  const kwList = Array.isArray(indexKw) ? indexKw.filter(Boolean) : [];
   html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtmlAttr(title)}</title>`);
   if (/<meta\s+name="description"/i.test(html)) {
     html = html.replace(
@@ -1223,6 +1229,9 @@ export async function buildReactSite({
   );
   const brandPromptOverlay = formatBrandPromptOverlay(brandKit?.promptOverlay);
   const seoKeywords = parseSeoKeywords(brandKit?.seoKeywords);
+  const geoLabel = geoLabelForSeoPrompt(brandKit?.geo);
+  const draftPagesForSeo = expectedFiles.map((file) => ({ file }));
+  const pagesWithKwDraft = attachSeoKeywordsToPages(draftPagesForSeo, seoKeywords);
   const batchIndex = Math.max(0, Math.trunc(Number(batchIndexInput) || 0));
   const batchSize = Math.max(1, Math.trunc(Number(batchSizeInput) || 1));
   const siteLayout = resolveSiteLayoutVariant(brandKit, `${safeName}|${siteSeed}`);
@@ -1282,6 +1291,8 @@ export async function buildReactSite({
     themeBrandHint,
     seoKeywords: brandKit?.seoKeywords,
     theme: themeNorm,
+    pages: pagesWithKwDraft,
+    geoLabel,
   });
   const minPageWords = REACT_MIN_PAGE_WORDS;
   emitLog(
@@ -1388,7 +1399,10 @@ export async function buildReactSite({
   });
   const architectPlan = extractJsonObject(architectRaw);
   const brandName = resolveReactBrandName({ brandKit });
-  const pages = sanitizePagesForBrand(
+  const kwByFile = new Map(
+    pagesWithKwDraft.map((p) => [String(p.file || "").trim(), p.seoKeywords || []])
+  );
+  let pages = sanitizePagesForBrand(
     normalizePagesPlan(architectPlan?.pages, expectedFiles, {
       homeTemplate,
       structureSeed,
@@ -1396,7 +1410,10 @@ export async function buildReactSite({
       innerFrameworksByFile,
     }),
     brandName
-  );
+  ).map((p) => ({
+    ...p,
+    seoKeywords: kwByFile.get(String(p.file || "").trim()) || [],
+  }));
   emitLog(onLog, `Бренд: ${brandName}; страниц: ${pages.length}; мин. слов: ${minPageWords}`);
   await writeBuildProgress(outputDir, pages.length, 0);
 
@@ -1429,6 +1446,7 @@ export async function buildReactSite({
     } catch (e) {
       emitLog(onLog, `source_articles (${page.file}): ${String(e?.message || e).slice(0, 100)}`);
     }
+    const pageSeoBlock = buildPageSeoPromptBlock(page, geoLabel);
     const pageCodegenBase = buildPageCodegenPrompt({
       page,
       brandName,
@@ -1448,6 +1466,7 @@ export async function buildReactSite({
       heroUsesSlider,
       contentLanguageBlock,
       contentLangSpec,
+      pageSeoBlock,
     });
     let pageRaw = await callClaude({
       apiKey: claudeKey,
@@ -1519,6 +1538,12 @@ export async function buildReactSite({
     gatewayUrl,
     sitemapPaths,
     generationMode,
+    spaPages: generatedPages.map((p) => ({
+      route: p.route,
+      title: p.title,
+      description: p.description,
+      seoKeywords: p.seoKeywords || [],
+    })),
   });
   emitLog(
     onLog,

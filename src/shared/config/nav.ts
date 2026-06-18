@@ -4,6 +4,7 @@ export type DashboardNavItem = {
   labelKey:
     | "dashboard"
     | "generator"
+    | "brand"
     | "seo"
     | "buyDomain"
     | "usage"
@@ -17,6 +18,7 @@ export type DashboardNavItem = {
 export const DASHBOARD_NAV: readonly DashboardNavItem[] = [
   { href: "/dashboard", labelKey: "dashboard" },
   { href: "/dashboard/generator", labelKey: "generator" },
+  { href: "/dashboard/brand", labelKey: "brand" },
   { href: "/dashboard/seo", labelKey: "seo" },
   { href: "/dashboard/domain", labelKey: "buyDomain" },
   { href: "/dashboard/usage", labelKey: "usage" },

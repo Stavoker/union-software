@@ -58,6 +58,7 @@ export default async function UserBrandAdminPage({
     ? {
         brandName: brand.brandName,
         notes: brand.notes,
+        geo: brand.geo || "",
         defaultThemeText: brand.defaultThemeText,
         promptOverlay: brand.promptOverlay,
         layoutVariant: normalizeLayoutVariant(brand.layoutVariant),

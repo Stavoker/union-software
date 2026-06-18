@@ -29,6 +29,13 @@ export default async function DashboardHomePage() {
       adminOnly: false as const,
     },
     {
+      id: "brand" as const,
+      href: "/dashboard/brand",
+      navKey: "brand" as const,
+      cardDescKey: "cards.brand" as const,
+      adminOnly: false as const,
+    },
+    {
       id: "seo" as const,
       href: "/dashboard/seo",
       navKey: "seo" as const,

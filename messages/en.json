@@ -15,6 +15,7 @@
   "nav": {
     "dashboard": "Overview",
     "generator": "Generator",
+    "brand": "Brand",
     "seo": "SEO",
     "buyDomain": "Buy domain",
     "usage": "AI tokens",
@@ -76,6 +77,7 @@
     },
     "cards": {
       "generator": "Multipage site generation.",
+      "brand": "Brand, geo, keywords, images, and theme presets.",
       "seo": "Keywords, rankings, and reporting.",
       "domain": "Search and register domains for your projects.",
       "usage": "Average token burn and period breakdowns.",
@@ -562,7 +564,14 @@
   },
   "generatorBrand": {
     "title": "Generator brand",
+    "titleSelf": "My brand",
     "backUsers": "Users",
+    "backDashboard": "Overview",
+    "geoTarget": "Target geo",
+    "geoPlaceholder": "Select region",
+    "geoSearch": "Search country…",
+    "geoEmpty": "No matches",
+    "themeSeoKeywordsSplitHint": "Keywords are split across site pages automatically (30 keywords / 3 pages ≈ 10 per page). AI may rephrase ill-fitting phrases per page.",
     "sectionBrand": "Brand & default theme",
     "sectionPalette": "Palette (3 colors)",
     "paletteHint": "Accent, background, and text. Other shades are derived automatically at build time.",

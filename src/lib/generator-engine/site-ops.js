@@ -113,6 +113,106 @@ export function normalizeSpaIndexHtmlAssetPaths(html) {
     .replace(/(\s(?:src|href)=["'])\.\/img\//gi, "$1/img/");
 }
 
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function buildCanonicalHref(baseUrl, route) {
+  const origin = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const r = String(route || "/").trim() || "/";
+  if (r === "/") return `${origin}/`;
+  const seg = r.replace(/^\//, "").replace(/\/+$/, "");
+  return `${origin}/${seg}/`;
+}
+
+/**
+ * Apply per-route title, description, keywords, canonical to SPA shell HTML.
+ * @param {string} shellHtml
+ * @param {{ route?: string, title?: string, description?: string, seoKeywords?: string[] }} page
+ * @param {string} baseUrl
+ */
+export function applySpaPageHeadMeta(shellHtml, page, baseUrl) {
+  let html = String(shellHtml || "");
+  const title = String(page?.title || "Сайт").trim();
+  const desc = String(page?.description || "").trim();
+  const kws = Array.isArray(page?.seoKeywords) ? page.seoKeywords.filter(Boolean) : [];
+  const canonHref = buildCanonicalHref(baseUrl, page?.route || "/");
+  const canonTag = `<link rel="canonical" href="${escapeHtmlAttr(canonHref)}" />`;
+
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtmlAttr(title)}</title>`);
+
+  const descTag = `<meta name="description" content="${escapeHtmlAttr(desc)}" />`;
+  if (/<meta\s+name="description"/i.test(html)) {
+    html = html.replace(/<meta\s+name="description"[^>]*>/i, descTag);
+  } else {
+    html = html.replace(/<\/head>/i, `  ${descTag}\n  </head>`);
+  }
+
+  if (kws.length) {
+    const kwTag = `<meta name="keywords" content="${escapeHtmlAttr(kws.join(", "))}" />`;
+    if (/<meta\s+name="keywords"/i.test(html)) {
+      html = html.replace(/<meta\s+name="keywords"[^>]*>/i, kwTag);
+    } else {
+      html = html.replace(/<\/head>/i, `  ${kwTag}\n  </head>`);
+    }
+  } else {
+    html = html.replace(/<meta\s+name="keywords"[^>]*>\s*/i, "");
+  }
+
+  const ogTitle = `<meta property="og:title" content="${escapeHtmlAttr(title)}" />`;
+  const ogDesc = `<meta property="og:description" content="${escapeHtmlAttr(desc)}" />`;
+  for (const [pattern, tag] of [
+    [/<meta\s+property="og:title"[^>]*>/i, ogTitle],
+    [/<meta\s+property="og:description"[^>]*>/i, ogDesc],
+  ]) {
+    if (pattern.test(html)) {
+      html = html.replace(pattern, tag);
+    } else {
+      html = html.replace(/<\/head>/i, `  ${tag}\n  </head>`);
+    }
+  }
+
+  if (/<link\b[^>]*\brel=["']canonical["'][^>]*>/i.test(html)) {
+    html = html.replace(/<link\b[^>]*\brel=["']canonical["'][^>]*>/gi, canonTag);
+  } else {
+    html = html.replace(/<\/head>/i, `  ${canonTag}\n  </head>`);
+  }
+
+  return html;
+}
+
+/**
+ * Write index.html per React route (/, /bonus/, …) with unique SEO head + canonical.
+ * @param {string} outputDir
+ * @param {{ baseUrl: string, shellHtml: string, pages: Array<{ route?: string, title?: string, description?: string, seoKeywords?: string[] }> }} opts
+ */
+export async function writeSpaPerRouteHeadHtml(outputDir, opts) {
+  const baseUrl = String(opts?.baseUrl || "").trim();
+  const shell = normalizeSpaIndexHtmlAssetPaths(String(opts?.shellHtml || ""));
+  const pages = Array.isArray(opts?.pages) ? opts.pages : [];
+  if (!shell || !pages.length) return;
+
+  for (const page of pages) {
+    const route = String(page?.route || "/").trim() || "/";
+    const html = applySpaPageHeadMeta(shell, page, baseUrl);
+    if (route === "/") {
+      await fs.writeFile(path.join(outputDir, "index.html"), html, "utf8");
+      continue;
+    }
+    const seg = route.replace(/^\//, "").replace(/\/+$/, "");
+    if (!seg) {
+      await fs.writeFile(path.join(outputDir, "index.html"), html, "utf8");
+      continue;
+    }
+    const dir = path.join(outputDir, seg);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "index.html"), html, "utf8");
+  }
+}
+
 /** SPA fallback for React static deploy (standard mode). */
 export async function writeReactSpaHtaccess(outputDir, opts = {}) {
   const botGate = isBotGateGenerationMode(opts.generationMode);
@@ -188,10 +288,21 @@ export async function finalizeReactDeployableSite(opts) {
   }
 
   indexHtml = normalizeSpaIndexHtmlAssetPaths(indexHtml);
-  await fs.writeFile(indexHtmlPath, indexHtml, "utf8");
+
+  const spaPages = Array.isArray(opts.spaPages) ? opts.spaPages : [];
+  if (spaPages.length) {
+    await writeSpaPerRouteHeadHtml(outputDir, {
+      baseUrl: opts.baseUrl,
+      shellHtml: indexHtml,
+      pages: spaPages,
+    });
+  } else {
+    await fs.writeFile(indexHtmlPath, indexHtml, "utf8");
+  }
 
   if (isBotGateGenerationMode(generationMode)) {
-    const wrapped = wrapHtmlDocumentForBotGate(indexHtml);
+    const rootHtml = await fs.readFile(path.join(outputDir, "index.html"), "utf8");
+    const wrapped = wrapHtmlDocumentForBotGate(rootHtml);
     await fs.writeFile(path.join(outputDir, "index.php"), wrapped, "utf8");
   }
 
