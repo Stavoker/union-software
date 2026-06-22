@@ -17,12 +17,20 @@ async function readJsonSafe(response) {
   }
 }
 
+function formatCountdown(totalSec) {
+  const sec = Math.max(0, Math.trunc(Number(totalSec) || 0));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function TelegramConnectPanel() {
   const t = useTranslations("integrationSettings.telegram");
   const [linked, setLinked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
-  const [expiresInSec, setExpiresInSec] = useState(0);
+  const [expiresAt, setExpiresAt] = useState("");
+  const [remainingSec, setRemainingSec] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState({ message: "", lime: true });
 
@@ -40,6 +48,29 @@ export function TelegramConnectPanel() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!expiresAt) {
+      setRemainingSec(0);
+      return;
+    }
+
+    const tick = () => {
+      const left = Math.max(
+        0,
+        Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)
+      );
+      setRemainingSec(left);
+      if (left <= 0) {
+        setCode("");
+        setExpiresAt("");
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
   async function generateCode() {
     setGenerating(true);
     setToast({ message: "", lime: true });
@@ -50,7 +81,7 @@ export function TelegramConnectPanel() {
         throw new Error(payload?.error || t("codeFailed"));
       }
       setCode(String(payload.code || ""));
-      setExpiresInSec(Number(payload.expiresInSec || 900));
+      setExpiresAt(String(payload.expiresAt || ""));
       setToast({ message: t("codeReady"), lime: true });
     } catch (e) {
       setToast({ message: String(e?.message || t("codeFailed")), lime: true });
@@ -85,11 +116,19 @@ export function TelegramConnectPanel() {
           <li>{t("step3")}</li>
         </ol>
         {code ? (
-          <div className="rounded-xl border border-[#d1fe17]/40 bg-[#d1fe17]/10 px-4 py-3">
-            <p className="text-xs text-union-muted">{t("yourCode")}</p>
-            <p className="font-mono text-2xl font-semibold tracking-widest text-[#d1fe17]">{code}</p>
-            <p className="mt-1 text-xs text-union-muted">
-              {t("expires", { min: Math.max(1, Math.round(expiresInSec / 60)) })}
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-[#d1fe17]/40 bg-[#d1fe17]/10 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs text-union-muted">{t("yourCode")}</p>
+              <p className="font-mono text-2xl font-semibold tracking-widest text-[#d1fe17]">
+                {code}
+              </p>
+            </div>
+            <p
+              className="shrink-0 font-mono text-4xl font-semibold tabular-nums leading-none text-[#d1fe17] sm:text-5xl"
+              aria-live="polite"
+              aria-label={formatCountdown(remainingSec)}
+            >
+              {formatCountdown(remainingSec)}
             </p>
           </div>
         ) : null}

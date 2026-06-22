@@ -53,6 +53,8 @@ type CardMeta = {
   icon: LucideIcon;
   visualIcon: LucideIcon;
   badgeKey: string;
+  /** Якщо задано — кілька бейджів у превʼю (напр. Yandex + Google). */
+  badgeKeys?: string[];
   tagKeys: [string, string, string];
   tagIcons: [LucideIcon, LucideIcon, LucideIcon];
 };
@@ -76,6 +78,7 @@ const CARD_META: Record<DashboardCardId, CardMeta> = {
     icon: Search,
     visualIcon: BarChart3,
     badgeKey: "badges.seo",
+    badgeKeys: ["badges.seoYandex", "badges.seoGoogle"],
     tagKeys: ["tags.seo.t1", "tags.seo.t2", "tags.seo.t3"],
     tagIcons: [Search, BarChart3, Clock],
   },
@@ -184,9 +187,13 @@ export function DashboardModuleCard({ id, href, navKey, descKey, index }: Props)
               aria-hidden
             />
           </div>
-          <span className={`absolute right-3 top-3 z-10 ${dashboardPreviewBadge}`}>
-            {t(meta.badgeKey)}
-          </span>
+          <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-1.5">
+            {(meta.badgeKeys ?? [meta.badgeKey]).map((key) => (
+              <span key={key} className={dashboardPreviewBadge}>
+                {t(key)}
+              </span>
+            ))}
+          </div>
         </div>
 
         <p className="mt-4 flex-1 text-sm leading-relaxed text-union-muted">{t(descKey)}</p>

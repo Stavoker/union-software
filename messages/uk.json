@@ -33,6 +33,8 @@
       "generator": "AI",
       "brand": "SEO",
       "seo": "Yandex",
+      "seoYandex": "Yandex",
+      "seoGoogle": "Google",
       "domain": "DNS",
       "usage": "Claude",
       "generatorAnalytics": "Admin",
