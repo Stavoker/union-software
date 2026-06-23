@@ -349,7 +349,17 @@
     "deployDone": "Live on host: {domain}",
     "deployPending": "No empty domain folders on this host. Purchase a domain first, then click Upload to host.",
     "deployFailed": "Deploy failed: {message}",
-    "deployOpenSite": "Open site"
+    "deployOpenSite": "Open site",
+    "toastDismiss": "Dismiss",
+    "errors": {
+      "brandNotConfigured": "Brand is not configured for your account yet. Contact your Union administrator.",
+      "themeRequired": "Enter a site theme or ask your administrator to set a default theme in Brand.",
+      "hostNotFound": "Selected SSH host was not found or is inactive.",
+      "hostNoSshPassword": "SSH password is not saved for this host. Update the host in Settings.",
+      "noDomainFolder": "No empty domain folder on the host (available: {count}). Purchase a domain via domain automation first.",
+      "noDomainFoldersBatch": "Need {required} empty domain folders, found {available}. Purchase domains or free folders on the host.",
+      "reactLabDisabled": "React Lab is disabled (SOFTGEN_REACT_BUILD=0). Enable SOFTGEN_REACT_BUILD=1 on Render for npm build."
+    }
   },
   "usageWorkbench": {
     "title": "AI tokens",

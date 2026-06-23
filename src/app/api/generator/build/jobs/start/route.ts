@@ -94,11 +94,7 @@ export async function POST(req: Request) {
   const brandKit = await loadGeneratorBrandForUser(supabase, user.id);
   if (!brandKit?.userId) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Бренд для вашого акаунта ще не налаштовано. Зверніться до адміністратора Union.",
-      },
+      { ok: false, errorCode: "brand_not_configured" },
       { status: 400 }
     );
   }
@@ -118,10 +114,7 @@ export async function POST(req: Request) {
   };
   if (!theme) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Вкажіть тему сайту або попросіть адміністратора задати тему за замовчуванням у бренді.",
-      },
+      { ok: false, errorCode: "theme_required" },
       { status: 400 }
     );
   }
@@ -143,16 +136,13 @@ export async function POST(req: Request) {
     selectedHost = await getHostById(hostId, user.id);
     if (!selectedHost) {
       return NextResponse.json(
-        { ok: false, error: "Обраний SSH-хост не знайдено або неактивний." },
+        { ok: false, errorCode: "host_not_found" },
         { status: 400 }
       );
     }
     if (!String(selectedHost.sshPassword || "").trim()) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "У обраного хоста не збережено SSH-пароль. Оновіть хост у Settings.",
-        },
+        { ok: false, errorCode: "host_no_ssh_password" },
         { status: 400 }
       );
     }
@@ -166,10 +156,8 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            siteCount <= 1
-              ? `На хості немає вільної папки домену (вільних: ${folderScan.available.length}). Спочатку придбайте домен через автоматизацію доменів.`
-              : `Потрібно ${siteCount} вільних папок доменів, знайдено ${folderScan.available.length}. Придбайте домени або звільніть папки на хості.`,
+          errorCode:
+            siteCount <= 1 ? "no_domain_folder" : "no_domain_folders_batch",
           availableDomains: folderScan.available.length,
           requiredDomains: siteCount,
         },
@@ -205,11 +193,7 @@ export async function POST(req: Request) {
       : getDefaultGenerationStack();
     if (isReactGenerationStack(normalizedStack) && !isReactBuildEnabled()) {
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "React Lab вимкнено (SOFTGEN_REACT_BUILD=0). На Render увімкніть SOFTGEN_REACT_BUILD=1 для npm build.",
-        },
+        { ok: false, errorCode: "react_lab_disabled" },
         { status: 400 }
       );
     }

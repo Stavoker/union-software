@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { Link } from "@/i18n/navigation";
 import { seoBtnPrimary, seoInput, seoNoteLime } from "@/shared/components/seo/seo-ui";
+import { UnionStatusToast } from "@/shared/components/ui/union-status-toast";
 import { GeneratorOrb } from "./generator-orb";
 
 const POLL_MS = 1500;
@@ -152,6 +153,35 @@ type JobRow = {
   downloadingZip?: boolean;
 };
 
+type StartJobErrorPayload = {
+  errorCode?: string;
+  error?: string;
+  availableDomains?: number;
+  requiredDomains?: number;
+};
+
+function resolveStartJobError(
+  data: StartJobErrorPayload,
+  t: (key: string, values?: Record<string, string | number>) => string
+) {
+  const code = String(data.errorCode || "").trim();
+  if (code === "brand_not_configured") return t("errors.brandNotConfigured");
+  if (code === "theme_required") return t("errors.themeRequired");
+  if (code === "host_not_found") return t("errors.hostNotFound");
+  if (code === "host_no_ssh_password") return t("errors.hostNoSshPassword");
+  if (code === "no_domain_folder") {
+    return t("errors.noDomainFolder", { count: Number(data.availableDomains) || 0 });
+  }
+  if (code === "no_domain_folders_batch") {
+    return t("errors.noDomainFoldersBatch", {
+      required: Number(data.requiredDomains) || 0,
+      available: Number(data.availableDomains) || 0,
+    });
+  }
+  if (code === "react_lab_disabled") return t("errors.reactLabDisabled");
+  return String(data.error || "").trim() || t("startFailed");
+}
+
 type GeneratorWorkbenchProps = {
   themePresets?: GeneratorThemePreset[];
   defaultTheme?: string;
@@ -213,7 +243,11 @@ export function GeneratorWorkbench({
   const [resuming, setResuming] = useState(true);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [dismissedJobIds, setDismissedJobIds] = useState<Set<string>>(() => new Set());
-  const [error, setError] = useState("");
+  const [statusToast, setStatusToast] = useState("");
+
+  const showToast = useCallback((message: string) => {
+    setStatusToast(message);
+  }, []);
 
   const jobsRef = useRef<JobRow[]>([]);
 
@@ -400,7 +434,7 @@ export function GeneratorWorkbench({
   }, [hasActiveJob, pollOne]);
 
   async function startBuild() {
-    setError("");
+    setStatusToast("");
     setStarting(true);
     setJobs([]);
     try {
@@ -419,13 +453,12 @@ export function GeneratorWorkbench({
           hostId: selectedHostId.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as {
+      const data = (await res.json()) as StartJobErrorPayload & {
         ok?: boolean;
         jobs?: { jobId: string; projectName: string }[];
-        error?: string;
       };
       if (!res.ok || !data.ok || !Array.isArray(data.jobs) || !data.jobs.length) {
-        throw new Error(data.error || t("startFailed"));
+        throw new Error(resolveStartJobError(data, t));
       }
       setJobs(
         data.jobs.map((j) => ({
@@ -441,7 +474,7 @@ export function GeneratorWorkbench({
         }))
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("startFailed"));
+      showToast(e instanceof Error ? e.message : t("startFailed"));
       setJobs([]);
     } finally {
       setStarting(false);
@@ -485,7 +518,7 @@ export function GeneratorWorkbench({
       a.click();
       URL.revokeObjectURL(objectUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("downloadZipFailed"));
+      showToast(e instanceof Error ? e.message : t("downloadZipFailed"));
     } finally {
       setJobs((prev) =>
         prev.map((j) => (j.jobId === job.jobId ? { ...j, downloadingZip: false } : j))
@@ -496,7 +529,7 @@ export function GeneratorWorkbench({
   async function uploadJobToHost(job: JobRow) {
     const hostId = String(job.hostId || selectedHostId || "").trim();
     if (!hostId) {
-      setError(t("deployHostRequired"));
+      showToast(t("deployHostRequired"));
       return;
     }
     setJobs((prev) =>
@@ -588,6 +621,11 @@ export function GeneratorWorkbench({
 
   return (
     <div className="w-full space-y-0">
+      <UnionStatusToast
+        message={statusToast}
+        onDismiss={() => setStatusToast("")}
+        dismissLabel={t("toastDismiss")}
+      />
       {resuming && !jobs.length ? (
         <p className="pb-6 pt-2 text-sm text-union-muted">{t("resuming")}</p>
       ) : null}
@@ -810,12 +848,6 @@ export function GeneratorWorkbench({
               </label>
             </div>
           </div>
-
-          {error ? (
-            <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              {error}
-            </p>
-          ) : null}
 
           <button
             type="button"

@@ -349,7 +349,17 @@
     "deployDone": "Сайт на хосте: {domain}",
     "deployPending": "Нет свободных папок доменов на хосте. Сначала купите домен, затем нажмите «Загрузить на хост».",
     "deployFailed": "Деплой не удался: {message}",
-    "deployOpenSite": "Открыть сайт"
+    "deployOpenSite": "Открыть сайт",
+    "toastDismiss": "Закрыть",
+    "errors": {
+      "brandNotConfigured": "Бренд для вашего аккаунта ещё не настроен. Обратитесь к администратору Union.",
+      "themeRequired": "Укажите тему сайта или попросите администратора задать тему по умолчанию в бренде.",
+      "hostNotFound": "Выбранный SSH-хост не найден или неактивен.",
+      "hostNoSshPassword": "У выбранного хоста не сохранён SSH-пароль. Обновите хост в Settings.",
+      "noDomainFolder": "На хосте нет свободной папки домена (свободных: {count}). Сначала купите домен через автоматизацию доменов.",
+      "noDomainFoldersBatch": "Нужно {required} свободных папок доменов, найдено {available}. Купите домены или освободите папки на хосте.",
+      "reactLabDisabled": "React Lab отключён (SOFTGEN_REACT_BUILD=0). На Render включите SOFTGEN_REACT_BUILD=1 для npm build."
+    }
   },
   "usageWorkbench": {
     "title": "Токены AI",
