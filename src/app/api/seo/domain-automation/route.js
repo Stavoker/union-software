@@ -109,7 +109,8 @@ async function registerDomainInSeoDashboard(userId, domain) {
     return;
   }
   try {
-    await upsertSeoDomainForUser(userId, d);
+    // Domain purchase only — not a site deploy; SEO/auto-script runs after host upload.
+    await upsertSeoDomainForUser(userId, d, { setDeployedAt: false });
   } catch (e) {
     console.warn(`[domain-automation] seo_domains upsert failed for ${d}:`, e?.message || e);
   }
