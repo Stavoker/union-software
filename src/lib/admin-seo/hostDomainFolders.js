@@ -296,8 +296,36 @@ export async function listPhpSiteDomainsOnHost(host) {
   return domains.sort();
 }
 
-/** Усі каталоги доменів у projectsDir (для nginx-only без PHP). */
-export async function listAllSiteDomainsOnHost(host) {
+/** Домени в projectsDir, де є index.html (React / static SPA). */
+export async function listHtmlSiteDomainsOnHost(host) {
+  const projectsBaseDir = normalizeBaseDir(host?.projectsDir);
+  const domains = [];
+  await withSftp(host, async (sftp) => {
+    let list = [];
+    try {
+      list = await sftp.list(projectsBaseDir);
+    } catch {
+      return;
+    }
+    for (const item of list) {
+      if (item.type !== "d") continue;
+      const name = String(item.name || "").trim().toLowerCase();
+      if (!name || name === "." || name === "..") continue;
+      const indexPath = `${projectsBaseDir}/${name}/index.html`;
+      if ((await sftp.exists(indexPath)) === "-") {
+        domains.push(name);
+      }
+    }
+  });
+  return domains.sort();
+}
+
+/** Домени з задеплоєним сайтом (index.php або index.html). */
+export async function listDeployedSiteDomainsOnHost(host) {
+  const php = await listPhpSiteDomainsOnHost(host);
+  const html = await listHtmlSiteDomainsOnHost(host);
+  return [...new Set([...php, ...html])].sort();
+}
   const projectsBaseDir = normalizeBaseDir(host?.projectsDir);
   const domains = [];
   await withSftp(host, async (sftp) => {
@@ -359,8 +387,9 @@ export async function provisionHostPhpStack({ host, onLog }) {
       })();
 
   const phpDomains = phpMode ? await listPhpSiteDomainsOnHost(host) : [];
+  const htmlDomains = phpMode ? await listHtmlSiteDomainsOnHost(host) : [];
   const allDomains = await listAllSiteDomainsOnHost(host);
-  const domainSet = new Set(phpMode ? phpDomains : allDomains);
+  const domainSet = new Set(phpMode ? [...phpDomains, ...htmlDomains] : allDomains);
 
   if (phpMode) {
     for (const domain of allDomains) {
@@ -380,7 +409,7 @@ export async function provisionHostPhpStack({ host, onLog }) {
 
   const domainList = [...domainSet].sort();
   log(
-    `[provision] знайдено ${domainList.length} домен(ів) у ${projectsBaseDir} (${phpMode ? "PHP + SSL-only" : "nginx static"})`
+    `[provision] знайдено ${domainList.length} домен(ів) у ${projectsBaseDir} (${phpMode ? "PHP/HTML + SSL-only" : "nginx static"})`
   );
 
   const sites = [];
