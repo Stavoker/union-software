@@ -295,6 +295,29 @@ export async function listPhpSiteDomainsOnHost(host) {
   return domains.sort();
 }
 
+/** Усі каталоги доменів у projectsDir (для nginx-only без PHP). */
+export async function listAllSiteDomainsOnHost(host) {
+  const projectsBaseDir = normalizeBaseDir(host?.projectsDir);
+  const domains = [];
+  await withSftp(host, async (sftp) => {
+    let list = [];
+    try {
+      list = await sftp.list(projectsBaseDir);
+    } catch {
+      return;
+    }
+    for (const item of list) {
+      if (item.type !== "d") continue;
+      const name = String(item.name || "").trim().toLowerCase();
+      if (!name || name === "." || name === "..") continue;
+      if (/^[a-z0-9][a-z0-9.-]*[a-z0-9]$|^[a-z0-9]$/.test(name)) {
+        domains.push(name);
+      }
+    }
+  });
+  return domains.sort();
+}
+
 /**
  * Повне налаштування VPS: apt nginx+php-fpm (за потреби) + vhost для всіх сайтів з index.php.
  */
@@ -303,17 +326,34 @@ export async function provisionHostPhpStack({ host, onLog }) {
     if (typeof onLog === "function") onLog(msg);
   };
   const projectsBaseDir = normalizeBaseDir(host?.projectsDir);
+  const { nginxPhpEnabled } = await import("./hostNginxSslDeploy.js");
+  const phpMode = nginxPhpEnabled();
 
-  const stack = await ensurePhpStackOnHost({
-    deployHostIp: host?.hostIp,
-    sshUser: host?.sshUser,
-    sshPassword: host?.sshPassword,
-    sshPort: host?.sshPort,
-    onLog: log,
-  });
+  const stack = phpMode
+    ? await ensurePhpStackOnHost({
+        deployHostIp: host?.hostIp,
+        sshUser: host?.sshUser,
+        sshPassword: host?.sshPassword,
+        sshPort: host?.sshPort,
+        onLog: log,
+      })
+    : await (async () => {
+        const { ensureNginxOnHost } = await import("./hostPhpStack.js");
+        return ensureNginxOnHost({
+          deployHostIp: host?.hostIp,
+          sshUser: host?.sshUser,
+          sshPassword: host?.sshPassword,
+          sshPort: host?.sshPort,
+          onLog: log,
+        });
+      })();
 
-  const domainList = await listPhpSiteDomainsOnHost(host);
-  log(`[provision] знайдено ${domainList.length} PHP-сайт(ів) у ${projectsBaseDir}`);
+  const domainList = phpMode
+    ? await listPhpSiteDomainsOnHost(host)
+    : await listAllSiteDomainsOnHost(host);
+  log(
+    `[provision] знайдено ${domainList.length} сайт(ів) у ${projectsBaseDir} (${phpMode ? "PHP" : "nginx static"})`
+  );
 
   const sites = [];
   for (const domain of domainList) {

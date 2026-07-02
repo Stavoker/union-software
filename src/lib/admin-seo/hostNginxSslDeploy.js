@@ -15,10 +15,14 @@ function envBool(name) {
   return v === "1" || v === "true" || v === "yes";
 }
 
-/** Увімкнено за замовчуванням; вимкнути: SUBDOMAIN_HOST_NGINX_PHP=0 */
-function nginxPhpEnabled() {
+/** Увімкнено за замовчуванням; вимкнути лише статику: SUBDOMAIN_HOST_NGINX_PHP=0 */
+export function nginxPhpEnabled() {
   const v = String(process.env.SUBDOMAIN_HOST_NGINX_PHP ?? "1").trim().toLowerCase();
   return v !== "0" && v !== "false" && v !== "no" && v !== "off";
+}
+
+function nginxPhpEnabledLocal() {
+  return nginxPhpEnabled();
 }
 
 /**
@@ -242,7 +246,34 @@ async function verifyNginxVhostOnHost({
   return { smokeStatus: statusLine };
 }
 
-async function verifyNginxSpaVhostOnHost({
+async function verifyNginxStaticVhostOnHost({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  domain,
+  useHttps,
+}) {
+  const scheme = useHttps ? "https" : "http";
+  const port = useHttps ? "443" : "80";
+  const curlCmd = `curl -sI -k --resolve ${shellSingleQuote(`${domain}:${port}:127.0.0.1`)} ${scheme}://${domain}/ | head -n 1`;
+  const { stdout: curlOut } = await sshExecCommand(
+    sshHost,
+    sshUser,
+    sshPassword,
+    curlCmd,
+    sshPort
+  );
+  const statusLine = String(curlOut || "").trim();
+  if (!/^HTTP\/\d/i.test(statusLine)) {
+    throw new Error(`static smoke test failed: ${statusLine || "empty response"}`);
+  }
+  if (/ 502 | 503 | 500 /.test(statusLine)) {
+    throw new Error(`static smoke test bad gateway: ${statusLine}`);
+  }
+  return { smokeStatus: statusLine };
+}
+
   sshHost,
   sshUser,
   sshPassword,
@@ -508,7 +539,7 @@ export async function syncNginxVhostForDomain({
   }
 
   const spaMode = resolvedVhostMode === VHOST_MODE_SPA;
-  const phpOn = !spaMode && (resolvedVhostMode === VHOST_MODE_PHP || nginxPhpEnabled());
+  const phpOn = !spaMode && (resolvedVhostMode === VHOST_MODE_PHP || nginxPhpEnabledLocal());
   let phpSock = "";
   if (phpOn) {
     const stack = await ensurePhpStackOnHost({
@@ -535,6 +566,24 @@ export async function syncNginxVhostForDomain({
         sshPort,
         onLog: log,
       }));
+  } else if (!spaMode) {
+    const { ensureNginxOnHost } = await import("./hostPhpStack.js");
+    const nginxStack = await ensureNginxOnHost({
+      deployHostIp: sshHost,
+      sshUser,
+      sshPassword,
+      sshPort,
+      onLog: log,
+    });
+    if (!nginxStack.ok && !nginxStack.skipped) {
+      return {
+        ok: false,
+        skipped: false,
+        warning: nginxStack.warning || "nginx setup failed on host",
+        remoteProjectDir,
+      };
+    }
+    log("[nginx] static vhost (no PHP-FPM in nginx config)");
   }
   const vhostOpts = {
     vhostMode: spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
@@ -614,17 +663,28 @@ export async function syncNginxVhostForDomain({
           domain: normalized,
           useHttps,
         })
-      : await verifyNginxVhostOnHost({
-          sshHost,
-          sshUser,
-          sshPassword,
-          sshPort,
-          confPath,
-          domain: normalized,
-          useHttps,
-        });
+      : phpOn
+        ? await verifyNginxVhostOnHost({
+            sshHost,
+            sshUser,
+            sshPassword,
+            sshPort,
+            confPath,
+            domain: normalized,
+            useHttps,
+          })
+        : await verifyNginxStaticVhostOnHost({
+            sshHost,
+            sshUser,
+            sshPassword,
+            sshPort,
+            domain: normalized,
+            useHttps,
+          });
     smokeStatus = smoke.smokeStatus || "";
-    log(`[nginx] smoke test ${normalized} (${spaMode ? "SPA" : "PHP"}): ${smokeStatus}`);
+    log(
+      `[nginx] smoke test ${normalized} (${spaMode ? "SPA" : phpOn ? "PHP" : "static"}): ${smokeStatus}`
+    );
   } catch (e) {
     return {
       ok: false,
