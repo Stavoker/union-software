@@ -234,7 +234,7 @@ async function waitForPublicZoneDelegation(
     await new Promise((r) => setTimeout(r, pollMs));
   }
   throw new Error(
-    `SSL: зона ${zone} ще не видна в публічному DNS після ${Math.round(timeoutMs / 1000)}s (${lastErr || "timeout"}). Дочекайтесь NS у реєстраторі (dig NS ${zone} +short).`
+    `SSL_DNS_ZONE_NOT_PUBLIC|zone=${zone}|timeoutSec=${Math.round(timeoutMs / 1000)}|detail=${lastErr || "timeout"}`
   );
 }
 

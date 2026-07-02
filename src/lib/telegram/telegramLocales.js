@@ -85,6 +85,64 @@ function deployNoteLine(locale, d) {
   return typeof val === "function" ? val(d) : val;
 }
 
+/** Локалізує технічні SSL-помилки для Telegram (uk / en / ru). */
+export function formatSslNotifyReason(loc, rawReason) {
+  const raw = String(rawReason || "").trim();
+  if (!raw) {
+    return L(loc, {
+      uk: "невідома помилка",
+      en: "unknown error",
+      ru: "неизвестная ошибка",
+    });
+  }
+
+  const codeMatch = raw.match(
+    /^SSL_DNS_ZONE_NOT_PUBLIC\|zone=([^|]+)\|timeoutSec=(\d+)\|detail=(.*)$/
+  );
+  if (codeMatch) {
+    const [, zone, timeoutSec, detail] = codeMatch;
+    return L(loc, {
+      uk: `зона ${zone} ще не видна в публічному DNS після ${timeoutSec} с (${detail}). Дочекайтесь NS у реєстраторі (dig NS ${zone} +short).`,
+      ru: `зона ${zone} ещё не видна в публичном DNS после ${timeoutSec} с (${detail}). Дождитесь NS у регистратора (dig NS ${zone} +short).`,
+      en: `zone ${zone} not visible in public DNS after ${timeoutSec}s (${detail}). Wait for NS at registrar (dig NS ${zone} +short).`,
+    });
+  }
+
+  const legacyUk = raw.match(
+    /SSL:\s*зона\s+(\S+)\s+ще не видна в публічному DNS після (\d+)s \(([^)]*)\)/
+  );
+  if (legacyUk) {
+    return formatSslNotifyReason(
+      loc,
+      `SSL_DNS_ZONE_NOT_PUBLIC|zone=${legacyUk[1]}|timeoutSec=${legacyUk[2]}|detail=${legacyUk[3]}`
+    );
+  }
+
+  const txtNs = raw.match(
+    /SSL:\s*TXT did not appear on required authoritative NS in time for (.+)/i
+  );
+  if (txtNs) {
+    const fqdn = txtNs[1].trim();
+    return L(loc, {
+      uk: `TXT для ${fqdn} не з'явився на NS у відведений час. Зачекайте поширення DNS.`,
+      ru: `TXT для ${fqdn} не появился на NS вовремя. Дождитесь распространения DNS.`,
+      en: `TXT for ${fqdn} did not appear on authoritative NS in time. Wait for DNS propagation.`,
+    });
+  }
+
+  const txtProp = raw.match(/SSL:\s*TXT record did not propagate in time for (.+)/i);
+  if (txtProp) {
+    const fqdn = txtProp[1].trim();
+    return L(loc, {
+      uk: `TXT для ${fqdn} не поширився вчасно. Зачекайте DNS.`,
+      ru: `TXT для ${fqdn} не распространился вовремя. Дождитесь DNS.`,
+      en: `TXT for ${fqdn} did not propagate in time. Wait for DNS.`,
+    });
+  }
+
+  return raw.replace(/^SSL:\s*/i, "").trim() || raw;
+}
+
 function formatGeneratorDone(loc, d) {
   const lines = [
     L(loc, {
@@ -180,9 +238,9 @@ const EVENT_BUILDERS = {
     }),
   domain_ssl_retry: (loc, d) =>
     L(loc, {
-      uk: `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
-      en: `🔄 SSL retry #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
-      ru: `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
+      uk: `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
+      en: `🔄 SSL retry #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
+      ru: `🔄 SSL повтор #${d.attempt}\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
     }),
   domain_ssl_ok: (loc, d) =>
     L(loc, {
@@ -192,9 +250,9 @@ const EVENT_BUILDERS = {
     }),
   domain_ssl_fail: (loc, d) =>
     L(loc, {
-      uk: `🟠 SSL не вдалося\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
-      en: `🟠 SSL failed\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
-      ru: `🟠 SSL не удался\n🔗 ${d.domain}\n⚠️ ${d.reason}`,
+      uk: `🟠 SSL не вдалося\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
+      en: `🟠 SSL failed\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
+      ru: `🟠 SSL не удался\n🔗 ${d.domain}\n⚠️ ${formatSslNotifyReason(loc, d.reason)}`,
     }),
   domain_host_ok: (loc, d) =>
     L(loc, {
