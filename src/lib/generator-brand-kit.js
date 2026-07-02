@@ -8,7 +8,7 @@ import {
   materializedDestNameForAsset,
 } from "@/lib/brand-image-pools";
 import { normalizePalette } from "@/lib/generator-brand-palette";
-import { resolveGatewayUrlForBuild } from "@/src/lib/generator-engine/brand-chrome";
+import { resolveGatewayUrlForBuild } from "@/lib/generator-engine/brand-chrome";
 
 export const GENERATOR_ASSETS_BUCKET = "generator-assets";
 
