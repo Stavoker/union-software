@@ -393,6 +393,14 @@ export async function deploySslCertificateToHost({
       password: sshPassword,
       readyTimeout: 20000,
     });
+    const sslExists = await sftp.exists(sslDir);
+    if (sslExists) {
+      try {
+        await sftp.rmdir(sslDir, true);
+      } catch {
+        /* best-effort: overwrite files below if rmdir fails */
+      }
+    }
     await sftp.mkdir(sslDir, true);
     await sftp.put(Buffer.from(cert, "utf8"), `${sslDir}/fullchain.pem`);
     await sftp.put(Buffer.from(key, "utf8"), `${sslDir}/privkey.pem`);
