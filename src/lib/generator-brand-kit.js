@@ -8,6 +8,7 @@ import {
   materializedDestNameForAsset,
 } from "@/lib/brand-image-pools";
 import { normalizePalette } from "@/lib/generator-brand-palette";
+import { resolveGatewayUrlForBuild } from "@/src/lib/generator-engine/brand-chrome";
 
 export const GENERATOR_ASSETS_BUCKET = "generator-assets";
 
@@ -34,6 +35,7 @@ export function brandRowToKit(row) {
     seoKeywords: String(row.seo_keywords || "").trim(),
     geo: String(row.geo || "").trim().toLowerCase(),
     layoutVariant: String(row.layout_variant || "auto").trim() || "auto",
+    botGateRedirectUrl: String(row.bot_gate_redirect_url || "").trim(),
     assets: [],
   };
 }
@@ -129,6 +131,22 @@ export function resolveSeoKeywordsForBuild(opts) {
   }
 
   return brandFallback;
+}
+
+/**
+ * URL редіректу для звичайних відвідувачів у режимі bot_gate (Bots only).
+ * @param {{ brandKit?: { botGateRedirectUrl?: string } | null, gatewayUrl?: string }} opts
+ */
+export function resolveBotGateRedirectUrlForBuild(opts = {}) {
+  const fromBrand = String(opts?.brandKit?.botGateRedirectUrl || "").trim();
+  if (fromBrand && /^https?:\/\//i.test(fromBrand)) {
+    return fromBrand;
+  }
+  const gw = String(opts?.gatewayUrl || "").trim();
+  if (gw && /^https?:\/\//i.test(gw)) {
+    return gw;
+  }
+  return resolveGatewayUrlForBuild({ projectSlug: "", buildNonce: "" });
 }
 
 /**

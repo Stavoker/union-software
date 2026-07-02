@@ -609,6 +609,8 @@
     "layoutAuto": "Auto (rotate sidebar / top-nav)",
     "layoutSidebar": "Left sidebar",
     "layoutTopNav": "Top navigation (no sidebar)",
+    "botGateRedirectUrl": "Redirect URL for «Bots only» mode",
+    "botGateRedirectUrlHint": "Where to send regular visitors (non-bots) when the site is generated in Bots only mode. Must start with https://",
     "notes": "Admin notes",
     "uploadLogo": "Logo",
     "uploadFavicon": "Favicon",

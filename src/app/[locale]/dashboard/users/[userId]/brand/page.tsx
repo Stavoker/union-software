@@ -62,6 +62,7 @@ export default async function UserBrandAdminPage({
         defaultThemeText: brand.defaultThemeText,
         promptOverlay: brand.promptOverlay,
         layoutVariant: normalizeLayoutVariant(brand.layoutVariant),
+        botGateRedirectUrl: brand.botGateRedirectUrl || "",
         palette: normalizePaletteCore(brand.palette),
         logoStoragePath: brand.logoStoragePath,
         faviconStoragePath: brand.faviconStoragePath,

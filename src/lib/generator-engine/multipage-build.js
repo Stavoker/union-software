@@ -18,6 +18,7 @@ import {
   resolvePaymentImageFiles,
 } from "@/lib/brand-image-pools";
 import { geoLabelForSeoPrompt } from "@/lib/generator-brand-geo";
+import { resolveBotGateRedirectUrlForBuild } from "@/lib/generator-brand-kit";
 import { parseSeoKeywords, attachSeoKeywordsToPages } from "@/lib/generator-brand-seo";
 import { buildSiteGenerationRulesBlock } from "@/lib/generator-engine/generation-site-rules";
 import {
@@ -1687,7 +1688,7 @@ async function writeRobotsSitemap(outputDir, baseUrl, paths) {
   await fs.writeFile(path.join(outputDir, "sitemap.xml"), lines.join("\n"), "utf8");
 }
 
-async function writeMultipageSiteConfig(outputDir, gatewayUrl) {
+async function writeMultipageSiteConfig(outputDir, gatewayUrl, humanRedirectUrl) {
   const tplPath = path.join(
     getAppRoot(),
     "src/lib/generator-engine/multipage-site-config.php"
@@ -1696,10 +1697,10 @@ async function writeMultipageSiteConfig(outputDir, gatewayUrl) {
   if (!tpl.includes("__AURORA_GATEWAY_URL__")) {
     throw new Error("multipage-site-config.php: missing __AURORA_GATEWAY_URL__ placeholder");
   }
-  const gw =
-    String(gatewayUrl || "").trim() ||
+  const redirect =
+    String(humanRedirectUrl || gatewayUrl || "").trim() ||
     resolveGatewayUrlForBuild({ projectSlug: "", buildNonce: "" });
-  const escaped = String(gw).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const escaped = String(redirect).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   tpl = tpl.replace(/__AURORA_GATEWAY_URL__/g, escaped);
   await fs.writeFile(path.join(outputDir, "config.php"), tpl, "utf8");
 }
@@ -8060,11 +8061,17 @@ export async function buildMultipageSite({
     projectSlug: safeName,
     buildNonce,
   });
+  const humanRedirectUrl =
+    generationMode === "bot_gate"
+      ? resolveBotGateRedirectUrlForBuild({ brandKit, gatewayUrl })
+      : undefined;
   emitLog(onLog, "Запись config.php (Yandex / gateway gate)…");
-  await writeMultipageSiteConfig(outputDir, gatewayUrl);
+  await writeMultipageSiteConfig(outputDir, gatewayUrl, humanRedirectUrl);
   emitLog(
     onLog,
-    `Регистрационный шлюз (config.php, CTA, runtime): ${gatewayUrl}`
+    generationMode === "bot_gate"
+      ? `Редирект людей (config.php): ${humanRedirectUrl || gatewayUrl}`
+      : `Регистрационный шлюз (config.php, CTA, runtime): ${gatewayUrl}`
   );
 
   /** Пусто: токен Yandex Webmaster подставляет auto-script при деплое на хост. */

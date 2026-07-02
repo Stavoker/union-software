@@ -9,6 +9,15 @@ import {
 } from "@/lib/generator-brand-kit";
 import { normalizePaletteCore } from "@/lib/generator-brand-palette";
 
+function normalizeBotGateRedirectUrl(raw) {
+  const url = String(raw || "").trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error("botGateRedirectUrl must start with http:// or https://");
+  }
+  return url;
+}
+
 /**
  * @param {Record<string, unknown>} body
  * @param {string} userId
@@ -29,6 +38,7 @@ export function buildGeneratorBrandRow(body, userId, updatedBy) {
     )
       ? String(body.layoutVariant).trim()
       : "auto",
+    bot_gate_redirect_url: normalizeBotGateRedirectUrl(body?.botGateRedirectUrl),
     logo_storage_path: body?.logoStoragePath ? String(body.logoStoragePath) : null,
     favicon_storage_path: body?.faviconStoragePath ? String(body.faviconStoragePath) : null,
     seo_keywords: String(body?.seoKeywords || body?.seo_keywords || "").trim(),

@@ -40,6 +40,7 @@ type BrandState = {
   defaultThemeText: string;
   promptOverlay: string;
   layoutVariant: LayoutVariant;
+  botGateRedirectUrl: string;
   palette: Palette;
   logoStoragePath: string;
   faviconStoragePath: string;
@@ -94,6 +95,7 @@ export function BrandAdminEditor({
       defaultThemeText: "",
       promptOverlay: "",
       layoutVariant: "auto",
+      botGateRedirectUrl: "",
       palette: { ...EMPTY_PALETTE },
       logoStoragePath: "",
       faviconStoragePath: "",
@@ -120,6 +122,7 @@ export function BrandAdminEditor({
           defaultThemeText: brand.defaultThemeText,
           promptOverlay: brand.promptOverlay,
           layoutVariant: brand.layoutVariant,
+          botGateRedirectUrl: brand.botGateRedirectUrl,
           palette: brand.palette,
           logoStoragePath: brand.logoStoragePath || null,
           faviconStoragePath: brand.faviconStoragePath || null,
@@ -142,6 +145,7 @@ export function BrandAdminEditor({
           defaultThemeText: data.brand.defaultThemeText || "",
           promptOverlay: data.brand.promptOverlay || "",
           layoutVariant: normalizeLayoutVariant(data.brand.layoutVariant),
+          botGateRedirectUrl: data.brand.botGateRedirectUrl || "",
           palette: normalizePaletteCore(data.brand.palette),
           logoStoragePath: data.brand.logoStoragePath || "",
           faviconStoragePath: data.brand.faviconStoragePath || "",
@@ -298,6 +302,20 @@ export function BrandAdminEditor({
               <option value="sidebar-left">{t("layoutSidebar")}</option>
               <option value="top-nav">{t("layoutTopNav")}</option>
             </select>
+          </label>
+          <label className="block space-y-1 md:col-span-2">
+            <span className="text-xs text-union-muted">{t("botGateRedirectUrl")}</span>
+            <input
+              className={seoInput}
+              type="url"
+              inputMode="url"
+              placeholder="https://example.com/signup"
+              value={brand.botGateRedirectUrl}
+              onChange={(e) =>
+                setBrand((b) => ({ ...b, botGateRedirectUrl: e.target.value }))
+              }
+            />
+            <p className="text-xs text-union-muted">{t("botGateRedirectUrlHint")}</p>
           </label>
           <label className="block space-y-1 md:col-span-2">
             <span className="text-xs text-union-muted">{t("notes")}</span>

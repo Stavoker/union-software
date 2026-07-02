@@ -68,7 +68,7 @@ export async function writeRobotsSitemap(outputDir, baseUrl, paths) {
   await fs.writeFile(path.join(outputDir, "sitemap.xml"), lines.join("\n"), "utf8");
 }
 
-export async function writeMultipageSiteConfig(outputDir, gatewayUrl) {
+export async function writeMultipageSiteConfig(outputDir, gatewayUrl, humanRedirectUrl) {
   const tplPath = path.join(
     getAppRoot(),
     "src/lib/generator-engine/multipage-site-config.php"
@@ -77,10 +77,10 @@ export async function writeMultipageSiteConfig(outputDir, gatewayUrl) {
   if (!tpl.includes("__AURORA_GATEWAY_URL__")) {
     throw new Error("multipage-site-config.php: missing __AURORA_GATEWAY_URL__ placeholder");
   }
-  const gw =
-    String(gatewayUrl || "").trim() ||
+  const redirect =
+    String(humanRedirectUrl || gatewayUrl || "").trim() ||
     resolveGatewayUrlForBuild({ projectSlug: "", buildNonce: "" });
-  const escaped = String(gw).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const escaped = String(redirect).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   tpl = tpl.replace(/__AURORA_GATEWAY_URL__/g, escaped);
   await fs.writeFile(path.join(outputDir, "config.php"), tpl, "utf8");
 }
@@ -255,8 +255,8 @@ ${body}`;
  * @param {string} opts.outputDir project root
  * @param {string} opts.distDir vite dist folder
  * @param {string} opts.baseUrl
- * @param {string} opts.gatewayUrl
- * @param {string[]} opts.sitemapPaths
+ * @param {string} [opts.gatewayUrl]
+ * @param {string} [opts.humanRedirectUrl] bot_gate redirect for humans (config.php)
  * @param {string} [opts.generationMode]
  */
 export async function finalizeReactDeployableSite(opts) {
@@ -306,7 +306,7 @@ export async function finalizeReactDeployableSite(opts) {
     await fs.writeFile(path.join(outputDir, "index.php"), wrapped, "utf8");
   }
 
-  await writeMultipageSiteConfig(outputDir, opts.gatewayUrl);
+  await writeMultipageSiteConfig(outputDir, opts.gatewayUrl, opts.humanRedirectUrl);
   await writeRobotsSitemap(outputDir, opts.baseUrl, opts.sitemapPaths || [""]);
   await writeReactSpaHtaccess(outputDir, { generationMode });
 }

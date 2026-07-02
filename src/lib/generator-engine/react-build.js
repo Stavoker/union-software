@@ -33,6 +33,8 @@ import {
 import { writeBuildProgress } from "@/lib/generator-engine/job-progress";
 import { normalizePalette } from "@/lib/generator-brand-palette";
 import { geoLabelForSeoPrompt } from "@/lib/generator-brand-geo";
+import { resolveBotGateRedirectUrlForBuild } from "@/lib/generator-brand-kit";
+import { isBotGateGenerationMode } from "@/src/lib/generation-modes";
 import {
   parseSeoKeywords,
   attachSeoKeywordsToPages,
@@ -1531,11 +1533,15 @@ export async function buildReactSite({
   const distDir = path.join(reactSrcDir, "dist");
   const sitemapPaths = routePathsForSitemap(generatedPages.map((p) => p.route));
   emitLog(onLog, "Финализация deployable dist + site-ops…");
+  const humanRedirectUrl = isBotGateGenerationMode(generationMode)
+    ? resolveBotGateRedirectUrlForBuild({ brandKit, gatewayUrl })
+    : undefined;
   await finalizeReactDeployableSite({
     outputDir,
     distDir,
     baseUrl,
     gatewayUrl,
+    humanRedirectUrl,
     sitemapPaths,
     generationMode,
     spaPages: generatedPages.map((p) => ({

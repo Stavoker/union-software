@@ -609,6 +609,8 @@
     "layoutAuto": "Авто (чергування sidebar / top-nav)",
     "layoutSidebar": "Лівий сайдбар",
     "layoutTopNav": "Верхнє меню (без сайдбару)",
+    "botGateRedirectUrl": "Редірект для режиму «Лише боти»",
+    "botGateRedirectUrlHint": "Куди перенаправляти звичайних відвідувачів (не ботів), якщо сайт згенеровано в режимі Bots only. Має починатися з https://",
     "notes": "Нотатки (лише для адміна)",
     "uploadLogo": "Логотип",
     "uploadFavicon": "Favicon",
