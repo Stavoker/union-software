@@ -225,9 +225,12 @@ export async function automateDomainProvisioning(input) {
   const sslSkipVerify = sslSkipVerifyRaw === undefined ? false : !!sslSkipVerifyRaw;
   const sslDnsPropagationTimeoutMs = Number(input?.sslDnsPropagationTimeoutMs || 120000);
   const sslDnsPropagationPollMs = Number(input?.sslDnsPropagationPollMs || 5000);
-  const sslMinAuthoritativeNsReady = Number(
-    input?.sslMinAuthoritativeNsReady ?? process.env.SSL_MIN_AUTHORITATIVE_NS_READY ?? 3
-  );
+  const sslMinAuthoritativeNsReadyRaw =
+    input?.sslMinAuthoritativeNsReady ?? process.env.SSL_MIN_AUTHORITATIVE_NS_READY;
+  const sslMinAuthoritativeNsReady =
+    sslMinAuthoritativeNsReadyRaw === undefined || sslMinAuthoritativeNsReadyRaw === ""
+      ? null
+      : Number(sslMinAuthoritativeNsReadyRaw);
   const sslDnsRemoveDelayMs = Number(
     input?.sslDnsRemoveDelayMs ?? process.env.SSL_DNS_CHALLENGE_REMOVE_DELAY_MS ?? 120000
   );
@@ -238,9 +241,14 @@ export async function automateDomainProvisioning(input) {
     input?.sslDelegationWaitPollMs ?? process.env.SSL_DELEGATION_WAIT_POLL_MS ?? 10000
   );
   const rawPostDelay = Number(input?.sslDnsPostPropagationDelayMs ?? process.env.SSL_ZOMRO_DNS_POST_DELAY_MS);
-  const sslZomroDnsPostDelayMs = Number.isFinite(rawPostDelay) && rawPostDelay >= 0 ? Math.floor(rawPostDelay) : 90000;
+  const sslZomroDnsPostDelayMs = Number.isFinite(rawPostDelay) && rawPostDelay >= 0 ? Math.floor(rawPostDelay) : 120000;
+  const rawTxtCleanup = Number(
+    input?.sslZomroDnsTxtCleanupSettleMs ?? process.env.SSL_ZOMRO_DNS_TXT_CLEANUP_SETTLE_MS
+  );
+  const sslZomroDnsTxtCleanupSettleMs =
+    Number.isFinite(rawTxtCleanup) && rawTxtCleanup >= 0 ? Math.floor(rawTxtCleanup) : 45000;
   const sslAsync = input?.sslAsync !== false;
-  const sslAsyncRetryMs = Number(input?.sslAsyncRetryMs || 10000);
+  const sslAsyncRetryMs = Number(input?.sslAsyncRetryMs || process.env.SSL_ASYNC_RETRY_MS || 60000);
   const onSslRetry = typeof input?.onSslRetry === "function" ? input.onSslRetry : null;
   const zomroDnsmgrTxtCreateFunc = String(input?.zomroDnsmgrTxtCreateFunc || "domain.record.edit").trim();
   const zomroDnsmgrTxtDeleteFunc = String(input?.zomroDnsmgrTxtDeleteFunc || "domain.record.delete").trim();
@@ -279,20 +287,24 @@ export async function automateDomainProvisioning(input) {
       zomroDnsmgrUrl: input?.zomroDnsmgrUrl,
     });
     zomroAuth = zomroResolved.token;
-    steps.push({
+    const authStep = {
       id: "zomro-auth-resolve",
       ok: true,
       source: zomroResolved.source,
       details: zomroResolved.details ?? null,
-    });
+    };
+    steps.push(authStep);
+    await emitDomainStep(input, fullDomain, authStep);
   } else {
-    steps.push({
+    const authSkippedStep = {
       id: "zomro-auth-resolve",
       ok: true,
       skipped: true,
       source: "not_required_dnsmgr_only",
       details: null,
-    });
+    };
+    steps.push(authSkippedStep);
+    await emitDomainStep(input, fullDomain, authSkippedStep);
   }
 
   if (!skipPurchase) {
@@ -385,7 +397,9 @@ export async function automateDomainProvisioning(input) {
       ip: hostIp,
       email: zomroDnsmgrDomainEmail,
     });
-    steps.push({ id: "zomro-dnsmgr-panel-domain", ok: true, details: dnsmgrResult });
+    const dnsmgrStep = { id: "zomro-dnsmgr-panel-domain", ok: true, details: dnsmgrResult };
+    steps.push(dnsmgrStep);
+    await emitDomainStep(input, fullDomain, dnsmgrStep);
   }
 
   const zoneFunc = String(input?.zomroZoneFunc || "").trim();
@@ -406,7 +420,9 @@ export async function automateDomainProvisioning(input) {
       domain: fullDomain,
       ...zoneExtra,
     });
-    steps.push({ id: "zomro-zone", ok: true, details: zonePayload });
+    const zoneStep = { id: "zomro-zone", ok: true, details: zonePayload };
+    steps.push(zoneStep);
+    await emitDomainStep(input, fullDomain, zoneStep);
 
     const recordPayload = await zomroPost({
       func: recordFunc,
@@ -419,20 +435,25 @@ export async function automateDomainProvisioning(input) {
       value: hostIp,
       ...recordExtra,
     });
-    steps.push({ id: "zomro-record", ok: true, details: recordPayload });
+    const recordStep = { id: "zomro-record", ok: true, details: recordPayload };
+    steps.push(recordStep);
+    await emitDomainStep(input, fullDomain, recordStep);
   } else {
-    steps.push({
+    const zoneSkippedStep = {
       id: "zomro-zone",
       ok: true,
       skipped: true,
       reason: "zomroApiDnsEnabled=false (dnsmgr-only mode)",
-    });
-    steps.push({
+    };
+    const recordSkippedStep = {
       id: "zomro-record",
       ok: true,
       skipped: true,
       reason: "zomroApiDnsEnabled=false (dnsmgr-only mode)",
-    });
+    };
+    steps.push(zoneSkippedStep, recordSkippedStep);
+    await emitDomainStep(input, fullDomain, zoneSkippedStep);
+    await emitDomainStep(input, fullDomain, recordSkippedStep);
   }
 
   if (zomroVpsEnabled) {
@@ -521,13 +542,15 @@ export async function automateDomainProvisioning(input) {
     sshPassword: deploySshPassword,
     sshPort: deploySshPort,
   });
-  steps.push({
+  const hostDirStep = {
     id: "host-project-dir-create",
     ok: !!hostCreateWithTarget.hostCreated,
     warning: hostCreateWithTarget.hostWarning || null,
     remoteProjectDir: hostCreateWithTarget.remoteProjectDir || null,
     deployHostIp: deployHostIp || null,
-  });
+  };
+  steps.push(hostDirStep);
+  await emitDomainStep(input, fullDomain, hostDirStep);
 
   let sslAsyncTask = null;
   if (sslEmail) {
@@ -536,7 +559,7 @@ export async function automateDomainProvisioning(input) {
     const needDelegationWait =
       delegationNsHosts.length === 0 ||
       (requestedNsLookLikeZomro && !delegationLooksLikeZomro(delegationNsHosts));
-    if (needDelegationWait) {
+    if (needDelegationWait && !sslAsync) {
       const configuredTimeout =
         Number.isFinite(sslDelegationWaitTimeoutMs) && sslDelegationWaitTimeoutMs > 0 ? sslDelegationWaitTimeoutMs : 600000;
       const syncCapRaw = Number(process.env.SSL_DELEGATION_SYNC_WAIT_CAP_MS);
@@ -546,7 +569,7 @@ export async function automateDomainProvisioning(input) {
         pollMs: Number.isFinite(sslDelegationWaitPollMs) && sslDelegationWaitPollMs > 0 ? sslDelegationWaitPollMs : 10000,
       });
       delegationNsHosts = waited.nsHosts;
-      steps.push({
+      const delegationStep = {
         id: "ssl-delegation-wait",
         ok: delegationNsHosts.length > 0,
         waitedMs: waited.waitedMs,
@@ -554,7 +577,20 @@ export async function automateDomainProvisioning(input) {
         warning: delegationNsHosts.length
           ? null
           : "Delegation NS still not visible in public DNS after wait; SSL may fail and retry.",
-      });
+      };
+      steps.push(delegationStep);
+      await emitDomainStep(input, fullDomain, delegationStep);
+    } else if (needDelegationWait && sslAsync) {
+      const deferredDelegationStep = {
+        id: "ssl-delegation-wait",
+        ok: true,
+        skipped: true,
+        pending: true,
+        reason: "deferred to SSL background job (avoid HTTP timeout on fresh NS propagation)",
+        delegationNsHosts: delegationNsHosts.length ? delegationNsHosts : null,
+      };
+      steps.push(deferredDelegationStep);
+      await emitDomainStep(input, fullDomain, deferredDelegationStep);
     }
     const sslUseZomroDnsmgr =
       (delegationLooksLikeZomro(delegationNsHosts) || requestedNsLookLikeZomro) &&
@@ -570,8 +606,12 @@ export async function automateDomainProvisioning(input) {
 
     const sslProviderLabel = sslUseZomroDnsmgr ? "zomro-dnsmgr" : "spaceship";
     const sslTimeoutMs = sslUseZomroDnsmgr
-      ? Math.max(Number(sslDnsPropagationTimeoutMs) || 0, 180000)
+      ? Math.max(Number(sslDnsPropagationTimeoutMs) || 0, 300000)
       : sslDnsPropagationTimeoutMs;
+    const zomroMinNsReady =
+      Number.isFinite(sslMinAuthoritativeNsReady) && sslMinAuthoritativeNsReady > 0
+        ? sslMinAuthoritativeNsReady
+        : 3;
 
     const zomroNsFallback = requestedNsLookLikeZomro ? nameservers : [];
     const runSslOnce = sslUseZomroDnsmgr
@@ -583,8 +623,9 @@ export async function automateDomainProvisioning(input) {
             skipChallengeVerification: sslSkipVerifyRaw === false ? false : true,
             dnsPropagationTimeoutMs: sslTimeoutMs,
             dnsPropagationPollMs: sslDnsPropagationPollMs,
-            minAuthoritativeNsReady: Number.isFinite(sslMinAuthoritativeNsReady) ? sslMinAuthoritativeNsReady : 3,
+            minAuthoritativeNsReady: zomroMinNsReady,
             dnsPostPropagationDelayMs: sslZomroDnsPostDelayMs,
+            dnsTxtCleanupSettleMs: sslZomroDnsTxtCleanupSettleMs,
             dnsRemoveDelayMs: sslDnsRemoveDelayMs,
             dnsmgrUrl: zomroDnsmgrUrl,
             zomroUsername: zomroPanelUser,

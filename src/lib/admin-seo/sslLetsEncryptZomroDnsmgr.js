@@ -37,7 +37,16 @@ function txtRecordNameRelativeToZone(challengeFqdn, zoneApex) {
 }
 
 function flattenTxtRecords(records) {
-  return records.map((chunk) => chunk.join("")).map((s) => String(s || "").trim());
+  return records
+    .map((chunk) => chunk.join(""))
+    .map((s) => normalizeDnsTxtValue(s))
+    .filter(Boolean);
+}
+
+function normalizeDnsTxtValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^"+|"+$/g, "");
 }
 
 /** TXT з конкретного NS-хоста (як перевіряє multi-vantage LE). */
@@ -71,22 +80,19 @@ function resolveTxtViaAuthoritativeNs(nsHost, fqdn) {
  */
 async function authoritativeNsTxtDigestStatus(fqdn, expected, zoneApex, { authoritativeNsFallback = [] } = {}) {
   const zone = String(zoneApex || "").trim().toLowerCase();
-  const exp = String(expected || "").trim();
+  const exp = normalizeDnsTxtValue(expected);
+  const fallback = (Array.isArray(authoritativeNsFallback) ? authoritativeNsFallback : [])
+    .map((h) => String(h || "").trim().toLowerCase())
+    .filter(Boolean);
   let nsList = [];
   let resolveNsError = null;
-  try {
-    nsList = await dns.resolveNs(zone);
-  } catch (e) {
-    resolveNsError = e?.message || String(e);
-    const fallback = (Array.isArray(authoritativeNsFallback) ? authoritativeNsFallback : [])
-      .map((h) => String(h || "").trim().toLowerCase())
-      .filter(Boolean);
-    if (fallback.length) {
-      nsList = fallback;
-      console.info(
-        `[ssl-zomro-dnsmgr][${zone}] resolveNs failed (${resolveNsError}); using configured NS fallback (${fallback.length} hosts)`
-      );
-    } else {
+  if (fallback.length) {
+    nsList = fallback;
+  } else {
+    try {
+      nsList = await dns.resolveNs(zone);
+    } catch (e) {
+      resolveNsError = e?.message || String(e);
       return {
         allOk: false,
         nsList: [],
@@ -127,6 +133,72 @@ function resolveRequiredNsCount(totalCount, minAuthoritativeNsReady) {
     return total > 0 ? total : 1;
   }
   return Math.max(1, Math.min(total, Math.floor(minRaw)));
+}
+
+async function authoritativeNsTxtPresence(fqdn, zoneApex, { authoritativeNsFallback = [] } = {}) {
+  const zone = String(zoneApex || "").trim().toLowerCase();
+  const fallback = (Array.isArray(authoritativeNsFallback) ? authoritativeNsFallback : [])
+    .map((h) => String(h || "").trim().toLowerCase())
+    .filter(Boolean);
+  let nsList = fallback.length ? fallback : [];
+  if (!nsList.length) {
+    try {
+      nsList = await dns.resolveNs(zone);
+    } catch {
+      return { nsList: [], present: [] };
+    }
+  }
+  const present = [];
+  for (const nsHost of nsList) {
+    const h = String(nsHost || "").trim().toLowerCase();
+    try {
+      const records = await resolveTxtViaAuthoritativeNs(h, fqdn);
+      const flat = flattenTxtRecords(records);
+      if (flat.length) {
+        present.push({ ns: h, got: flat.slice(0, 4) });
+      }
+    } catch {
+      /* NXDOMAIN / empty is fine */
+    }
+  }
+  return { nsList, present };
+}
+
+async function waitForTxtClearedOnAuthoritativeNs(
+  fqdn,
+  zoneApex,
+  {
+    timeoutMs = 120000,
+    intervalMs = 5000,
+    logLabel = "",
+    authoritativeNsFallback = [],
+  } = {}
+) {
+  const tag = String(logLabel || "").trim();
+  const startedAt = Date.now();
+  let poll = 0;
+  while (Date.now() - startedAt < timeoutMs) {
+    poll += 1;
+    const { nsList, present } = await authoritativeNsTxtPresence(fqdn, zoneApex, {
+      authoritativeNsFallback,
+    });
+    if (!present.length) {
+      if (tag) {
+        console.info(`${tag} prior TXT cleared on all ${nsList.length} NS after +${Math.round((Date.now() - startedAt) / 1000)}s`);
+      }
+      return true;
+    }
+    if (tag && (poll === 1 || poll % 6 === 0)) {
+      console.info(
+        `${tag} waiting prior TXT cleanup on ${present.length}/${nsList.length} NS (+${Math.round((Date.now() - startedAt) / 1000)}s)`
+      );
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  if (tag) {
+    console.warn(`${tag} prior TXT cleanup timeout after ${Math.round(timeoutMs / 1000)}s; continuing with new challenge`);
+  }
+  return false;
 }
 
 /** Let's Encrypt resolves via public DNS; без NS у батьківській зоні буде NXDOMAIN на _acme-challenge. */
@@ -221,6 +293,7 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
   dnsPropagationTimeoutMs = 180000,
   dnsPropagationPollMs = 5000,
   dnsPostPropagationDelayMs = 90000,
+  dnsTxtCleanupSettleMs = 30000,
   dnsRemoveDelayMs = 120000,
   minAuthoritativeNsReady = 3,
   dnsmgrUrl,
@@ -236,6 +309,8 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
   if (!zoneApex || !email || !dnsmgrUrl || !zomroUsername || !zomroPassword) {
     throw new Error("SSL(Zomro dnsmgr): required zoneApex/email/dnsmgrUrl/zomroUsername/zomroPassword");
   }
+
+  const nsQuorum = Number(minAuthoritativeNsReady) > 0 ? Number(minAuthoritativeNsReady) : 3;
 
   const logTag = `[ssl-zomro-dnsmgr][${String(zoneApex).trim().toLowerCase()}]`;
   console.info(`${logTag} starting ACME DNS-01 (staging=${!!useStaging})`);
@@ -287,6 +362,15 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
       if (cleared.error) {
         console.warn(`${logTag} prior TXT cleanup warning: ${cleared.error}`);
       }
+      const cleanupSettleMs = Number(dnsTxtCleanupSettleMs) || 0;
+      if (cleanupSettleMs > 0) {
+        await waitForTxtClearedOnAuthoritativeNs(fqdn, zoneApex, {
+          timeoutMs: cleanupSettleMs,
+          intervalMs: Math.max(3000, Number(dnsPropagationPollMs) || 5000),
+          logLabel: logTag,
+          authoritativeNsFallback,
+        });
+      }
       await upsertDnsmgrTxtRecord({
         dnsmgrUrl,
         zomroUsername,
@@ -304,7 +388,7 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
         timeoutMs: Number(dnsPropagationTimeoutMs) || 180000,
         intervalMs: Number(dnsPropagationPollMs) || 5000,
         logLabel: logTag,
-        minAuthoritativeNsReady: Number(minAuthoritativeNsReady) || 0,
+        minAuthoritativeNsReady: nsQuorum,
         authoritativeNsFallback,
       });
       const settleDelay = Number(dnsPostPropagationDelayMs) || 0;
@@ -313,19 +397,14 @@ export async function issueLetsEncryptCertificateDns01ZomroDnsmgr({
         await new Promise((r) => setTimeout(r, settleDelay));
         console.info(`${logTag} post-TXT settle delay done`);
       }
-      const recheck = await authoritativeNsTxtDigestStatus(fqdn, digest, zoneApex, {
+      console.info(`${logTag} pre-LE authoritative recheck (quorum ${nsQuorum} NS)…`);
+      await waitForTxtPropagation(fqdn, digest, zoneApex, {
+        timeoutMs: Math.max(Number(dnsPropagationTimeoutMs) || 180000, 120000),
+        intervalMs: Number(dnsPropagationPollMs) || 5000,
+        logLabel: `${logTag} pre-LE`,
+        minAuthoritativeNsReady: nsQuorum,
         authoritativeNsFallback,
       });
-      const requiredRecheck = resolveRequiredNsCount(recheck.totalCount, Number(minAuthoritativeNsReady) || 0);
-      const recheckOk = recheck.okCount >= requiredRecheck;
-      console.info(
-        `${logTag} pre-LE authoritative recheck: ${recheckOk ? `${recheck.okCount}/${recheck.totalCount} ready (required ${requiredRecheck})` : `MISSING quorum: ${JSON.stringify(recheck.failures).slice(0, 400)}`}`
-      );
-      if (!recheckOk) {
-        throw new Error(
-          `SSL: TXT quorum not reached before LE (retry): ${JSON.stringify(recheck.failures).slice(0, 400)}`
-        );
-      }
     },
     challengeRemoveFn: async (authz, challenge, keyAuthorization) => {
       const fqdn = acmeChallengeFqdn(authz.identifier.value);

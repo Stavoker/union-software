@@ -14,6 +14,13 @@ import { requireSeoSession } from "@/lib/admin-seo/seoApiAuth";
 import { sendUserDomainTelegramEvents } from "@/lib/telegram/telegramDomainNotify";
 import { getHostById } from "@/lib/admin-seo/hostsRepository";
 import { upsertSeoDomainForUser } from "@/lib/admin-seo/seoDomainsRepository";
+import {
+  appendDomainAutomationLog,
+  appendDomainAutomationStep,
+  completeDomainAutomationRun,
+  createDomainAutomationRun,
+  patchDomainAutomationRunResult,
+} from "@/lib/admin-seo/domainAutomationRuns";
 
 const STEP_TELEGRAM_EVENTS = {
   "spaceship-purchase": "domain_purchased",
@@ -37,10 +44,16 @@ function buildDomainStepTelegramHandler(userId) {
   };
 }
 
-function buildSslRetryTelegramHandler(userId) {
+function buildSslRetryTelegramHandler(userId, runId = null) {
   return async ({ attempt, errorMessage, domain }) => {
     const uid = String(userId || "").trim();
     if (!uid) return;
+    if (runId) {
+      appendDomainAutomationLog(
+        runId,
+        `[${domain}] SSL retry #${attempt || 1}: ${String(errorMessage || "").slice(0, 220)}`
+      );
+    }
     const { notifyUserTelegram } = await import("@/lib/telegram/telegramNotify.js");
     await notifyUserTelegram(uid, "domain_ssl_retry", {
       domain,
@@ -48,6 +61,46 @@ function buildSslRetryTelegramHandler(userId) {
       reason: String(errorMessage || "").slice(0, 220),
     }).catch(() => {});
   };
+}
+
+function buildCombinedOnStepHandler(userId, runId, streamPush = null) {
+  const telegramHandler = buildDomainStepTelegramHandler(userId);
+  return async (payload) => {
+    if (runId) {
+      appendDomainAutomationStep(runId, payload);
+    }
+    if (typeof streamPush === "function") {
+      streamPush({ type: "step", ...payload });
+    }
+    await telegramHandler(payload);
+  };
+}
+
+function wantsNdjsonStream(request, body) {
+  if (body?.stream === false) return false;
+  const accept = String(request.headers.get("accept") || "").toLowerCase();
+  return accept.includes("application/x-ndjson") || body?.stream === true;
+}
+
+function createNdjsonStreamWriter() {
+  const encoder = new TextEncoder();
+  let controller = null;
+  const stream = new ReadableStream({
+    start(c) {
+      controller = c;
+    },
+  });
+  const push = (obj) => {
+    if (!controller) return;
+    controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+  };
+  const close = () => {
+    if (controller) {
+      controller.close();
+      controller = null;
+    }
+  };
+  return { stream, push, close };
 }
 
 async function registerDomainInSeoDashboard(userId, domain) {
@@ -166,13 +219,21 @@ function scheduleSslAsyncHostDeploy({
   userId,
   userEnv,
   requestSummary,
+  runId = null,
 }) {
   const sslDomain = result?.domain || requestSummary?.domainLabel || "domain";
   console.info(`[domain-automation] SSL background task scheduled for ${sslDomain}`);
+  if (runId) {
+    appendDomainAutomationLog(runId, `[${sslDomain}] SSL background job scheduled`);
+    patchDomainAutomationRunResult(runId, result);
+  }
   sslTask
     .then(async (sslResult) =>
       withUserIntegrationEnv(userEnv, async () => {
         console.info(`[domain-automation] SSL background task completed for ${sslDomain}`);
+        if (runId) {
+          appendDomainAutomationLog(runId, `[${sslDomain}] SSL certificate received`);
+        }
         const steps = Array.isArray(result.steps) ? [...result.steps] : [];
         const idx = steps.findIndex((s) => s?.id === "spaceship-ssl-letsencrypt-dns01");
         const prevSsl = idx >= 0 ? steps[idx] : null;
@@ -233,6 +294,14 @@ function scheduleSslAsyncHostDeploy({
         if (result?.domain) {
           await registerDomainInSeoDashboard(userId, result.domain);
         }
+        if (runId) {
+          for (const step of steps) {
+            if (step?.id) {
+              appendDomainAutomationStep(runId, { domain: result.domain, step });
+            }
+          }
+          completeDomainAutomationRun(runId, { ok: !!certPem, result: completedResult });
+        }
         void sendUserDomainTelegramEvents({
           userId,
           ok: true,
@@ -241,7 +310,13 @@ function scheduleSslAsyncHostDeploy({
         }).catch((e) => console.error("[domain-automation][telegram] ssl-complete:", e));
       })
     )
-    .catch((e) => console.error(`[domain-automation][ssl-async] worker failed for ${sslDomain}:`, e));
+    .catch((e) => {
+      console.error(`[domain-automation][ssl-async] worker failed for ${sslDomain}:`, e);
+      if (runId) {
+        appendDomainAutomationLog(runId, `[${sslDomain}] SSL background job failed: ${e?.message || e}`);
+        completeDomainAutomationRun(runId, { ok: false, result, error: e });
+      }
+    });
 }
 
 export async function POST(request) {
@@ -385,64 +460,110 @@ export async function POST(request) {
     });
   }
 
-  try {
-    const deployTarget = await resolveDeployTarget(body, creds, session.userId);
-    body.hostIp = body.hostIp || deployTarget.hostIp;
-    const result = await automateDomainProvisioning(
-      buildProvisioningOptions(body, deployTarget, creds, userEnv, {
-        sslAsync: body?.sslAsync ?? true,
-        onStep: buildDomainStepTelegramHandler(session.userId),
-        onSslRetry: buildSslRetryTelegramHandler(session.userId),
-      })
-    );
-    const sslTask = result?.__sslAsyncTask || null;
-    if (sslTask) {
-      delete result.__sslAsyncTask;
-    }
+  const useStream = wantsNdjsonStream(request, body);
+  const run = createDomainAutomationRun({
+    userId: session.userId,
+    domains: domainEntries,
+  });
+  appendDomainAutomationLog(run.id, "Domain automation started", requestSummary);
 
-    if (result?.domain) {
-      await registerDomainInSeoDashboard(session.userId, result.domain);
-    }
+  async function executeSingleDomainAutomation(streamPush = null) {
+    try {
+      const deployTarget = await resolveDeployTarget(body, creds, session.userId);
+      body.hostIp = body.hostIp || deployTarget.hostIp;
+      const result = await automateDomainProvisioning(
+        buildProvisioningOptions(body, deployTarget, creds, userEnv, {
+          sslAsync: body?.sslAsync ?? true,
+          onStep: buildCombinedOnStepHandler(session.userId, run.id, streamPush),
+          onSslRetry: buildSslRetryTelegramHandler(session.userId, run.id),
+        })
+      );
+      const sslTask = result?.__sslAsyncTask || null;
+      if (sslTask) {
+        delete result.__sslAsyncTask;
+      }
 
-    void sendUserDomainTelegramEvents({
-      userId: session.userId,
-      ok: true,
-      result,
-      requestSummary,
-    }).catch((e) => console.error("[domain-automation][telegram]", e));
+      if (result?.domain) {
+        await registerDomainInSeoDashboard(session.userId, result.domain);
+      }
 
-    if (sslTask) {
-      scheduleSslAsyncHostDeploy({
-        sslTask,
-        result,
-        deployTarget,
-        creds,
+      void sendUserDomainTelegramEvents({
         userId: session.userId,
-        userEnv,
+        ok: true,
+        result,
         requestSummary,
-      });
-    }
+      }).catch((e) => console.error("[domain-automation][telegram]", e));
 
-    return NextResponse.json(result);
-  } catch (error) {
-    const partialResult = error?.partialResult || null;
-    void sendUserDomainTelegramEvents({
-      userId: session.userId,
-      ok: false,
-      result: partialResult,
-      error,
-      requestSummary,
-    }).catch((e) => console.error("[domain-automation][telegram] failure:", e));
+      if (sslTask) {
+        scheduleSslAsyncHostDeploy({
+          sslTask,
+          result,
+          deployTarget,
+          creds,
+          userId: session.userId,
+          userEnv,
+          requestSummary,
+          runId: run.id,
+        });
+        patchDomainAutomationRunResult(run.id, result);
+      } else {
+        completeDomainAutomationRun(run.id, { ok: true, result });
+      }
 
-    return NextResponse.json(
-      {
+      return { ok: true, runId: run.id, ...result };
+    } catch (error) {
+      const partialResult = error?.partialResult || null;
+      completeDomainAutomationRun(run.id, { ok: false, result: partialResult, error });
+      void sendUserDomainTelegramEvents({
+        userId: session.userId,
         ok: false,
+        result: partialResult,
+        error,
+        requestSummary,
+      }).catch((e) => console.error("[domain-automation][telegram] failure:", e));
+      const errPayload = {
+        ok: false,
+        runId: run.id,
         error: "Domain automation failed",
         details: error?.message || "Unknown error",
         partialResult,
+      };
+      const wrapped = new Error(errPayload.details);
+      wrapped.payload = errPayload;
+      throw wrapped;
+    }
+  }
+
+  if (useStream) {
+    const ndjson = createNdjsonStreamWriter();
+    ndjson.push({ type: "started", runId: run.id, requestSummary });
+
+    void (async () => {
+      try {
+        const payload = await executeSingleDomainAutomation(ndjson.push);
+        ndjson.push({ type: "done", ...payload });
+      } catch (error) {
+        ndjson.push({ type: "error", ...(error?.payload || { details: error?.message || "Unknown error" }) });
+      } finally {
+        ndjson.close();
+      }
+    })();
+
+    return new Response(ndjson.stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Domain-Automation-Run-Id": run.id,
       },
-      { status: 500 }
-    );
+    });
+  }
+
+  try {
+    const payload = await executeSingleDomainAutomation();
+    return NextResponse.json(payload);
+  } catch (error) {
+    return NextResponse.json(error?.payload || { ok: false, error: error?.message }, { status: 500 });
   }
   });
 }

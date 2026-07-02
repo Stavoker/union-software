@@ -21,6 +21,74 @@ const POPULAR_ZONES = ["com", "org", "net", "top", "casino", "info", "io", "co",
 const DEFAULT_ZONE_EXTRA_JSON = '{\n  "sok": "ok"\n}';
 const DEFAULT_RECORD_EXTRA_JSON = '{\n  "sok": "ok"\n}';
 const RUN_STATE_STORAGE_KEY = "domainAutomation.activeRun";
+const RUN_POLL_MS = 2500;
+
+function formatStepLogLine(domain, step) {
+  const id = step?.id || "step";
+  const status = step?.pending ? "pending" : step?.skipped ? "skipped" : step?.ok ? "ok" : "fail";
+  const warning = step?.warning ? ` — ${step.warning}` : "";
+  return `[${domain || "domain"}] ${id}: ${status}${warning}`;
+}
+
+async function consumeNdjsonAutomationResponse(response, { onEvent } = {}) {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.includes("application/x-ndjson")) {
+    const payload = await readJsonSafe(response);
+    return { payload, runId: payload?.runId || response.headers.get("X-Domain-Automation-Run-Id") || null };
+  }
+
+  const runIdHeader = response.headers.get("X-Domain-Automation-Run-Id");
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const payload = await readJsonSafe(response);
+    return { payload, runId: payload?.runId || runIdHeader || null };
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload = null;
+  let runId = runIdHeader || null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let event = null;
+      try {
+        event = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      if (event?.runId) {
+        runId = event.runId;
+      }
+      if (typeof onEvent === "function") {
+        onEvent(event);
+      }
+      if (event?.type === "done" || event?.type === "error") {
+        finalPayload = event;
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    try {
+      const event = JSON.parse(buffer.trim());
+      if (event?.runId) runId = event.runId;
+      if (typeof onEvent === "function") onEvent(event);
+      if (event?.type === "done" || event?.type === "error") finalPayload = event;
+    } catch {
+      /* ignore trailing partial line */
+    }
+  }
+
+  return { payload: finalPayload, runId };
+}
 
 async function readJsonSafe(response) {
   const text = await response.text();
@@ -129,6 +197,14 @@ export function DomainAutomationPanel() {
     } catch {}
   }
 
+  function mergeRunLogsFromServer(serverLogs, knownCount = 0) {
+    const incoming = Array.isArray(serverLogs) ? serverLogs : [];
+    if (!incoming.length) return;
+    const fresh = incoming.slice(knownCount);
+    if (!fresh.length) return;
+    setLogs((prev) => [...prev, ...fresh].slice(-400));
+  }
+
   function clearActiveRun() {
     persistActiveRun(null);
   }
@@ -216,6 +292,49 @@ export function DomainAutomationPanel() {
     );
   }, [activeRunMeta, locale, t]);
 
+  useEffect(() => {
+    const runId = String(activeRunMeta?.runId || "").trim();
+    if (!runId) return;
+
+    let cancelled = false;
+    let knownLogCount = 0;
+
+    async function poll() {
+      try {
+        const response = await fetch(`/api/domain/automation/status?runId=${encodeURIComponent(runId)}`);
+        const payload = await readJsonSafe(response);
+        if (!response.ok || !payload?.ok || cancelled) return;
+        const run = payload.run || {};
+        mergeRunLogsFromServer(run.logs, knownLogCount);
+        knownLogCount = Array.isArray(run.logs) ? run.logs.length : knownLogCount;
+        if (run.result) {
+          setResult(run.result);
+        }
+        if (run.status === "completed" || run.status === "failed") {
+          clearActiveRun();
+          if (run.status === "completed") {
+            showToast(t("status.done", { domain: run.result?.domain || "" }));
+          } else if (run.error) {
+            showToast(t("errors.withMessage", { message: run.error }));
+          }
+        }
+      } catch {
+        /* ignore transient poll errors */
+      }
+    }
+
+    const timer = window.setInterval(() => {
+      void poll();
+    }, RUN_POLL_MS);
+    void poll();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll by runId
+  }, [activeRunMeta?.runId]);
+
   async function handleSubmit(event) {
     event.preventDefault();
     if (loading) {
@@ -258,10 +377,12 @@ export function DomainAutomationPanel() {
       : null;
     const hostIpFromSelection = selectedHost?.hostIp ? String(selectedHost.hostIp).trim() : "";
 
+    const startedAt = new Date().toISOString();
     persistActiveRun({
-      startedAt: new Date().toISOString(),
+      startedAt,
       domains: parsedDomains,
       hostId: selectedHostId || null,
+      runId: null,
     });
 
     try {
@@ -269,8 +390,10 @@ export function DomainAutomationPanel() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/x-ndjson, application/json",
         },
         body: JSON.stringify({
+          stream: true,
           domainLabel: parsedDomains[0]?.domainLabel || "",
           zone: parsedDomains[0]?.zone || "",
           domains: parsedDomains,
@@ -281,7 +404,7 @@ export function DomainAutomationPanel() {
           hostRecordName,
           sslDnsPropagationTimeoutMs: 300000,
           sslDnsPropagationPollMs: 5000,
-          sslAsyncRetryMs: 15000,
+          sslAsyncRetryMs: 60000,
           zomroZoneFunc,
           zomroRecordFunc,
           zomroZoneExtraParams: parsedZoneExtra,
@@ -305,7 +428,26 @@ export function DomainAutomationPanel() {
       });
       appendLog(t("logs.httpStatus", { status: response.status }));
 
-      const payload = await readJsonSafe(response);
+      const { payload, runId } = await consumeNdjsonAutomationResponse(response, {
+        onEvent: (event) => {
+          if (event?.type === "started") {
+            appendLog(t("logs.starting", { count: parsedDomains.length }), { runId: event.runId });
+          }
+          if (event?.type === "step" && event?.step) {
+            appendLog(formatStepLogLine(event.domain, event.step));
+          }
+        },
+      });
+
+      if (runId) {
+        persistActiveRun({
+          startedAt,
+          domains: parsedDomains,
+          hostId: selectedHostId || null,
+          runId,
+        });
+      }
+
       if (!response.ok || !payload?.ok) {
         appendLog(t("logs.apiError"), payload);
         throw new Error(
