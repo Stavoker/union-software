@@ -278,6 +278,9 @@ function scheduleSslAsyncHostDeploy({
               nginxConfPath: deploy.nginxConfPath || null,
               nginxLinkPath: deploy.nginxLinkPath || null,
               nginxReloaded: !!deploy.nginxReloaded,
+              stackReady: !deploy.skipped && !!deploy.ok && !!deploy.https,
+              certCnOk: deploy.certCnOk ?? null,
+              sslProvisionOnly: !!deploy.sslProvisionOnly,
             });
             console.info(
               `[domain-automation][${sslDomain}] host nginx/ssl deploy: ${deploy.skipped ? "skipped" : deploy.ok ? "ok" : "failed"}${deploy.sslDir ? ` → ${deploy.sslDir}` : ""}`

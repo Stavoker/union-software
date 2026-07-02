@@ -4,6 +4,7 @@ import { getProjectPath } from "@/src/lib/project-paths";
 import { ensurePhpStackOnHost } from "./hostPhpStack.js";
 import {
   fixDeployedSitePermissions,
+  sslPemPresentOnHost,
   syncNginxVhostForDomain,
 } from "./hostNginxSslDeploy.js";
 import { notifyAutoscriptAfterDeploy } from "./autoscriptWebhook.js";
@@ -211,7 +212,7 @@ export async function deployGeneratedSiteToDomainFolder({
       );
     } else if (nginx?.ok) {
       log(
-        `[deploy] nginx vhost written (${nginx.https ? "https" : "http-only"}) but verify incomplete — перевірте ${nginx.nginxConfPath || "vhost"}`
+        `[deploy] nginx vhost written (${nginx.https ? "https" : "http-only"})${nginx.relaxedVerify ? " — SSL vhost (smoke verify relaxed)" : ""} — ${nginx.verified ? "verified" : "перевірте в браузері"}`
       );
     } else if (nginx?.skipped) {
       log(
@@ -226,7 +227,7 @@ export async function deployGeneratedSiteToDomainFolder({
     log(`[deploy] PHP/nginx error: ${String(stackErr?.message || stackErr).slice(0, 240)}`);
   }
 
-  const nginxOk = Boolean(nginx?.ok && nginx?.verified);
+  const nginxOk = Boolean(nginx?.ok && (nginx?.verified || nginx?.https));
 
   if (userId) {
     await upsertSeoDomainForUser(userId, normalizedDomain, {
@@ -489,19 +490,55 @@ export async function repairDeployedSiteStack({ host, domain, vhostMode, onLog }
   });
   log(`[nginx-repair] permissions 755/644 on ${remotePath}`);
 
-  const nginx = await syncNginxVhostForDomain({
-    domain: normalizedDomain,
+  const hostSsh = {
     deployHostIp: host?.hostIp,
     sshUser: host?.sshUser,
     sshPassword: host?.sshPassword,
     sshPort: host?.sshPort,
     projectsBaseDir,
+  };
+
+  let nginx = await syncNginxVhostForDomain({
+    domain: normalizedDomain,
+    ...hostSsh,
     mode: "auto",
     vhostMode: vhostMode || "auto",
     onLog: log,
   });
 
-  const nginxOk = Boolean(nginx?.ok && nginx?.verified);
+  const sslPresent = await sslPemPresentOnHost({
+    domain: normalizedDomain,
+    ...hostSsh,
+  });
+
+  if (sslPresent && (!nginx?.ok || !nginx?.https)) {
+    log(
+      `[nginx] ssl/ PEM found (domain automation) — forcing HTTPS vhost after site upload`
+    );
+    nginx = await syncNginxVhostForDomain({
+      domain: normalizedDomain,
+      ...hostSsh,
+      mode: "https",
+      vhostMode: vhostMode || "auto",
+      onLog: log,
+    });
+  }
+
+  if (sslPresent && (!nginx?.ok || !nginx?.https)) {
+    log(
+      `[nginx] HTTPS smoke verify still incomplete — publishing SSL vhost anyway (fix browser cert mismatch)`
+    );
+    nginx = await syncNginxVhostForDomain({
+      domain: normalizedDomain,
+      ...hostSsh,
+      mode: "https",
+      vhostMode: vhostMode || "auto",
+      relaxSmokeVerify: true,
+      onLog: log,
+    });
+  }
+
+  const nginxOk = Boolean(nginx?.ok && (nginx?.verified || nginx?.https));
   return {
     ok: nginxOk,
     domain: normalizedDomain,

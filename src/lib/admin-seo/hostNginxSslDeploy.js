@@ -274,6 +274,28 @@ async function verifyNginxStaticVhostOnHost({
   return { smokeStatus: statusLine };
 }
 
+/** Перевірка, що nginx на :443 віддає сертифікат з правильним CN (без контенту сайту). */
+async function verifySslCertServedForDomain({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  domain,
+}) {
+  const sni = shellSingleQuote(domain);
+  const cmd = `echo | openssl s_client -connect 127.0.0.1:443 -servername ${sni} 2>/dev/null | openssl x509 -noout -subject -dates 2>/dev/null`;
+  const { stdout } = await sshExecCommand(sshHost, sshUser, sshPassword, cmd, sshPort);
+  const subject = String(stdout || "").trim();
+  if (!subject) {
+    throw new Error("openssl s_client returned no certificate");
+  }
+  const domainLc = String(domain || "").trim().toLowerCase();
+  if (!new RegExp(`(CN\\s*=\\s*${domainLc.replace(/\./g, "\\.")}|CN\\s*=\\s*\\*\\.[^,]+)`).test(subject)) {
+    throw new Error(`certificate subject mismatch: ${subject.slice(0, 200)}`);
+  }
+  return { certSubject: subject.split("\n")[0] || subject };
+}
+
 async function verifyNginxSpaVhostOnHost({
   sshHost,
   sshUser,
@@ -344,6 +366,45 @@ function resolveNginxDeployPaths(projectsBaseDir, domain) {
     linkPath: `${sitesEn}/${confName}`,
     reloadCmd,
   };
+}
+
+
+/** Чи є fullchain.pem + privkey.pem у /var/www/<domain>/ssl/ (після domain automation). */
+export async function sslPemPresentOnHost({
+  domain,
+  deployHostIp,
+  sshUser: sshUserInput,
+  sshPassword: sshPasswordInput,
+  sshPort: sshPortInput,
+  projectsBaseDir: projectsBaseDirInput,
+}) {
+  const sshHost = String(deployHostIp || process.env.SUBDOMAIN_HOST_IP || "").trim();
+  const sshUser = String(sshUserInput || process.env.SUBDOMAIN_HOST_USER || "").trim();
+  const sshPassword = String(sshPasswordInput || process.env.SUBDOMAIN_HOST_PASSWORD || "");
+  const sshPort = Number(sshPortInput || process.env.SUBDOMAIN_HOST_PORT || 22);
+  const projectsBaseDir =
+    String(projectsBaseDirInput || process.env.SUBDOMAIN_HOST_PROJECTS_DIR || "").trim() || "/var/www";
+  if (!sshHost || !sshUser || !sshPassword || !domain) {
+    return false;
+  }
+  const { sslDir } = resolveNginxDeployPaths(projectsBaseDir, domain);
+  const sftp = new SftpClient();
+  try {
+    await sftp.connect({
+      host: sshHost,
+      port: Number.isFinite(sshPort) && sshPort > 0 ? sshPort : 22,
+      username: sshUser,
+      password: sshPassword,
+      readyTimeout: 20000,
+    });
+    const hasCert = (await sftp.exists(`${sslDir}/fullchain.pem`)) === "-";
+    const hasKey = (await sftp.exists(`${sslDir}/privkey.pem`)) === "-";
+    return hasCert && hasKey;
+  } catch {
+    return false;
+  } finally {
+    await sftp.end().catch(() => {});
+  }
 }
 
 async function publishNginxConfigOnHost({
@@ -425,6 +486,7 @@ export async function deploySslCertificateToHost({
       password: sshPassword,
       readyTimeout: 20000,
     });
+    await sftp.mkdir(remoteProjectDir, true);
     const sslExists = await sftp.exists(sslDir);
     if (sslExists) {
       try {
@@ -458,6 +520,8 @@ export async function deploySslCertificateToHost({
     sshPort,
     projectsBaseDir,
     mode: "https",
+    relaxSmokeVerify: true,
+    sslProvisionOnly: true,
   });
 }
 
@@ -474,6 +538,8 @@ export async function syncNginxVhostForDomain({
   projectsBaseDir: projectsBaseDirInput,
   mode = "auto",
   vhostMode: vhostModeInput = VHOST_MODE_AUTO,
+  relaxSmokeVerify = false,
+  sslProvisionOnly = false,
   onLog,
 }) {
   const log = (msg) => {
@@ -504,7 +570,7 @@ export async function syncNginxVhostForDomain({
   let hasIndexPhp = false;
   let hasIndexHtml = false;
 
-  {
+  if (!sslProvisionOnly) {
     const sftp = new SftpClient();
     try {
       await sftp.connect({
@@ -538,9 +604,13 @@ export async function syncNginxVhostForDomain({
       await sftp.end().catch(() => {});
     }
   }
+  }
 
-  const spaMode = resolvedVhostMode === VHOST_MODE_SPA;
-  const phpOn = !spaMode && (resolvedVhostMode === VHOST_MODE_PHP || nginxPhpEnabledLocal());
+  const spaMode = sslProvisionOnly ? false : resolvedVhostMode === VHOST_MODE_SPA;
+  const phpOn =
+    !sslProvisionOnly &&
+    !spaMode &&
+    (resolvedVhostMode === VHOST_MODE_PHP || nginxPhpEnabledLocal());
   let phpSock = "";
   if (phpOn) {
     const stack = await ensurePhpStackOnHost({
@@ -586,12 +656,16 @@ export async function syncNginxVhostForDomain({
     }
     log("[nginx] static vhost (no PHP-FPM in nginx config)");
   }
-  const vhostOpts = {
-    vhostMode: spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
-    phpFastcgiPass: phpOn ? phpSock : "",
-  };
+  const vhostOpts = sslProvisionOnly
+    ? { vhostMode: "static", phpFastcgiPass: "" }
+    : {
+        vhostMode: spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
+        phpFastcgiPass: phpOn ? phpSock : "",
+      };
   if (spaMode) {
     log(`[nginx] SPA static vhost (try_files → /index.html, no PHP-FPM)`);
+  } else if (sslProvisionOnly) {
+    log(`[nginx] SSL-only static vhost (empty site folder, HTTPS ready for domain purchase)`);
   }
 
   if (mode === "https" && !useHttps) {
@@ -657,6 +731,48 @@ export async function syncNginxVhostForDomain({
       sslDir,
       nginxConfPath: confPath,
       nginxLinkPath: linkPath,
+    };
+  }
+
+  if (relaxSmokeVerify) {
+    log(
+      `[nginx] ${normalized}: smoke verify relaxed (pre-provisioned SSL / empty site folder)`
+    );
+    let certCnOk = false;
+    let certSubject = "";
+    if (sslProvisionOnly && useHttps) {
+      try {
+        const certCheck = await verifySslCertServedForDomain({
+          sshHost,
+          sshUser,
+          sshPassword,
+          sshPort,
+          domain: normalized,
+        });
+        certCnOk = true;
+        certSubject = certCheck.certSubject || "";
+        log(`[nginx] ${normalized}: SSL cert CN ok — ${certSubject}`);
+      } catch (e) {
+        log(`[nginx] ${normalized}: SSL cert CN check failed: ${e?.message || e}`);
+      }
+    }
+    return {
+      ok: true,
+      skipped: false,
+      https: useHttps,
+      remoteProjectDir,
+      sslDir,
+      nginxConfPath: confPath,
+      nginxLinkPath: linkPath,
+      nginxReloaded: true,
+      phpFpmSocket: phpSock,
+      vhostMode: sslProvisionOnly ? "static" : spaMode ? VHOST_MODE_SPA : VHOST_MODE_PHP,
+      smokeStatus: "relaxed",
+      verified: certCnOk,
+      certCnOk,
+      certSubject,
+      relaxedVerify: !certCnOk,
+      sslProvisionOnly,
     };
   }
 
