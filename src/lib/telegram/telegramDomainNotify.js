@@ -30,7 +30,10 @@ export async function sendUserDomainTelegramEvents({ userId, ok, result, error, 
   const out = [];
 
   if (isSslCompletion) {
-    const certOk = !!(sslStep?.certificatePem && String(sslStep.certificatePem).trim());
+    const certOk = !!(
+      sslStep?.ok ||
+      (sslStep?.certificatePem && String(sslStep.certificatePem).trim())
+    );
     out.push(
       await notifyUserTelegram(
         uid,

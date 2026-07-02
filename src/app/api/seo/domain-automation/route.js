@@ -302,19 +302,42 @@ function scheduleSslAsyncHostDeploy({
           }
           completeDomainAutomationRun(runId, { ok: !!certPem, result: completedResult });
         }
-        void sendUserDomainTelegramEvents({
-          userId,
-          ok: true,
-          result: completedResult,
-          requestSummary: { ...requestSummary, sslAsyncCompletion: true },
-        }).catch((e) => console.error("[domain-automation][telegram] ssl-complete:", e));
+        try {
+          const tgResult = await sendUserDomainTelegramEvents({
+            userId,
+            ok: true,
+            result: completedResult,
+            requestSummary: { ...requestSummary, sslAsyncCompletion: true },
+          });
+          console.info(
+            `[domain-automation][telegram] ssl-complete for ${sslDomain}:`,
+            JSON.stringify({
+              certOk: !!certPem,
+              events: tgResult?.events?.length ?? 0,
+              skipped: tgResult?.skipped || false,
+            })
+          );
+        } catch (e) {
+          console.error("[domain-automation][telegram] ssl-complete:", e);
+        }
       })
     )
-    .catch((e) => {
+    .catch(async (e) => {
       console.error(`[domain-automation][ssl-async] worker failed for ${sslDomain}:`, e);
       if (runId) {
         appendDomainAutomationLog(runId, `[${sslDomain}] SSL background job failed: ${e?.message || e}`);
         completeDomainAutomationRun(runId, { ok: false, result, error: e });
+      }
+      try {
+        await sendUserDomainTelegramEvents({
+          userId,
+          ok: false,
+          result,
+          error: e,
+          requestSummary: { ...requestSummary, sslAsyncCompletion: true },
+        });
+      } catch (tgErr) {
+        console.error("[domain-automation][telegram] ssl-fail:", tgErr);
       }
     });
 }
