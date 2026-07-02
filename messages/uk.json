@@ -207,10 +207,10 @@
       "loadFailed": "Не вдалося завантажити список серверів",
       "saveFailed": "Не вдалося зберегти сервер",
       "deleteFailed": "Не вдалося видалити сервер",
-      "provisionPhp": "Налаштувати PHP/nginx",
-      "provisionRunning": "Налаштування PHP на сервері…",
-      "provisionDone": "Готово: {ok}/{total} сайтів з робочим PHP.",
-      "provisionFailed": "Не вдалося налаштувати PHP на сервері",
+      "provisionPhp": "Налаштувати nginx",
+      "provisionRunning": "Налаштування nginx на сервері…",
+      "provisionDone": "Готово: {ok}/{total} сайтів з робочим nginx.",
+      "provisionFailed": "Не вдалося налаштувати nginx на сервері",
       "toastDismiss": "Закрити"
     },
     "fields": {

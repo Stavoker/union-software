@@ -329,6 +329,15 @@ export async function provisionHostPhpStack({ host, onLog }) {
   const { nginxPhpEnabled } = await import("./hostNginxSslDeploy.js");
   const phpMode = nginxPhpEnabled();
 
+  const { ensureWebPortsOpenOnHost } = await import("./hostPhpStack.js");
+  await ensureWebPortsOpenOnHost({
+    deployHostIp: host?.hostIp,
+    sshUser: host?.sshUser,
+    sshPassword: host?.sshPassword,
+    sshPort: host?.sshPort,
+    onLog: log,
+  });
+
   const stack = phpMode
     ? await ensurePhpStackOnHost({
         deployHostIp: host?.hostIp,
@@ -460,7 +469,7 @@ export async function ensureNginxForDeployedDomain({
  * Лише права + nginx vhost (без повторного SFTP файлів) — коли на диску вже є сайт, а в браузері 403.
  * @param {{ host: object, domain: string, onLog?: (msg: string) => void }} opts
  */
-export async function repairDeployedSiteStack({ host, domain, onLog }) {
+export async function repairDeployedSiteStack({ host, domain, vhostMode, onLog }) {
   const normalizedDomain = String(domain || "").trim().toLowerCase();
   if (!normalizedDomain) {
     throw new Error("domain is required");

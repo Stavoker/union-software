@@ -18,6 +18,87 @@ function detectSocketFromStdout(stdout) {
 }
 
 /**
+ * Відкриває 80/443 у ufw або firewalld (SSH працює, а HTTP/HTTPS з інтернету — ні).
+ */
+export async function ensureWebPortsOpenOnHost({
+  deployHostIp,
+  sshUser,
+  sshPassword,
+  sshPort = 22,
+  onLog,
+}) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+
+  const sshHost = String(deployHostIp || "").trim();
+  const user = String(sshUser || "").trim();
+  const pass = String(sshPassword || "");
+  const port = Number(sshPort) || 22;
+
+  if (!sshHost || !user || !pass) {
+    return { ok: false, skipped: true, reason: "ssh_credentials_missing" };
+  }
+
+  const sp = sudoPrefix();
+  const script = [
+    "set +e",
+    "opened=none",
+    "if command -v ufw >/dev/null 2>&1; then",
+    "  ufw status 2>/dev/null | grep -qi 'Status: active'",
+    "  if [ $? -eq 0 ]; then",
+    `    ${sp}ufw allow 80/tcp >/dev/null 2>&1`,
+    `    ${sp}ufw allow 443/tcp >/dev/null 2>&1`,
+    "    opened=ufw",
+    "  fi",
+    "fi",
+    "if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then",
+    `  ${sp}firewall-cmd --permanent --add-service=http >/dev/null 2>&1`,
+    `  ${sp}firewall-cmd --permanent --add-service=https >/dev/null 2>&1`,
+    `  ${sp}firewall-cmd --reload >/dev/null 2>&1`,
+    "  opened=firewalld",
+    "fi",
+    "listen80=$(ss -tln 2>/dev/null | grep -c ':80 ' || echo 0)",
+    "listen443=$(ss -tln 2>/dev/null | grep -c ':443 ' || echo 0)",
+    'echo "result opened=$opened listen80=$listen80 listen443=$listen443"',
+  ].join("\n");
+
+  try {
+    const scriptB64 = Buffer.from(script, "utf8").toString("base64");
+    const { stdout } = await sshExecCommand(
+      sshHost,
+      user,
+      pass,
+      `echo ${shellSingleQuote(scriptB64)} | base64 -d | bash`,
+      port,
+      60000
+    );
+    const out = String(stdout || "").trim();
+    if (out.includes("opened=ufw")) {
+      log("[firewall] ufw: дозволено 80/tcp та 443/tcp");
+    } else if (out.includes("opened=firewalld")) {
+      log("[firewall] firewalld: дозволено http/https");
+    } else {
+      log(
+        "[firewall] ufw/firewalld не активні — якщо сайт недоступний, відкрийте 80/443 у панелі VPS"
+      );
+    }
+    const listen80 = /listen80=([0-9]+)/.exec(out)?.[1];
+    const listen443 = /listen443=([0-9]+)/.exec(out)?.[1];
+    if (listen80 === "0") {
+      log("[firewall] попередження: ніхто не слухає порт 80");
+    }
+    if (listen443 === "0") {
+      log("[firewall] попередження: ніхто не слухає порт 443");
+    }
+    return { ok: true, detail: out };
+  } catch (e) {
+    log(`[firewall] warning: ${String(e?.message || e).slice(0, 120)}`);
+    return { ok: false, warning: String(e?.message || e) };
+  }
+}
+
+/**
  * Перевіряє nginx + PHP-FPM на VPS; за потреби встановлює пакети (Ubuntu/Debian apt).
  */
 export async function ensurePhpStackOnHost({
@@ -71,6 +152,13 @@ export async function ensurePhpStackOnHost({
 
   if (nginxOk && phpOk) {
     log(`[php-stack] OK: nginx + PHP-FPM (${socket})`);
+    await ensureWebPortsOpenOnHost({
+      deployHostIp: sshHost,
+      sshUser: user,
+      sshPassword: pass,
+      sshPort: port,
+      onLog: log,
+    });
     return { ok: true, nginx: true, phpFpm: true, phpFpmSocket: socket, installed: false };
   }
 
@@ -138,6 +226,13 @@ export async function ensurePhpStackOnHost({
   }
 
   log(`[php-stack] готово: nginx + PHP-FPM (${socket})`);
+  await ensureWebPortsOpenOnHost({
+    deployHostIp: sshHost,
+    sshUser: user,
+    sshPassword: pass,
+    sshPort: port,
+    onLog: log,
+  });
   return {
     ok: true,
     nginx: true,
@@ -196,6 +291,13 @@ export async function ensureNginxOnHost({
   let nginxOk = await detectNginxInstalled(sshHost, user, pass, port);
   if (nginxOk) {
     log("[nginx-stack] OK: nginx already installed");
+    await ensureWebPortsOpenOnHost({
+      deployHostIp: sshHost,
+      sshUser: user,
+      sshPassword: pass,
+      sshPort: port,
+      onLog: log,
+    });
     return { ok: true, nginx: true, installed: false };
   }
 
@@ -231,6 +333,13 @@ export async function ensureNginxOnHost({
     return { ok: false, nginx: false, warning: "nginx install finished but binary not found" };
   }
   log("[nginx-stack] готово: nginx");
+  await ensureWebPortsOpenOnHost({
+    deployHostIp: sshHost,
+    sshUser: user,
+    sshPassword: pass,
+    sshPort: port,
+    onLog: log,
+  });
   return { ok: true, nginx: true, installed: true };
 }
 

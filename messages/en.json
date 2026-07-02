@@ -207,10 +207,10 @@
       "loadFailed": "Failed to load server list",
       "saveFailed": "Failed to save server",
       "deleteFailed": "Failed to delete server",
-      "provisionPhp": "Set up PHP/nginx",
-      "provisionRunning": "Configuring PHP on server…",
-      "provisionDone": "Done: {ok}/{total} sites with working PHP.",
-      "provisionFailed": "Failed to configure PHP on server",
+      "provisionPhp": "Set up nginx",
+      "provisionRunning": "Configuring nginx on server…",
+      "provisionDone": "Done: {ok}/{total} sites with working nginx.",
+      "provisionFailed": "Failed to configure nginx on server",
       "toastDismiss": "Dismiss"
     },
     "fields": {

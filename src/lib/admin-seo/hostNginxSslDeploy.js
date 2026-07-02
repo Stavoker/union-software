@@ -627,6 +627,14 @@ export async function syncNginxVhostForDomain({
   }
 
   try {
+    const { ensureWebPortsOpenOnHost } = await import("./hostPhpStack.js");
+    await ensureWebPortsOpenOnHost({
+      deployHostIp: sshHost,
+      sshUser,
+      sshPassword: sshPassword,
+      sshPort,
+      onLog: log,
+    });
     await publishNginxConfigOnHost({
       sshHost,
       sshUser,
