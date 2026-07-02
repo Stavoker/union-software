@@ -358,41 +358,38 @@ export async function provisionHostPhpStack({ host, onLog }) {
         });
       })();
 
-  const domainList = phpMode
-    ? await listPhpSiteDomainsOnHost(host)
-    : await listAllSiteDomainsOnHost(host);
-  log(
-    `[provision] знайдено ${domainList.length} сайт(ів) у ${projectsBaseDir} (${phpMode ? "PHP" : "nginx static"})`
-  );
+  const phpDomains = phpMode ? await listPhpSiteDomainsOnHost(host) : [];
+  const allDomains = await listAllSiteDomainsOnHost(host);
+  const domainSet = new Set(phpMode ? phpDomains : allDomains);
 
-  const sites = [];
-  for (const domain of domainList) {
-    const remotePath = domainRemotePath(projectsBaseDir, domain);
-    try {
-      await fixDeployedSitePermissions({
+  if (phpMode) {
+    for (const domain of allDomains) {
+      const pem = await sslPemPresentOnHost({
+        domain,
         deployHostIp: host?.hostIp,
         sshUser: host?.sshUser,
         sshPassword: host?.sshPassword,
         sshPort: host?.sshPort,
-        remoteProjectDir: remotePath,
+        projectsBaseDir,
       });
-    } catch (e) {
-      log(`[provision] ${domain}: permissions warning — ${String(e?.message || e).slice(0, 120)}`);
+      if (pem) {
+        domainSet.add(domain);
+      }
     }
-    const nginx = await syncNginxVhostForDomain({
-      domain,
-      deployHostIp: host?.hostIp,
-      sshUser: host?.sshUser,
-      sshPassword: host?.sshPassword,
-      sshPort: host?.sshPort,
-      projectsBaseDir,
-      mode: "auto",
-      onLog: log,
-    });
-    const siteOk = Boolean(nginx?.ok && nginx?.verified);
-    sites.push({ domain, ok: siteOk, nginx });
+  }
+
+  const domainList = [...domainSet].sort();
+  log(
+    `[provision] знайдено ${domainList.length} домен(ів) у ${projectsBaseDir} (${phpMode ? "PHP + SSL-only" : "nginx static"})`
+  );
+
+  const sites = [];
+  for (const domain of domainList) {
+    const repair = await repairDeployedSiteStack({ host, domain, onLog: log });
+    const siteOk = Boolean(repair.stackReady);
+    sites.push({ domain, ok: siteOk, nginx: repair.nginx });
     log(
-      `[provision] ${domain}: ${siteOk ? "ok" : "failed"} ${nginx?.smokeStatus || nginx?.warning || ""}`
+      `[provision] ${domain}: ${siteOk ? "ok" : "failed"} ${repair.nginx?.smokeStatus || repair.warning || repair.nginx?.warning || ""}`
     );
   }
 
