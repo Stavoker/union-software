@@ -274,6 +274,7 @@ async function verifyNginxStaticVhostOnHost({
   return { smokeStatus: statusLine };
 }
 
+async function verifyNginxSpaVhostOnHost({
   sshHost,
   sshUser,
   sshPassword,
