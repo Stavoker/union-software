@@ -604,7 +604,6 @@ export async function syncNginxVhostForDomain({
       await sftp.end().catch(() => {});
     }
   }
-  }
 
   const spaMode = sslProvisionOnly ? false : resolvedVhostMode === VHOST_MODE_SPA;
   const phpOn =
