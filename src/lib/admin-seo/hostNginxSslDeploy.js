@@ -443,6 +443,52 @@ async function publishNginxConfigOnHost({
  * За замовчуванням PHP увімкнено; вимкнути лише статику: SUBDOMAIN_HOST_NGINX_PHP=0.
  * Сокет FPM: SUBDOMAIN_HOST_PHP_FPM_SOCKET (типово unix:/run/php/php8.1-fpm.sock).
  */
+/** Опублікувати HTTPS vhost, якщо PEM уже на хості (repair без повторного SFTP). */
+export async function repairSslNginxVhostFromPemOnHost({
+  domain,
+  deployHostIp,
+  sshUser,
+  sshPassword,
+  sshPort,
+  projectsBaseDir,
+  onLog,
+}) {
+  const present = await sslPemPresentOnHost({
+    domain,
+    deployHostIp,
+    sshUser,
+    sshPassword,
+    sshPort,
+    projectsBaseDir,
+  });
+  if (!present) {
+    return {
+      ok: false,
+      skipped: false,
+      warning: "fullchain.pem/privkey.pem not found on host — run SSL automation first",
+    };
+  }
+  await fixDeployedSitePermissions({
+    deployHostIp,
+    sshUser,
+    sshPassword,
+    sshPort,
+    remoteProjectDir: resolveNginxDeployPaths(projectsBaseDir || "/var/www", domain).remoteProjectDir,
+  });
+  return syncNginxVhostForDomain({
+    domain,
+    deployHostIp,
+    sshUser,
+    sshPassword,
+    sshPort,
+    projectsBaseDir,
+    mode: "https",
+    relaxSmokeVerify: true,
+    sslProvisionOnly: true,
+    onLog,
+  });
+}
+
 export async function deploySslCertificateToHost({
   domain,
   certificatePem,
@@ -452,7 +498,11 @@ export async function deploySslCertificateToHost({
   sshPassword: sshPasswordInput,
   sshPort: sshPortInput,
   projectsBaseDir: projectsBaseDirInput,
+  onLog,
 }) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
   if (!envBool("SUBDOMAIN_HOST_SSL_DEPLOY")) {
     return { skipped: true, ok: false, reason: "SUBDOMAIN_HOST_SSL_DEPLOY not set" };
   }
@@ -512,7 +562,20 @@ export async function deploySslCertificateToHost({
     await sftp.end().catch(() => {});
   }
 
-  return syncNginxVhostForDomain({
+  try {
+    await fixDeployedSitePermissions({
+      deployHostIp: sshHost,
+      sshUser,
+      sshPassword,
+      sshPort,
+      remoteProjectDir,
+    });
+    log(`[nginx] permissions 755/644 on ${remoteProjectDir}`);
+  } catch (e) {
+    log(`[nginx] permissions fix warning: ${e?.message || e}`);
+  }
+
+  const sync = await syncNginxVhostForDomain({
     domain,
     deployHostIp: sshHost,
     sshUser,
@@ -522,7 +585,12 @@ export async function deploySslCertificateToHost({
     mode: "https",
     relaxSmokeVerify: true,
     sslProvisionOnly: true,
+    onLog: log,
   });
+  if (!sync.ok && !sync.skipped) {
+    log(`[nginx] SSL vhost publish failed: ${sync.warning || sync.reason || "unknown"}`);
+  }
+  return sync;
 }
 
 /**
@@ -646,12 +714,18 @@ export async function syncNginxVhostForDomain({
       onLog: log,
     });
     if (!nginxStack.ok && !nginxStack.skipped) {
-      return {
-        ok: false,
-        skipped: false,
-        warning: nginxStack.warning || "nginx setup failed on host",
-        remoteProjectDir,
-      };
+      if (sslProvisionOnly) {
+        log(
+          `[nginx] ensureNginx warning (continuing SSL publish): ${nginxStack.warning || "nginx setup incomplete"}`
+        );
+      } else {
+        return {
+          ok: false,
+          skipped: false,
+          warning: nginxStack.warning || "nginx setup failed on host",
+          remoteProjectDir,
+        };
+      }
     }
     log("[nginx] static vhost (no PHP-FPM in nginx config)");
   }

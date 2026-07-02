@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { repairDeployedSiteStack } from "@/lib/admin-seo/hostDomainFolders";
+import {
+  repairSslNginxVhostFromPemOnHost,
+  sslPemPresentOnHost,
+} from "@/lib/admin-seo/hostNginxSslDeploy";
 import { getHostById } from "@/lib/admin-seo/hostsRepository";
 import { getSessionUser } from "@/shared/lib/auth/get-session-user";
 
@@ -36,10 +40,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Host not found" }, { status: 404 });
     }
 
-    const result = await repairDeployedSiteStack({ host, domain });
+    const logs: string[] = [];
+    const onLog = (msg: string) => logs.push(msg);
+
+    const pemPresent = await sslPemPresentOnHost({
+      domain,
+      deployHostIp: host.hostIp,
+      sshUser: host.sshUser,
+      sshPassword: host.sshPassword,
+      sshPort: host.sshPort,
+      projectsBaseDir: host.projectsDir,
+    });
+
+    if (pemPresent) {
+      const sslRepair = await repairSslNginxVhostFromPemOnHost({
+        domain,
+        deployHostIp: host.hostIp,
+        sshUser: host.sshUser,
+        sshPassword: host.sshPassword,
+        sshPort: host.sshPort,
+        projectsBaseDir: host.projectsDir,
+        onLog,
+      });
+      if (sslRepair.ok) {
+        return NextResponse.json({
+          ok: true,
+          mode: "ssl_vhost",
+          repair: sslRepair,
+          logs,
+        });
+      }
+      logs.push(`[ssl-repair] fallback: ${sslRepair.warning || "ssl vhost repair failed"}`);
+    }
+
+    const result = await repairDeployedSiteStack({ host, domain, onLog });
     return NextResponse.json({
       ok: result.ok,
+      mode: "site_stack",
       repair: result,
+      logs,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

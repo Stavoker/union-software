@@ -708,7 +708,9 @@ export async function automateDomainProvisioning(input) {
         });
         if (certPem) {
           try {
-            const deploy = await deploySslCertificateToHost({
+            const sslOnLog = (msg) =>
+              console.info(`[domain-automation][${fullDomain}] ${msg}`);
+            let deploy = await deploySslCertificateToHost({
               domain: fullDomain,
               certificatePem: sslResult.certificatePem,
               privateKeyPem: sslResult.privateKeyPem,
@@ -717,7 +719,25 @@ export async function automateDomainProvisioning(input) {
               sshPassword: deploySshPassword,
               sshPort: deploySshPort,
               projectsBaseDir: deployProjectsBaseDir,
+              onLog: sslOnLog,
             });
+            if (!deploy.skipped && !deploy.ok) {
+              const { repairSslNginxVhostFromPemOnHost } = await import(
+                "./hostNginxSslDeploy.js"
+              );
+              console.warn(
+                `[domain-automation][${fullDomain}] host nginx/ssl deploy failed: ${deploy.warning || deploy.reason || "unknown"} — retry from existing PEM`
+              );
+              deploy = await repairSslNginxVhostFromPemOnHost({
+                domain: fullDomain,
+                deployHostIp,
+                sshUser: deploySshUser,
+                sshPassword: deploySshPassword,
+                sshPort: deploySshPort,
+                projectsBaseDir: deployProjectsBaseDir,
+                onLog: sslOnLog,
+              });
+            }
             const stackReady = !deploy.skipped && !!deploy.ok && !!deploy.https;
             steps.push({
               id: "host-nginx-ssl-deploy",

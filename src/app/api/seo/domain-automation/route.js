@@ -256,17 +256,42 @@ function scheduleSslAsyncHostDeploy({
         }
         if (certPem) {
           try {
-            const deploy = await deploySslCertificateToHost({
+            const deployHostIp =
+              deployTarget.deployHostIp || result?.hostIp || creds.hostIpFallback;
+            const deploySshUser = deployTarget.deploySshUser;
+            const deploySshPassword = deployTarget.deploySshPassword;
+            const deploySshPort = deployTarget.deploySshPort;
+            const projectsBaseDir =
+              deployTarget.projectsDir || creds.projectsDirFallback || "/var/www";
+            const sslOnLog = (msg) => console.info(`[domain-automation][${sslDomain}] ${msg}`);
+            let deploy = await deploySslCertificateToHost({
               domain: result.domain,
               certificatePem: sslResult.certificatePem,
               privateKeyPem: sslResult.privateKeyPem,
-              deployHostIp: deployTarget.deployHostIp || result?.hostIp || creds.hostIpFallback,
-              sshUser: deployTarget.deploySshUser,
-              sshPassword: deployTarget.deploySshPassword,
-              sshPort: deployTarget.deploySshPort,
-              projectsBaseDir:
-                deployTarget.projectsDir || creds.projectsDirFallback || "/var/www",
+              deployHostIp,
+              sshUser: deploySshUser,
+              sshPassword: deploySshPassword,
+              sshPort: deploySshPort,
+              projectsBaseDir,
+              onLog: sslOnLog,
             });
+            if (!deploy.skipped && !deploy.ok) {
+              const { repairSslNginxVhostFromPemOnHost } = await import(
+                "@/lib/admin-seo/hostNginxSslDeploy"
+              );
+              console.warn(
+                `[domain-automation][${sslDomain}] host nginx/ssl deploy failed: ${deploy.warning || deploy.reason || "unknown"} — retry from existing PEM`
+              );
+              deploy = await repairSslNginxVhostFromPemOnHost({
+                domain: result.domain,
+                deployHostIp,
+                sshUser: deploySshUser,
+                sshPassword: deploySshPassword,
+                sshPort: deploySshPort,
+                projectsBaseDir,
+                onLog: sslOnLog,
+              });
+            }
             steps.push({
               id: "host-nginx-ssl-deploy",
               ok: deploy.skipped ? true : !!deploy.ok,
@@ -283,7 +308,7 @@ function scheduleSslAsyncHostDeploy({
               sslProvisionOnly: !!deploy.sslProvisionOnly,
             });
             console.info(
-              `[domain-automation][${sslDomain}] host nginx/ssl deploy: ${deploy.skipped ? "skipped" : deploy.ok ? "ok" : "failed"}${deploy.sslDir ? ` → ${deploy.sslDir}` : ""}`
+              `[domain-automation][${sslDomain}] host nginx/ssl deploy: ${deploy.skipped ? "skipped" : deploy.ok ? "ok" : "failed"}${deploy.sslDir ? ` → ${deploy.sslDir}` : ""}${deploy.warning ? ` (${String(deploy.warning).slice(0, 240)})` : ""}`
             );
           } catch (e) {
             steps.push({
