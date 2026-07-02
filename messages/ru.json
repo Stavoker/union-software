@@ -279,6 +279,7 @@
       "SUBDOMAIN_HOST_SSL_DEPLOY": "Деплой nginx + сертификат на хост (1/0)",
       "SUBDOMAIN_HOST_PROJECTS_DIR": "Каталог сайтов на сервере (напр. /var/www)",
       "SUBDOMAIN_HOST_NGINX_PHP": "PHP в vhost nginx (1/0)",
+      "SUBDOMAIN_HOST_PHP_AUTO_INSTALL": "Автоустановка nginx/PHP на VPS через apt (1/0)",
       "SUBDOMAIN_HOST_NGINX_SITES_AVAILABLE": "Путь sites-available",
       "SUBDOMAIN_HOST_NGINX_SITES_ENABLED": "Путь sites-enabled",
       "SUBDOMAIN_HOST_NGINX_RELOAD_CMD": "Команда reload nginx",

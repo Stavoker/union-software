@@ -279,6 +279,7 @@
       "SUBDOMAIN_HOST_SSL_DEPLOY": "Deploy nginx + certificate to host (1/0)",
       "SUBDOMAIN_HOST_PROJECTS_DIR": "Sites directory on server (e.g. /var/www)",
       "SUBDOMAIN_HOST_NGINX_PHP": "PHP in nginx vhost (1/0)",
+      "SUBDOMAIN_HOST_PHP_AUTO_INSTALL": "Auto-install nginx/PHP on VPS via apt (1/0)",
       "SUBDOMAIN_HOST_NGINX_SITES_AVAILABLE": "sites-available path",
       "SUBDOMAIN_HOST_NGINX_SITES_ENABLED": "sites-enabled path",
       "SUBDOMAIN_HOST_NGINX_RELOAD_CMD": "nginx reload command",
