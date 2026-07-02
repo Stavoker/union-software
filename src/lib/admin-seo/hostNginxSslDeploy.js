@@ -407,6 +407,60 @@ export async function sslPemPresentOnHost({
   }
 }
 
+/**
+ * Вимикає vhost у sites-enabled, якщо ssl_certificate вказує на відсутній PEM.
+ * Інакше nginx -t падає глобально і блокує reload для всіх доменів.
+ */
+export async function sanitizeBrokenNginxSslVhostsOnHost({
+  sshHost,
+  sshUser,
+  sshPassword,
+  sshPort,
+  onLog,
+}) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+  const sitesEn = (
+    String(process.env.SUBDOMAIN_HOST_NGINX_SITES_ENABLED || "").trim() ||
+    "/etc/nginx/sites-enabled"
+  ).replace(/\/+$/, "");
+  const prefix = sshUsesSudo() ? "sudo " : "";
+  const script = [
+    "set +e",
+    `sites_en=${shellSingleQuote(sitesEn)}`,
+    'for link in "$sites_en"/*.conf "$sites_en"/*; do',
+    '  [ -e "$link" ] || continue',
+    '  conf="$link"',
+    '  [ -L "$link" ] && conf=$(readlink -f "$link" 2>/dev/null || echo "$link")',
+    '  cert=$(grep -E "^[[:space:]]*ssl_certificate[[:space:]]+" "$conf" 2>/dev/null | head -n 1 | awk "{print \\$2}" | tr -d ";")',
+    '  [ -n "$cert" ] || continue',
+    '  if [ ! -f "$cert" ]; then',
+    `    ${prefix}rm -f "$link"`,
+    '    echo "disabled_missing_cert:$link:$cert"',
+    "  fi",
+    "done",
+  ].join("\n");
+  const b64 = Buffer.from(script, "utf8").toString("base64");
+  try {
+    const { stdout } = await sshExecCommand(
+      sshHost,
+      sshUser,
+      sshPassword,
+      `echo ${shellSingleQuote(b64)} | base64 -d | bash`,
+      sshPort
+    );
+    for (const line of String(stdout || "").split("\n")) {
+      const t = line.trim();
+      if (t.startsWith("disabled_missing_cert:")) {
+        log(`[nginx] disabled broken vhost (${t.slice("disabled_missing_cert:".length)})`);
+      }
+    }
+  } catch (e) {
+    log(`[nginx] sanitize broken SSL vhosts warning: ${e?.message || e}`);
+  }
+}
+
 async function publishNginxConfigOnHost({
   sshHost,
   sshUser,
@@ -416,7 +470,18 @@ async function publishNginxConfigOnHost({
   confPath,
   linkPath,
   reloadCmd,
+  onLog,
 }) {
+  const log = (msg) => {
+    if (typeof onLog === "function") onLog(msg);
+  };
+  await sanitizeBrokenNginxSslVhostsOnHost({
+    sshHost,
+    sshUser,
+    sshPassword,
+    sshPort,
+    onLog: log,
+  });
   const body = String(nginxConf || "");
   const b64 = Buffer.from(body, "utf8").toString("base64");
   const prefix = sshUsesSudo() ? "sudo " : "";
@@ -791,6 +856,7 @@ export async function syncNginxVhostForDomain({
       confPath,
       linkPath,
       reloadCmd,
+      onLog: log,
     });
     log(
       `[nginx] ${normalized}: vhost ${useHttps ? "https" : "http-only"} → ${confPath}, reload ok`
