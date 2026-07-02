@@ -326,6 +326,9 @@ export async function listDeployedSiteDomainsOnHost(host) {
   const html = await listHtmlSiteDomainsOnHost(host);
   return [...new Set([...php, ...html])].sort();
 }
+
+/** Усі каталоги доменів у projectsDir (для nginx-only без PHP). */
+export async function listAllSiteDomainsOnHost(host) {
   const projectsBaseDir = normalizeBaseDir(host?.projectsDir);
   const domains = [];
   await withSftp(host, async (sftp) => {
