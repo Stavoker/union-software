@@ -177,6 +177,7 @@
       "loading": "Loading queue…",
       "empty": "No active SEO jobs. After deploy your queue position will appear here.",
       "globalSummary": "Global queue: {pending} waiting · {processing} in progress",
+      "queuePosition": "#{position} of {total}",
       "yourPosition": "your position #{position} of {total}",
       "statusPending": "Waiting",
       "statusProcessing": "Processing",

@@ -177,6 +177,7 @@
       "loading": "Завантаження черги…",
       "empty": "Немає активних завдань SEO. Після деплою сайту тут зʼявиться позиція в черзі.",
       "globalSummary": "Усього в черзі: {pending} очікують · {processing} обробляються",
+      "queuePosition": "№{position} з {total}",
       "yourPosition": "ваше місце #{position} з {total}",
       "statusPending": "Очікує",
       "statusProcessing": "Обробляється",

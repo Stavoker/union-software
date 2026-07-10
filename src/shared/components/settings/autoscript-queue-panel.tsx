@@ -49,9 +49,20 @@ export function AutoscriptQueuePanel() {
     return () => clearInterval(id);
   }, [load]);
 
-  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
-  const recent = Array.isArray(snapshot?.recent) ? snapshot.recent : [];
-  const hasActive = items.length > 0;
+  const items = (Array.isArray(snapshot?.items) ? snapshot.items : []).filter(
+    (row) => row?.status === "pending" || row?.status === "processing"
+  );
+  const totalPending = Number(snapshot?.totalPending || 0);
+  const totalProcessing = Number(snapshot?.totalProcessing || 0);
+  const hasActiveOps = totalPending > 0 || totalProcessing > 0;
+
+  if (loading && !snapshot) {
+    return null;
+  }
+
+  if (snapshot && !hasActiveOps) {
+    return null;
+  }
 
   return (
     <section className={`${seoCard} space-y-4`}>
@@ -66,16 +77,12 @@ export function AutoscriptQueuePanel() {
         <>
           <p className="text-sm text-union-text">
             {t("globalSummary", {
-              pending: Number(snapshot?.totalPending || 0),
-              processing: Number(snapshot?.totalProcessing || 0),
+              pending: totalPending,
+              processing: totalProcessing,
             })}
           </p>
 
-          {!hasActive && recent.length === 0 ? (
-            <p className="text-sm text-union-muted">{t("empty")}</p>
-          ) : null}
-
-          {hasActive ? (
+          {items.length > 0 ? (
             <ul className="space-y-2">
               {items.map((row) => (
                 <li
@@ -88,7 +95,7 @@ export function AutoscriptQueuePanel() {
                     {row.status === "pending" &&
                     row.queuePosition != null &&
                     snapshot?.totalPending != null
-                      ? ` · ${t("yourPosition", {
+                      ? ` · ${t("queuePosition", {
                           position: row.queuePosition,
                           total: snapshot.totalPending,
                         })}`
@@ -97,19 +104,6 @@ export function AutoscriptQueuePanel() {
                 </li>
               ))}
             </ul>
-          ) : null}
-
-          {recent.length > 0 ? (
-            <div className="space-y-2 border-t border-union-border/40 pt-3">
-              <p className="text-xs font-medium text-union-muted">{t("recentTitle")}</p>
-              <ul className="space-y-1 text-xs text-union-muted">
-                {recent.map((row) => (
-                  <li key={row.id}>
-                    {row.domain} — {statusLabel(t, row.status)}
-                  </li>
-                ))}
-              </ul>
-            </div>
           ) : null}
         </>
       )}

@@ -54,7 +54,7 @@ export async function getGlobalQueueSnapshot() {
 }
 
 /**
- * Черга поточного користувача + глобальна позиція кожного pending.
+ * Активна черга для UI: лише pending/processing, без історії done/failed.
  */
 export async function getUserAutoscriptQueue(userId) {
   const uid = String(userId || "").trim();
@@ -63,24 +63,12 @@ export async function getUserAutoscriptQueue(userId) {
   }
 
   const global = await getGlobalQueueSnapshot();
-  const mine = global.items.filter((r) => String(r.user_id || "") === uid);
-
-  const { data: recentDone, error } = await getSupabaseServerClient()
-    .from("autoscript_deploy_queue")
-    .select("id,domain,project_name,status,created_at,processed_at,error_message")
-    .eq("user_id", uid)
-    .in("status", ["done", "failed"])
-    .order("processed_at", { ascending: false })
-    .limit(5);
-
-  if (error) throw new Error(error.message);
 
   return {
     totalPending: global.totalPending,
     totalProcessing: global.totalProcessing,
     totalActive: global.totalActive,
-    items: mine,
-    recent: Array.isArray(recentDone) ? recentDone : [],
+    items: global.items,
   };
 }
 
